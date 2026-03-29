@@ -6,26 +6,61 @@ ShellRoot {
     PanelWindow {
         id: panel
 
+        // ── Theme ──
+        readonly property int barHeight: 38
+        readonly property color barBg: "#1a1b26"
+        readonly property color containerBg: "#24283b"
+        readonly property int containerRadius: 6
+        readonly property int containerHeight: 22
+        readonly property int containerPadding: 16
+        readonly property int edgeMargin: 8
+
+        // ── Colors ──
+        readonly property color textColor: "#d8dee9"
+        readonly property color dotUrgent: "#bf616a"
+        readonly property color dotSelected: "#88c0d0"
+        readonly property color dotOccupied: "#81a1c1"
+        readonly property color dotEmpty: "#3b4252"
+
+        // ── Font ──
+        readonly property string clockFont: "Lexend Deca"
+        readonly property int clockFontSize: 12
+        readonly property int textFontSize: 12
+        readonly property string clockFormat: "dddd, d'th of' MMMM yyyy, hh:mm AP"
+
+        // ── Dots ──
+        readonly property int dotSize: 10
+        readonly property int dotSpacing: 8
+        readonly property int tagCount: 9
+
+        // ── Logo ──
+        readonly property int logoSize: 18
+        readonly property string logoSource: "assets/nixos-logo.svg"
+
+        // ── Polling intervals (ms) ──
+        readonly property int tagPollInterval: 100
+        readonly property int volumePollInterval: 2000
+
         anchors {
             top: true
             left: true
             right: true
         }
-        height: 32
-        color: "#1a1b26"
+        height: barHeight
+        color: barBg
 
         property var selectedTags: []
         property var occupiedTags: []
         property var urgentTags: []
         property string volumeText: "100%"
 
-        property string clockText: Qt.formatDateTime(new Date(), "dddd, d'th of' MMMM yyyy, hh:mm AP")
+        property string clockText: Qt.formatDateTime(new Date(), panel.clockFormat)
 
         Timer {
             interval: 1000
             running: true
             repeat: true
-            onTriggered: panel.clockText = Qt.formatDateTime(new Date(), "dddd, d'th of' MMMM yyyy, hh:mm AP")
+            onTriggered: panel.clockText = Qt.formatDateTime(new Date(), panel.clockFormat)
         }
 
         Process {
@@ -46,7 +81,7 @@ ShellRoot {
         }
 
         Timer {
-            interval: 100
+            interval: panel.tagPollInterval
             running: true
             repeat: true
             onTriggered: tagProcess.running = true
@@ -67,7 +102,7 @@ ShellRoot {
         }
 
         Timer {
-            interval: 2000
+            interval: panel.volumePollInterval
             running: true
             repeat: true
             onTriggered: volumeProcess.running = true
@@ -84,51 +119,51 @@ ShellRoot {
 
                 Row {
                     anchors.verticalCenter: parent.verticalCenter
-                    x: 8
+                    x: panel.edgeMargin
                     spacing: 6
 
                     Image {
-                        source: "assets/nixos-logo.svg"
-                        width: 18
-                        height: 18
+                        source: panel.logoSource
+                        width: panel.logoSize
+                        height: panel.logoSize
                         anchors.verticalCenter: parent.verticalCenter
-                        sourceSize.width: 18
-                        sourceSize.height: 18
+                        sourceSize.width: panel.logoSize
+                        sourceSize.height: panel.logoSize
                     }
 
                     Rectangle {
                         anchors.verticalCenter: parent.verticalCenter
-                        width: tagRow.width + 16
-                        height: 22
-                        radius: 6
-                        color: "#24283b"
+                        width: tagRow.width + panel.containerPadding
+                        height: panel.containerHeight
+                        radius: panel.containerRadius
+                        color: panel.containerBg
 
                         Row {
                             id: tagRow
                             anchors.centerIn: parent
-                            spacing: 8
+                            spacing: panel.dotSpacing
 
                             Repeater {
-                                model: 9
+                                model: panel.tagCount
 
                                 Rectangle {
                                     required property int index
-                                    width: 10
-                                    height: 10
-                                    radius: 5
+                                    width: panel.dotSize
+                                    height: panel.dotSize
+                                    radius: panel.dotSize / 2
                                     anchors.verticalCenter: parent.verticalCenter
                                     color: {
                                         var tagNum = index + 1
                                         if (panel.urgentTags.indexOf(tagNum) !== -1) {
-                                            return "#bf616a"
+                                            return panel.dotUrgent
                                         }
                                         if (panel.selectedTags.indexOf(tagNum) !== -1) {
-                                            return "#88c0d0"
+                                            return panel.dotSelected
                                         }
                                         if (panel.occupiedTags.indexOf(tagNum) !== -1) {
-                                            return "#81a1c1"
+                                            return panel.dotOccupied
                                         }
-                                        return "#3b4252"
+                                        return panel.dotEmpty
                                     }
                                 }
                             }
@@ -145,9 +180,9 @@ ShellRoot {
                 Text {
                     anchors.centerIn: parent
                     text: panel.clockText
-                    color: "#d8dee9"
-                    font.pixelSize: 12
-                    font.family: "Lexend Deca"
+                    color: panel.textColor
+                    font.pixelSize: panel.clockFontSize
+                    font.family: panel.clockFont
                 }
             }
 
@@ -159,11 +194,11 @@ ShellRoot {
                 Rectangle {
                     anchors.verticalCenter: parent.verticalCenter
                     anchors.right: parent.right
-                    anchors.rightMargin: 8
-                    width: volumeRow.width + 16
-                    height: 22
-                    radius: 6
-                    color: "#24283b"
+                    anchors.rightMargin: panel.edgeMargin
+                    width: volumeRow.width + panel.containerPadding
+                    height: panel.containerHeight
+                    radius: panel.containerRadius
+                    color: panel.containerBg
 
                     Row {
                         id: volumeRow
@@ -178,8 +213,8 @@ ShellRoot {
 
                         Text {
                             text: panel.volumeText
-                            color: "#d8dee9"
-                            font.pixelSize: 12
+                            color: panel.textColor
+                            font.pixelSize: panel.textFontSize
                             anchors.verticalCenter: parent.verticalCenter
                         }
                     }

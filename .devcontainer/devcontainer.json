@@ -1,0 +1,31 @@
+{
+  "name": "Quickshell Config",
+  "image": "mcr.microsoft.com/devcontainers/base:ubuntu",
+  "features": {
+    "ghcr.io/devcontainers/features/nix:1": {
+      "multiUser": true,
+      "extraNixConfig": "experimental-features = nix-command flakes"
+    },
+    "ghcr.io/devcontainers/features/common-utils:2": {
+      "installZsh": true,
+      "configureZshAsDefaultShell": true
+    }
+  },
+  "postCreateCommand": "nix-env -iA nixpkgs.shellcheck nixpkgs.qt6Packages.qtdeclarative nixpkgs.qtcreator",
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "bbenoist.Nix",
+        "mads-hartmann.bash-ide-vscode",
+        "timonwong.shellcheck",
+        "nickmillerdev.qml-tools"
+      ],
+      "settings": {
+        "files.associations": {
+          "*.qml": "qml"
+        }
+      }
+    }
+  },
+  "remoteUser": "vscode"
+}

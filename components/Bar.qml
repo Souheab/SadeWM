@@ -9,7 +9,7 @@ PanelWindow {
         left: true
         right: true
     }
-    height: Theme.barHeight
+    implicitHeight: Theme.barHeight
     color: Theme.barBg
 
     Row {

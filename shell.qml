@@ -82,40 +82,54 @@ ShellRoot {
                 width: parent.width * 0.33
                 height: parent.height
 
-                Rectangle {
+                Row {
                     anchors.verticalCenter: parent.verticalCenter
                     x: 8
-                    width: tagRow.width + 16
-                    height: 22
-                    radius: 6
-                    color: "#24283b"
+                    spacing: 6
 
-                    Row {
-                        id: tagRow
-                        anchors.centerIn: parent
-                        spacing: 8
+                    Image {
+                        source: "assets/nixos-logo.svg"
+                        width: 18
+                        height: 18
+                        anchors.verticalCenter: parent.verticalCenter
+                        sourceSize.width: 18
+                        sourceSize.height: 18
+                    }
 
-                        Repeater {
-                            model: 9
+                    Rectangle {
+                        anchors.verticalCenter: parent.verticalCenter
+                        width: tagRow.width + 16
+                        height: 22
+                        radius: 6
+                        color: "#24283b"
 
-                            Rectangle {
-                                required property int index
-                                width: 10
-                                height: 10
-                                radius: 5
-                                anchors.verticalCenter: parent.verticalCenter
-                                color: {
-                                    var tagNum = index + 1
-                                    if (panel.urgentTags.indexOf(tagNum) !== -1) {
-                                        return "#bf616a"
+                        Row {
+                            id: tagRow
+                            anchors.centerIn: parent
+                            spacing: 8
+
+                            Repeater {
+                                model: 9
+
+                                Rectangle {
+                                    required property int index
+                                    width: 10
+                                    height: 10
+                                    radius: 5
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    color: {
+                                        var tagNum = index + 1
+                                        if (panel.urgentTags.indexOf(tagNum) !== -1) {
+                                            return "#bf616a"
+                                        }
+                                        if (panel.selectedTags.indexOf(tagNum) !== -1) {
+                                            return "#88c0d0"
+                                        }
+                                        if (panel.occupiedTags.indexOf(tagNum) !== -1) {
+                                            return "#81a1c1"
+                                        }
+                                        return "#3b4252"
                                     }
-                                    if (panel.selectedTags.indexOf(tagNum) !== -1) {
-                                        return "#88c0d0"
-                                    }
-                                    if (panel.occupiedTags.indexOf(tagNum) !== -1) {
-                                        return "#81a1c1"
-                                    }
-                                    return "#3b4252"
                                 }
                             }
                         }

@@ -11,7 +11,7 @@ ShellRoot {
             left: true
             right: true
         }
-        height: 28
+        height: 32
         color: "#1a1b26"
 
         property var selectedTags: []
@@ -78,33 +78,46 @@ ShellRoot {
             spacing: 0
 
             // Left section - Workspace dots
-            Row {
+            Item {
                 width: parent.width * 0.33
                 height: parent.height
-                spacing: 8
-                leftPadding: 12
 
-                Repeater {
-                    model: 9
+                Rectangle {
+                    anchors.verticalCenter: parent.verticalCenter
+                    x: 8
+                    width: tagRow.width + 16
+                    height: 22
+                    radius: 6
+                    color: "#24283b"
 
-                    Rectangle {
-                        required property int index
-                        width: 10
-                        height: 10
-                        radius: 5
-                        anchors.verticalCenter: parent.verticalCenter
-                        color: {
-                            var tagNum = index + 1
-                            if (panel.urgentTags.indexOf(tagNum) !== -1) {
-                                return "#bf616a"  // red - urgent
+                    Row {
+                        id: tagRow
+                        anchors.centerIn: parent
+                        spacing: 8
+
+                        Repeater {
+                            model: 9
+
+                            Rectangle {
+                                required property int index
+                                width: 10
+                                height: 10
+                                radius: 5
+                                anchors.verticalCenter: parent.verticalCenter
+                                color: {
+                                    var tagNum = index + 1
+                                    if (panel.urgentTags.indexOf(tagNum) !== -1) {
+                                        return "#bf616a"
+                                    }
+                                    if (panel.selectedTags.indexOf(tagNum) !== -1) {
+                                        return "#88c0d0"
+                                    }
+                                    if (panel.occupiedTags.indexOf(tagNum) !== -1) {
+                                        return "#81a1c1"
+                                    }
+                                    return "#3b4252"
+                                }
                             }
-                            if (panel.selectedTags.indexOf(tagNum) !== -1) {
-                                return "#88c0d0"  // cyan blue - selected
-                            }
-                            if (panel.occupiedTags.indexOf(tagNum) !== -1) {
-                                return "#81a1c1"  // light grayish blue - occupied
-                            }
-                            return "#3b4252"    // dark - empty
                         }
                     }
                 }
@@ -120,33 +133,41 @@ ShellRoot {
                     text: panel.clockText
                     color: "#d8dee9"
                     font.pixelSize: 12
-                    font.family: "sans-serif"
+                    font.family: "Lexend Deca"
                 }
             }
 
             // Right section - Volume
-            Row {
+            Item {
                 width: parent.width * 0.33
                 height: parent.height
-                layoutDirection: Qt.RightToLeft
-                rightPadding: 12
-                spacing: 4
 
-                Row {
+                Rectangle {
                     anchors.verticalCenter: parent.verticalCenter
-                    spacing: 4
+                    anchors.right: parent.right
+                    anchors.rightMargin: 8
+                    width: volumeRow.width + 16
+                    height: 22
+                    radius: 6
+                    color: "#24283b"
 
-                    Text {
-                        text: "🔊"
-                        font.pixelSize: 14
-                        anchors.verticalCenter: parent.verticalCenter
-                    }
+                    Row {
+                        id: volumeRow
+                        anchors.centerIn: parent
+                        spacing: 4
 
-                    Text {
-                        text: panel.volumeText
-                        color: "#d8dee9"
-                        font.pixelSize: 12
-                        anchors.verticalCenter: parent.verticalCenter
+                        Text {
+                            text: "🔊"
+                            font.pixelSize: 14
+                            anchors.verticalCenter: parent.verticalCenter
+                        }
+
+                        Text {
+                            text: panel.volumeText
+                            color: "#d8dee9"
+                            font.pixelSize: 12
+                            anchors.verticalCenter: parent.verticalCenter
+                        }
                     }
                 }
             }

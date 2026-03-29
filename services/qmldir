@@ -1,0 +1,2 @@
+singleton TagService TagService.qml
+singleton VolumeService VolumeService.qml

@@ -15,10 +15,10 @@ Singleton {
 
     // ── Colors ──
     readonly property color textColor: "#d8dee9"
-    readonly property color dotUrgent: "#bf616a"
-    readonly property color dotSelected: "#88c0d0"
-    readonly property color dotOccupied: "#81a1c1"
-    readonly property color dotEmpty: "#3b4252"
+    readonly property color dotUrgent: '#ff0019'
+    readonly property color dotSelected: "#009fff"
+    readonly property color dotOccupied: "#5e72cc"
+    readonly property color dotEmpty: "#5c6a93"
 
     // ── Font ──
     readonly property string clockFont: "Lexend Deca"

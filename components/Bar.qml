@@ -37,15 +37,25 @@ PanelWindow {
             }
         }
 
-        // Right section - Volume
+        // Right section - Volume + Power
         Item {
             width: parent.width * 0.33
             height: parent.height
 
-            VolumeWidget {
+            Row {
                 anchors.verticalCenter: parent.verticalCenter
                 anchors.right: parent.right
                 anchors.rightMargin: Theme.edgeMargin
+                spacing: 6
+                layoutDirection: Qt.RightToLeft
+
+                PowerMenu {
+                    anchors.verticalCenter: parent.verticalCenter
+                }
+
+                VolumeWidget {
+                    anchors.verticalCenter: parent.verticalCenter
+                }
             }
         }
     }

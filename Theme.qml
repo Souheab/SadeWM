@@ -38,4 +38,14 @@ Singleton {
     // ── Polling intervals (ms) ──
     readonly property int tagPollInterval: 100
     readonly property int volumePollInterval: 2000
+
+    // ── Power Menu ──
+    readonly property color menuBg: "#24283b"
+    readonly property color menuHover: "#414868"
+    readonly property color menuBorder: "#3b4252"
+    readonly property int menuWidth: 200
+    readonly property int menuItemHeight: 36
+    readonly property int menuRadius: 8
+    readonly property color dangerColor: "#bf616a"
+    readonly property color confirmBg: "#1a1b26"
 }

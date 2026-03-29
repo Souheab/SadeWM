@@ -1,0 +1,219 @@
+import QtQuick
+import Quickshell
+import Quickshell.Io
+import ".."
+import "../services"
+
+// Power button that lives in the bar
+Rectangle {
+    id: powerButton
+    width: Theme.containerHeight
+    height: Theme.containerHeight
+    radius: Theme.containerRadius
+    color: buttonArea.containsMouse ? Theme.menuHover : Theme.containerBg
+
+    property bool menuOpen: false
+    property bool confirmOpen: false
+    property string pendingAction: ""
+    property string pendingLabel: ""
+
+    Text {
+        anchors.centerIn: parent
+        text: "⏻"
+        color: Theme.textColor
+        font.pixelSize: 14
+    }
+
+    MouseArea {
+        id: buttonArea
+        anchors.fill: parent
+        hoverEnabled: true
+        onClicked: {
+            powerButton.menuOpen = !powerButton.menuOpen
+            powerButton.confirmOpen = false
+        }
+    }
+
+    // Dropdown menu
+    FloatingWindow {
+        id: menuWindow
+        visible: powerButton.menuOpen
+        width: Theme.menuWidth
+        height: menuColumn.height + 12
+        color: "transparent"
+
+        anchor {
+            window: powerButton
+            adjustment.onTarget: true
+            edges: Edges.Bottom | Edges.Right
+            gravity: Edges.Bottom | Edges.Right
+        }
+
+        Rectangle {
+            anchors.fill: parent
+            color: Theme.menuBg
+            radius: Theme.menuRadius
+            border.color: Theme.menuBorder
+            border.width: 1
+
+            Column {
+                id: menuColumn
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.top: parent.top
+                anchors.margins: 6
+
+                Repeater {
+                    model: [
+                        { label: "Lock", icon: "🔒", cmd: "loginctl lock-session" },
+                        { label: "Suspend", icon: "🌙", cmd: "systemctl suspend" },
+                        { label: "Reboot", icon: "🔄", cmd: "systemctl reboot" },
+                        { label: "Shutdown", icon: "⏻", cmd: "systemctl poweroff" },
+                        { label: "Log Out", icon: "🚪", cmd: "awesome-client 'awesome.quit()'" }
+                    ]
+
+                    Rectangle {
+                        required property var modelData
+                        required property int index
+                        width: menuColumn.width
+                        height: Theme.menuItemHeight
+                        radius: Theme.containerRadius
+                        color: itemArea.containsMouse ? Theme.menuHover : "transparent"
+
+                        Row {
+                            anchors.fill: parent
+                            anchors.leftMargin: 10
+                            spacing: 8
+
+                            Text {
+                                text: modelData.icon
+                                font.pixelSize: 14
+                                anchors.verticalCenter: parent.verticalCenter
+                            }
+
+                            Text {
+                                text: modelData.label
+                                color: Theme.textColor
+                                font.pixelSize: Theme.textFontSize
+                                anchors.verticalCenter: parent.verticalCenter
+                            }
+                        }
+
+                        MouseArea {
+                            id: itemArea
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            onClicked: {
+                                powerButton.pendingAction = modelData.cmd
+                                powerButton.pendingLabel = modelData.label
+                                powerButton.menuOpen = false
+                                powerButton.confirmOpen = true
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Close menu when clicking outside
+        MouseArea {
+            anchors.fill: parent
+            z: -1
+            onClicked: powerButton.menuOpen = false
+        }
+    }
+
+    // Confirmation dialog
+    FloatingWindow {
+        id: confirmWindow
+        visible: powerButton.confirmOpen
+        width: 260
+        height: 120
+        color: "transparent"
+
+        anchor {
+            window: powerButton
+            adjustment.onTarget: true
+            edges: Edges.Bottom | Edges.Right
+            gravity: Edges.Bottom | Edges.Right
+        }
+
+        Rectangle {
+            anchors.fill: parent
+            color: Theme.confirmBg
+            radius: Theme.menuRadius
+            border.color: Theme.menuBorder
+            border.width: 1
+
+            Column {
+                anchors.centerIn: parent
+                spacing: 16
+
+                Text {
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    text: powerButton.pendingLabel + "?"
+                    color: Theme.textColor
+                    font.pixelSize: 14
+                    font.family: Theme.clockFont
+                }
+
+                Row {
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    spacing: 12
+
+                    // Cancel button
+                    Rectangle {
+                        width: 90
+                        height: 32
+                        radius: Theme.containerRadius
+                        color: cancelArea.containsMouse ? Theme.menuHover : Theme.containerBg
+
+                        Text {
+                            anchors.centerIn: parent
+                            text: "Cancel"
+                            color: Theme.textColor
+                            font.pixelSize: Theme.textFontSize
+                        }
+
+                        MouseArea {
+                            id: cancelArea
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            onClicked: powerButton.confirmOpen = false
+                        }
+                    }
+
+                    // Confirm button
+                    Rectangle {
+                        width: 90
+                        height: 32
+                        radius: Theme.containerRadius
+                        color: confirmArea.containsMouse ? Qt.darker(Theme.dangerColor, 1.2) : Theme.dangerColor
+
+                        Text {
+                            anchors.centerIn: parent
+                            text: "Confirm"
+                            color: "#ffffff"
+                            font.pixelSize: Theme.textFontSize
+                        }
+
+                        MouseArea {
+                            id: confirmArea
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            onClicked: {
+                                powerButton.confirmOpen = false
+                                execProcess.command = ["bash", "-c", powerButton.pendingAction]
+                                execProcess.running = true
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    Process {
+        id: execProcess
+    }
+}

@@ -1,142 +1,153 @@
 import QtQuick
 import Quickshell
-import Quickshell.Widgets
 import Quickshell.Io
 
-PanelWindow {
-    id: panel
-    
-    anchors {
-        top: true
-        left: true
-        right: true
-    }
-    height: 28
-    color: "#2e3440"
-    
-    property var selectedTags: []
-    
-    Process {
-        id: tagProcess
-        command: ["bash", "/home/suller/.config/quickshell/scripts/get_tags.sh"]
-        
-        onExited: {
-            if (exitCode === 0) {
-                var output = (stdout || "").trim()
-                // Parse output like '   string "267"'
-                var match = output.match(/string "([^"]*)"/)
-                if (match && match[1]) {
-                    var tags = match[1].split("").map(function(t) { return parseInt(t) })
-                    panel.selectedTags = tags
-                }
-            }
+ShellRoot {
+    PanelWindow {
+        id: panel
+
+        anchors {
+            top: true
+            left: true
+            right: true
         }
-    }
+        height: 28
+        color: "#1a1b26"
 
-    Timer {
-        interval: 100
-        running: true
-        repeat: true
-        onTriggered: tagProcess.running = true
-    }
+        property var selectedTags: []
+        property var occupiedTags: []
+        property var urgentTags: []
+        property string volumeText: "100%"
 
-    Row {
-        anchors.fill: parent
-        spacing: 0
+        property string clockText: Qt.formatDateTime(new Date(), "dddd, d'th of' MMMM yyyy, hh:mm AP")
 
-        // Left section - Workspace indicators
-        Row {
-            width: parent.width * 0.33
-            height: parent.height
-            spacing: 8
-            leftPadding: 12
+        Timer {
+            interval: 1000
+            running: true
+            repeat: true
+            onTriggered: panel.clockText = Qt.formatDateTime(new Date(), "dddd, d'th of' MMMM yyyy, hh:mm AP")
+        }
 
-            Repeater {
-                model: 9
-                
-                Rectangle {
-                    width: 10
-                    height: 10
-                    radius: 5
-                    anchors.verticalCenter: parent.verticalCenter
-                    color: {
-                        var tagNum = index + 1
-                        if (panel.selectedTags.indexOf(tagNum) !== -1) {
-                            return "#5e81ac"  // Active workspace - blue
-                        }
-                        return "#3b4252"  // Inactive - darker gray
+        Process {
+            id: tagProcess
+            command: ["bash", "-c", "echo 'local sel,occ,urg=\"\",\"\",\"\"; for _,t in ipairs(require(\"awful\").screen.focused().tags) do if t.selected then sel=sel..t.name end; if #t:clients()>0 then occ=occ..t.name end; if t.urgent then urg=urg..t.name end end; return sel..\"|\"..occ..\"|\"..urg' | awesome-client"]
+
+            stdout: SplitParser {
+                onRead: data => {
+                    var match = data.match(/string "([^"]*)"/);
+                    if (match && match[1]) {
+                        var parts = match[1].split("|");
+                        panel.selectedTags = parts[0].split("").map(function(t) { return parseInt(t) });
+                        panel.occupiedTags = parts[1] ? parts[1].split("").map(function(t) { return parseInt(t) }) : [];
+                        panel.urgentTags = parts[2] ? parts[2].split("").map(function(t) { return parseInt(t) }) : [];
                     }
                 }
             }
         }
 
-        // Center section - Date and time
-        Item {
-            width: parent.width * 0.34
-            height: parent.height
-
-            Text {
-                anchors.centerIn: parent
-                text: Qt.formatDateTime(new Date(), "dddd, d'th' 'of' MMMM yyyy, hh:mm AP")
-                color: "#d8dee9"
-                font.pixelSize: 12
-                font.family: "sans-serif"
-            }
+        Timer {
+            interval: 100
+            running: true
+            repeat: true
+            onTriggered: tagProcess.running = true
         }
 
-        // Right section - System tray
-        Row {
-            width: parent.width * 0.33
-            height: parent.height
-            spacing: 12
-            layoutDirection: Qt.RightToLeft
-            rightPadding: 12
+        Process {
+            id: volumeProcess
+            command: ["bash", "-c", "pamixer --get-volume"]
 
-            // App grid icon
-            Rectangle {
-                width: 20
-                height: 20
-                anchors.verticalCenter: parent.verticalCenter
-                color: "transparent"
-                
-                Grid {
-                    anchors.centerIn: parent
-                    columns: 3
-                    rows: 3
-                    spacing: 2
-                    
-                    Repeater {
-                        model: 9
-                        Rectangle {
-                            width: 3
-                            height: 3
-                            color: "#d8dee9"
-                        }
+            stdout: SplitParser {
+                onRead: data => {
+                    var vol = data.trim()
+                    if (vol.length > 0) {
+                        panel.volumeText = vol + "%"
                     }
                 }
             }
+        }
 
-            // WiFi icon
-            Text {
-                anchors.verticalCenter: parent.verticalCenter
-                text: "📶"
-                font.pixelSize: 14
-            }
+        Timer {
+            interval: 2000
+            running: true
+            repeat: true
+            onTriggered: volumeProcess.running = true
+        }
 
-            // Volume with percentage
+        Row {
+            anchors.fill: parent
+            spacing: 0
+
+            // Left section - Workspace dots
             Row {
-                anchors.verticalCenter: parent.verticalCenter
-                spacing: 4
-                
+                width: parent.width * 0.33
+                height: parent.height
+                spacing: 8
+                leftPadding: 12
+
+                Repeater {
+                    model: 9
+
+                    Rectangle {
+                        required property int index
+                        width: 10
+                        height: 10
+                        radius: 5
+                        anchors.verticalCenter: parent.verticalCenter
+                        color: {
+                            var tagNum = index + 1
+                            if (panel.urgentTags.indexOf(tagNum) !== -1) {
+                                return "#bf616a"  // red - urgent
+                            }
+                            if (panel.selectedTags.indexOf(tagNum) !== -1) {
+                                return "#88c0d0"  // cyan blue - selected
+                            }
+                            if (panel.occupiedTags.indexOf(tagNum) !== -1) {
+                                return "#81a1c1"  // light grayish blue - occupied
+                            }
+                            return "#3b4252"    // dark - empty
+                        }
+                    }
+                }
+            }
+
+            // Center section - Date and time
+            Item {
+                width: parent.width * 0.34
+                height: parent.height
+
                 Text {
-                    text: "100%"
+                    anchors.centerIn: parent
+                    text: panel.clockText
                     color: "#d8dee9"
                     font.pixelSize: 12
+                    font.family: "sans-serif"
                 }
-                
-                Text {
-                    text: "🔊"
-                    font.pixelSize: 14
+            }
+
+            // Right section - Volume
+            Row {
+                width: parent.width * 0.33
+                height: parent.height
+                layoutDirection: Qt.RightToLeft
+                rightPadding: 12
+                spacing: 4
+
+                Row {
+                    anchors.verticalCenter: parent.verticalCenter
+                    spacing: 4
+
+                    Text {
+                        text: "🔊"
+                        font.pixelSize: 14
+                        anchors.verticalCenter: parent.verticalCenter
+                    }
+
+                    Text {
+                        text: panel.volumeText
+                        color: "#d8dee9"
+                        font.pixelSize: 12
+                        anchors.verticalCenter: parent.verticalCenter
+                    }
                 }
             }
         }

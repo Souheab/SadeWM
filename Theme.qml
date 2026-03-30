@@ -70,6 +70,9 @@ Singleton {
     readonly property int confirmDialogWidth: 280
     readonly property int sectionHeaderHeight: 40
     readonly property int wifiTogglePillWidth: 48
+    readonly property int launcherWidth: 340
+    readonly property int launcherMaxHeight: 480
+    readonly property int launcherItemHeight: 52
 
     // ── Animation ──
     readonly property int popupAnimDuration: 500

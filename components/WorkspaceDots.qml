@@ -1,18 +1,81 @@
 import QtQuick
+import Quickshell
 import Quickshell.Io
 import ".."
 import "../services"
 
 Row {
+    id: workspaceDots
     spacing: 6
 
-    Image {
-        source: Theme.logoSource
-        width: Theme.logoSize
-        height: Theme.logoSize
+    // ── Popup layer lookup ────────────────────────────────────────────────
+    readonly property Item popupLayer: {
+        let p = parent;
+        while (p) {
+            for (let i = 0; i < p.children.length; i++) {
+                if (p.children[i].objectName === "popupLayer")
+                    return p.children[i];
+            }
+            p = p.parent;
+        }
+        return null;
+    }
+
+    property bool launcherOpen: false
+    property real popupX: 0
+    property real popupY: 0
+
+    function updatePopupPosition() {
+        if (!popupLayer) return;
+        const pos = logoBtn.mapToItem(popupLayer, 0, logoBtn.height);
+        popupX = pos.x;
+        popupY = pos.y + 4;
+    }
+
+    onLauncherOpenChanged: {
+        if (popupLayer) popupLayer.popupVisible = launcherOpen;
+    }
+
+    Connections {
+        target: workspaceDots.popupLayer
+        function onPopupVisibleChanged() {
+            if (workspaceDots.popupLayer && !workspaceDots.popupLayer.popupVisible)
+                workspaceDots.launcherOpen = false;
+        }
+    }
+
+    // ── Logo button ───────────────────────────────────────────────────────
+    Rectangle {
+        id: logoBtn
+        width: Theme.containerHeight
+        height: Theme.containerHeight
+        radius: Theme.containerRadius
+        color: logoArea.containsMouse ? Theme.menuHover : Theme.containerBg
         anchors.verticalCenter: parent.verticalCenter
-        sourceSize.width: Theme.logoSize
-        sourceSize.height: Theme.logoSize
+
+        Image {
+            source: Theme.logoSource
+            width: Theme.logoSize
+            height: Theme.logoSize
+            anchors.centerIn: parent
+            sourceSize.width: Theme.logoSize
+            sourceSize.height: Theme.logoSize
+        }
+
+        MouseArea {
+            id: logoArea
+            anchors.fill: parent
+            hoverEnabled: true
+            cursorShape: Qt.PointingHandCursor
+            onClicked: {
+                if (workspaceDots.launcherOpen) {
+                    workspaceDots.launcherOpen = false;
+                } else {
+                    workspaceDots.updatePopupPosition();
+                    workspaceDots.launcherOpen = true;
+                }
+            }
+        }
     }
 
     Rectangle {
@@ -78,5 +141,14 @@ Row {
                 }
             }
         }
+    }
+
+    // ── Launcher popup ────────────────────────────────────────────────────
+    LauncherWidget {
+        popupLayer: workspaceDots.popupLayer
+        launcherOpen: workspaceDots.launcherOpen
+        anchorX: workspaceDots.popupX
+        anchorY: workspaceDots.popupY
+        onLauncherOpenChanged: workspaceDots.launcherOpen = launcherOpen
     }
 }

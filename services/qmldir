@@ -1,3 +1,4 @@
 singleton TagService TagService.qml
 singleton VolumeService VolumeService.qml
 singleton WiFiService WiFiService.qml
+singleton AppService AppService.qml

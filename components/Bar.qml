@@ -25,7 +25,7 @@ PanelWindow {
         x: 0
         y: 0
         width: root.width
-        height: popupLayer.popupVisible ? root.height : Theme.barHeight
+        height: popupLayer.maskActive ? root.height : Theme.barHeight
     }
 
     // Bar background at the top
@@ -101,7 +101,7 @@ PanelWindow {
         anchors.left: parent.left
         anchors.right: parent.right
         anchors.bottom: parent.bottom
-        visible: popupLayer.popupVisible
+        visible: popupLayer.maskActive
         onClicked: popupLayer.popupVisible = false
     }
 
@@ -111,6 +111,24 @@ PanelWindow {
         id: popupLayer
         objectName: "popupLayer"
         property bool popupVisible: false
+        // maskActive leads popupVisible on open (expands immediately)
+        // and trails it on close (collapses after the animation finishes)
+        property bool maskActive: false
         anchors.fill: parent
+
+        onPopupVisibleChanged: {
+            if (popupVisible) {
+                maskCollapseTimer.stop();
+                maskActive = true;
+            } else {
+                maskCollapseTimer.restart();
+            }
+        }
+
+        Timer {
+            id: maskCollapseTimer
+            interval: Theme.popupAnimDuration
+            onTriggered: popupLayer.maskActive = false
+        }
     }
 }

@@ -79,6 +79,10 @@ PanelWindow {
                         shellWindow: root
                     }
 
+                    NetworkWidget {
+                        anchors.verticalCenter: parent.verticalCenter
+                    }
+
                     VolumeWidget {
                         anchors.verticalCenter: parent.verticalCenter
                     }

@@ -149,6 +149,6 @@ Row {
         launcherOpen: workspaceDots.launcherOpen
         anchorX: workspaceDots.popupX
         anchorY: workspaceDots.popupY
-        onLauncherOpenChanged: workspaceDots.launcherOpen = launcherOpen
+        onCloseRequested: workspaceDots.launcherOpen = false
     }
 }

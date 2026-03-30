@@ -15,6 +15,8 @@ Rectangle {
     property real anchorX: 0
     property real anchorY: 0
 
+    signal closeRequested()
+
     parent: launcher.popupLayer
     visible: opacity > 0
     opacity: launcher.launcherOpen ? 1.0 : 0.0
@@ -35,9 +37,12 @@ Rectangle {
     Behavior on slideOffset { NumberAnimation { duration: Theme.popupAnimDuration; easing.type: Theme.popupAnimEasing } }
     Behavior on opacity    { NumberAnimation { duration: Theme.popupAnimDuration; easing.type: Theme.popupAnimEasing } }
 
-    // Reset search when closed
+    // Reset search when closed; grab focus when opened
     onLauncherOpenChanged: {
-        if (!launcherOpen) searchInput.clear();
+        if (launcherOpen)
+            searchInput.forceActiveFocus();
+        else
+            searchInput.clear();
     }
 
     // ── Content ────────────────────────────────────────────────────────────
@@ -201,7 +206,7 @@ Rectangle {
                     cursorShape: Qt.PointingHandCursor
                     onClicked: {
                         AppService.launch(modelData);
-                        launcher.launcherOpen = false;
+                        launcher.closeRequested();
                     }
                 }
             }

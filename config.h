@@ -72,6 +72,8 @@ static const Layout layouts[] = {
 static char dmenumon[2] = "0"; /* component of dmenucmd, manipulated in spawn() */
 
 // These are null terminated arrays
+static const char *applaunchercmd[] = { "rofi", "-show", "drun", NULL };
+static const char *termcmd[]  = { TERMINAL_PROGRAM, NULL };
 static const char *startupscriptcmd[] = { "sh", HOME_SUB_STR"/.config/dwm/startup.sh", NULL }; 
 static const char **startupcmds[] = { startupscriptcmd, NULL };
 

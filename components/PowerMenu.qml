@@ -57,9 +57,10 @@ Rectangle {
 
     Text {
         anchors.centerIn: parent
-        text: "⏻"
+        text: "\uf011"
         color: Theme.textColor
-        font.pixelSize: 14
+        font.family: Theme.iconFont
+        font.pixelSize: Theme.iconFontSize
     }
 
     MouseArea {
@@ -100,11 +101,11 @@ Rectangle {
 
             Repeater {
                 model: [
-                    { label: "Lock", icon: "🔒", cmd: "loginctl lock-session" },
-                    { label: "Suspend", icon: "🌙", cmd: "systemctl suspend" },
-                    { label: "Reboot", icon: "🔄", cmd: "systemctl reboot" },
-                    { label: "Shutdown", icon: "⏻", cmd: "systemctl poweroff" },
-                    { label: "Log Out", icon: "🚪", cmd: "awesome-client 'awesome.quit()'" }
+                    { label: "Lock",     icon: "\uf023", cmd: "loginctl lock-session" },
+                    { label: "Suspend",  icon: "\uf186", cmd: "systemctl suspend" },
+                    { label: "Reboot",   icon: "\uf021", cmd: "systemctl reboot" },
+                    { label: "Shutdown", icon: "\uf011", cmd: "systemctl poweroff" },
+                    { label: "Log Out",  icon: "\uf2f5", cmd: "awesome-client 'awesome.quit()'" }
                 ]
 
                 Rectangle {
@@ -122,7 +123,8 @@ Rectangle {
 
                         Text {
                             text: modelData.icon
-                            font.pixelSize: 14
+                            font.family: Theme.iconFont
+                            font.pixelSize: Theme.iconFontSize
                             anchors.verticalCenter: parent.verticalCenter
                         }
 

@@ -22,8 +22,11 @@ Singleton {
 
     // ── Font ──
     readonly property string clockFont: "Lexend Deca"
+    readonly property string monoFont: "JetBrains Mono"
+    readonly property string iconFont: "FiraCode Nerd Font"
     readonly property int clockFontSize: 12
     readonly property int textFontSize: 12
+    readonly property int iconFontSize: 14
     readonly property string clockFormat: "dddd, d'th of' MMMM yyyy, hh:mm AP"
     readonly property string timeFormat: "hh:mm AP"
     readonly property string dateFormat: "dddd, d'th of' MMMM yyyy"

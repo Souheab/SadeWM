@@ -14,14 +14,17 @@ Rectangle {
         spacing: 4
 
         Text {
-            text: "🔊"
-            font.pixelSize: 14
+            text: "\uf028"
+            font.family: Theme.iconFont
+            font.pixelSize: Theme.iconFontSize
+            color: Theme.textColor
             anchors.verticalCenter: parent.verticalCenter
         }
 
         Text {
             text: VolumeService.volume
             color: Theme.textColor
+            font.family: Theme.monoFont
             font.pixelSize: Theme.textFontSize
             anchors.verticalCenter: parent.verticalCenter
         }

@@ -6,8 +6,8 @@ Text {
 
     text: clockText
     color: Theme.textColor
+    font.family: Theme.monoFont
     font.pixelSize: Theme.clockFontSize
-    font.family: Theme.clockFont
 
     Timer {
         interval: 1000

@@ -74,6 +74,10 @@ PanelWindow {
                         anchors.verticalCenter: parent.verticalCenter
                     }
 
+                    SystemTrayWidget {
+                        anchors.verticalCenter: parent.verticalCenter
+                    }
+
                     VolumeWidget {
                         anchors.verticalCenter: parent.verticalCenter
                     }

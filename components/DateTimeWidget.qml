@@ -70,8 +70,8 @@ Rectangle {
         anchors.centerIn: parent
         text: dateTimeWidget.timeStr
         color: Theme.textColor
+        font.family: Theme.monoFont
         font.pixelSize: Theme.textFontSize
-        font.family: Theme.clockFont
     }
 
     MouseArea {
@@ -170,9 +170,10 @@ Rectangle {
 
                     Text {
                         anchors.centerIn: parent
-                        text: "◀"
+                        text: "\uf053"
                         color: Theme.textColor
-                        font.pixelSize: 12
+                        font.family: Theme.iconFont
+                        font.pixelSize: 11
                     }
                     MouseArea {
                         id: prevArea
@@ -197,8 +198,8 @@ Rectangle {
                         anchors.centerIn: parent
                         text: dateTimeWidget.monthNames[dateTimeWidget.viewMonth] + " " + dateTimeWidget.viewYear
                         color: Theme.textColor
-                        font.pixelSize: 13
                         font.family: Theme.clockFont
+                        font.pixelSize: 13
                         font.bold: true
                     }
                 }
@@ -211,9 +212,10 @@ Rectangle {
 
                     Text {
                         anchors.centerIn: parent
-                        text: "▶"
+                        text: "\uf054"
                         color: Theme.textColor
-                        font.pixelSize: 12
+                        font.family: Theme.iconFont
+                        font.pixelSize: 11
                     }
                     MouseArea {
                         id: nextArea
@@ -241,8 +243,8 @@ Rectangle {
                         horizontalAlignment: Text.AlignHCenter
                         text: modelData
                         color: Theme.dotEmpty
+                        font.family: Theme.monoFont
                         font.pixelSize: 11
-                        font.family: Theme.clockFont
                         font.bold: true
                     }
                 }
@@ -277,8 +279,8 @@ Rectangle {
                             anchors.centerIn: parent
                             text: modelData.day
                             color: modelData.current ? Theme.textColor : Theme.dotEmpty
+                            font.family: Theme.monoFont
                             font.pixelSize: 12
-                            font.family: Theme.clockFont
                         }
                     }
                 }

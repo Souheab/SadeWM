@@ -97,4 +97,12 @@ PanelWindow {
         visible: root.popupVisible
         onClicked: root.popupVisible = false
     }
+
+    // Popup layer: sits on top of everything.
+    // PowerMenu (and future popup widgets) reparent their content here.
+    Item {
+        id: popupLayer
+        objectName: "popupLayer"
+        anchors.fill: parent
+    }
 }

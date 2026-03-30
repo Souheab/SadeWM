@@ -21,7 +21,19 @@ Rectangle {
     property real popupX: 0
     property real popupY: 0
 
-    // Find the Bar root (PanelWindow) to control popupVisible and reparent popups
+    // Find the popup layer and bar root to control visibility and position popups
+    readonly property Item popupLayer: {
+        let p = parent;
+        while (p) {
+            // Look for the popupLayer among siblings (children of the PanelWindow contentItem)
+            for (let i = 0; i < p.children.length; i++) {
+                if (p.children[i].objectName === "popupLayer")
+                    return p.children[i];
+            }
+            p = p.parent;
+        }
+        return null;
+    }
     readonly property Item barRoot: {
         let p = parent;
         while (p && !p.hasOwnProperty("popupVisible")) p = p.parent;
@@ -29,8 +41,8 @@ Rectangle {
     }
 
     function updatePopupPosition() {
-        if (!barRoot) return;
-        const pos = powerButton.mapToItem(barRoot, powerButton.width, powerButton.height);
+        if (!popupLayer) return;
+        const pos = powerButton.mapToItem(popupLayer, powerButton.width, powerButton.height);
         popupX = pos.x - Theme.menuWidth;
         popupY = pos.y + 4;
     }
@@ -71,10 +83,10 @@ Rectangle {
         }
     }
 
-    // Dropdown menu — reparented to the PanelWindow root
+    // Dropdown menu — reparented to the popup layer
     Rectangle {
         id: menuPopup
-        parent: powerButton.barRoot
+        parent: powerButton.popupLayer
         visible: powerButton.menuOpen
         x: powerButton.popupX
         y: powerButton.popupY
@@ -144,10 +156,10 @@ Rectangle {
         }
     }
 
-    // Confirmation dialog — reparented to the PanelWindow root
+    // Confirmation dialog — reparented to the popup layer
     Rectangle {
         id: confirmPopup
-        parent: powerButton.barRoot
+        parent: powerButton.popupLayer
         visible: powerButton.confirmOpen
         x: powerButton.popupX + Theme.menuWidth - 260
         y: powerButton.popupY

@@ -1,6 +1,6 @@
 /* ipc.h - Unix domain socket IPC interface for sadewm.
- * ipc.c is #included at the bottom of dwm.c so it can access static symbols.
- * Only this header is needed by callers within dwm.c.
+ * ipc.c is #included at the bottom of sadewm.c so it can access static symbols.
+ * Only this header is needed by callers within sadewm.c.
  */
 
 #include <errno.h>

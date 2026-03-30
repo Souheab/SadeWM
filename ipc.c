@@ -1,7 +1,7 @@
 /* ipc.c - Unix domain socket IPC for sadewm.
  *
  * This file is NOT compiled independently — it is #included at the bottom of
- * dwm.c so that it shares the same translation unit and can access all static
+ * sadewm.c so that it shares the same translation unit and can access all static
  * symbols (selmon, view, tag, toggleview, toggletag, …) without any linkage
  * gymnastics.
  *
@@ -98,7 +98,6 @@ ipc_handle_get_state(int fd)
   n += snprintf(buf + n, sizeof(buf) - n,
     "{\"ok\":true"
     ",\"tag_mask\":%u"
-    ",\"occupied_tag_mask\":%u"
     ",\"layout\":\"%s\""
     ",\"mfact\":%.2f"
     ",\"nmaster\":%d"
@@ -106,7 +105,6 @@ ipc_handle_get_state(int fd)
     ",\"isrighttiled\":%s"
     ",\"clients\":[",
     selmon->tagset[selmon->seltags],
-    selmon->occupiedtags,
     selmon->ltsymbol,
     selmon->mfact,
     selmon->nmaster,

@@ -57,7 +57,6 @@ static const Layout layouts[] = {
 #define MODKEY Mod4Mask
 #define ALTKEY Mod1Mask
 #define TERMINAL_PROGRAM "wezterm"
-#define BAR_PROGRAM "sgbar"
 
 #define TAGKEYS(KEY,TAG) \
 	{ MODKEY,                       KEY,      view,           {.ui = 1 << TAG} }, \
@@ -65,7 +64,7 @@ static const Layout layouts[] = {
 	{ MODKEY|ShiftMask,             KEY,      tag,            {.ui = 1 << TAG} }, \
 	{ MODKEY|ControlMask|ShiftMask, KEY,      toggletag,      {.ui = 1 << TAG} },
 
-/* helper for spawning shell commands in the pre dwm-5.0 fashion */
+/* helper for spawning shell commands in the pre sadewm-5.0 fashion */
 #define SHCMD(cmd) { .v = (const char*[]){ "/bin/sh", "-c", cmd, NULL } }
 
 /* commands */
@@ -74,7 +73,7 @@ static char dmenumon[2] = "0"; /* component of dmenucmd, manipulated in spawn() 
 // These are null terminated arrays
 static const char *applaunchercmd[] = { "rofi", "-show", "drun", NULL };
 static const char *termcmd[]  = { TERMINAL_PROGRAM, NULL };
-static const char *startupscriptcmd[] = { "sh", HOME_SUB_STR"/.config/dwm/startup.sh", NULL }; 
+static const char *startupscriptcmd[] = { "sh", HOME_SUB_STR"/.config/sadewm/startup.sh", NULL }; 
 static const char **startupcmds[] = { startupscriptcmd, NULL };
 
 static const Key keys[] = {

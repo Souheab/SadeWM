@@ -1,5 +1,5 @@
 *.o
-dwm
+sadewm
 *.tar.gz
 compile_commands.json
 .cache/

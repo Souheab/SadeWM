@@ -1,49 +1,45 @@
-# dwm - dynamic window manager
+# sadewm - dynamic window manager
 # See LICENSE file for copyright and license details.
 
 include config.mk
 
-SRC = drw.c dwm.c util.c
+SRC = drw.c sadewm.c util.c
 OBJ = ${SRC:.c=.o}
 
-all: dwm
+all: sadewm
 
 ${OBJ}: config.mk
 
-dwm: ${OBJ}
+sadewm: ${OBJ}
 	${CC} -c ${CFLAGS} $<
 	${CC} -o $@ ${OBJ} ${LDFLAGS}
 
 debug: CFLAGS += -DDEBUG -g
-debug: dwm
+debug: sadewm
 
 clean:
-	rm -f dwm ${OBJ} dwm-${VERSION}.tar.gz
+	rm -f sadewm ${OBJ} sadewm-${VERSION}.tar.gz
 
 dist: clean
-	mkdir -p dwm-${VERSION}
-	cp -R LICENSE Makefile README config.mk\
-		dwm.1 drw.h util.h ${SRC} dwm.png transient.c dwm-${VERSION}
-	tar -cf dwm-${VERSION}.tar dwm-${VERSION}
-	gzip dwm-${VERSION}.tar
-	rm -rf dwm-${VERSION}
+	mkdir -p sadewm-${VERSION}
+	cp -R LICENSE Makefile config.mk\
+		drw.h util.h ipc.h ipc.c ${SRC} sadewm.desktop sadewmctl sadewm-${VERSION}
+	tar -cf sadewm-${VERSION}.tar sadewm-${VERSION}
+	gzip sadewm-${VERSION}.tar
+	rm -rf sadewm-${VERSION}
 
 install: all
 	mkdir -p ${DESTDIR}${PREFIX}/bin
-	cp -f dwm ${DESTDIR}${PREFIX}/bin
-	chmod 755 ${DESTDIR}${PREFIX}/bin/dwm
+	cp -f sadewm ${DESTDIR}${PREFIX}/bin
+	chmod 755 ${DESTDIR}${PREFIX}/bin/sadewm
 	cp -f sadewmctl ${DESTDIR}${PREFIX}/bin
 	chmod 755 ${DESTDIR}${PREFIX}/bin/sadewmctl
-	mkdir -p ${DESTDIR}${MANPREFIX}/man1
-	sed "s/VERSION/${VERSION}/g" < dwm.1 > ${DESTDIR}${MANPREFIX}/man1/dwm.1
-	chmod 644 ${DESTDIR}${MANPREFIX}/man1/dwm.1
 	mkdir -p ${DESTDIR}${PREFIX}/share/xsessions
-	cp -f dwm.desktop ${DESTDIR}${PREFIX}/share/xsessions
-	chmod 644 ${DESTDIR}${PREFIX}/share/xsessions/dwm.desktop
+	cp -f sadewm.desktop ${DESTDIR}${PREFIX}/share/xsessions
+	chmod 644 ${DESTDIR}${PREFIX}/share/xsessions/sadewm.desktop
 
 uninstall:
-	rm -f ${DESTDIR}${PREFIX}/bin/dwm\
-		${DESTDIR}${PREFIX}/bin/sadewmctl\
-		${DESTDIR}${MANPREFIX}/man1/dwm.1
+	rm -f ${DESTDIR}${PREFIX}/bin/sadewm\
+		${DESTDIR}${PREFIX}/bin/sadewmctl
 
 .PHONY: all clean dist install uninstall

@@ -46,14 +46,13 @@
                 FREETYPEINC=${pkgs.freetype.dev}/include/freetype2"
 
               echo "sadewm dev shell ready"
-              echo "  make                           build dwm"
+              echo "  make                           build sadewm"
               echo "  make debug                     debug build"
               echo "  make clean                     clean build artefacts"
-              echo "  ./scripts/test_dwm.sh          run in Xephyr (requires host display)"
-              echo "  ./scripts/test_dwm.sh -r       recompile then run in Xephyr"
-              echo "  ./scripts/test_dwm.sh -d       debug build + gdb in Xephyr"
-              echo "  ./sadewmctl get_state           query WM state (when dwm is running)"
-            '';
+              echo "  ./scripts/test_sadewm.sh          run in Xephyr (requires host display)"
+              echo "  ./scripts/test_sadewm.sh -r       recompile then run in Xephyr"
+              echo "  ./scripts/test_sadewm.sh -d       debug build + gdb in Xephyr"
+              echo "  ./sadewmctl get_state           query WM state (when sadewm is running)"            '';
           };
         });
     };

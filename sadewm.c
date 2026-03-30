@@ -6,7 +6,7 @@
  * events about window (dis-)appearance. Only one X connection at a time is
  * allowed to select for this event mask.
  *
- * The event handlers of dwm are organized in an array which is accessed
+ * The event handlers of sadewm are organized in an array which is accessed
  * whenever a new event has been fetched. This allows event dispatching
  * in O(1) time.
  *
@@ -70,12 +70,9 @@ enum { NetSupported, NetWMName, NetWMState, NetWMCheck,
 enum { WMProtocols, WMDelete, WMState, WMTakeFocus, WMLast }; /* default atoms */
 enum { ClkTagBar, ClkLtSymbol, ClkStatusText, ClkWinTitle,
        ClkClientWin, ClkRootWin, ClkLast }; /* clicks */
-// DWM internal atoms
-enum {DWMTags, DWMOccupiedTags, DWMSetTags, DWMLast};
-
 static char *homepath = NULL;
 
-/* dwm settings */
+/* sadewm settings */
 static bool debug = false;
 
 typedef union {
@@ -152,7 +149,6 @@ struct Monitor {
 	const Layout *lt;
   Tag tags[LENGTH(tags)];
   bool isrighttiled;
-  unsigned int occupiedtags;
 };
 
 typedef struct {
@@ -174,7 +170,6 @@ static void attach(Client *c);
 static void attachbottom(Client *c);
 static void attachstack(Client *c);
 static void buttonpress(XEvent *e);
-static unsigned int calcoccupiedtags(Monitor *m);
 static void checkotherwm(void);
 static void cleanup(void);
 static void cleanupmon(Monitor *mon);
@@ -281,8 +276,6 @@ static void updatestatus(void);
 static void updatetitle(Client *c);
 static void updatewindowtype(Client *c);
 static void updatewmhints(Client *c);
-static void updatedwmtagmaskxprop(void);
-static void updateoccupiedtags(Monitor *m, unsigned int tagmask);
 static void view(const Arg *arg);
 static void viewprev(const Arg *arg);
 static void viewnext(const Arg *arg);
@@ -318,7 +311,7 @@ static void (*handler[LASTEvent]) (XEvent *) = {
 	[PropertyNotify] = propertynotify,
 	[UnmapNotify] = unmapnotify
 };
-static Atom wmatom[WMLast], netatom[NetLast], dwmatom[DWMLast];
+static Atom wmatom[WMLast], netatom[NetLast];
 static Atom utf8string;
 static int running = 1;
 static Cur *cursor[CurLast];
@@ -534,20 +527,6 @@ buttonpress(XEvent *e)
 			buttons[i].func(click == ClkTagBar && buttons[i].arg.i == 0 ? &arg : &buttons[i].arg);
 }
 
-unsigned int
-calcoccupiedtags(Monitor *m) {
-  unsigned int occupiedtags = 0;
-  for (Client *c = m->clients; c; c = c->next) {
-    occupiedtags |= c->tags;
-  }
-
-  for (Client *c = m->stack; c; c = c->snext) {
-    occupiedtags |= c->tags;
-  }
-
-  return occupiedtags;
-}
-
 void
 checkotherwm(void)
 {
@@ -739,7 +718,6 @@ createmon(void)
     m->tags[i] = (Tag) {i, m->lt, m->mfact, m->nmaster, false};
   }
   m->isrighttiled = false;
-  m->occupiedtags = 0;
 	strncpy(m->ltsymbol, layouts[0].symbol, sizeof m->ltsymbol);
 	return m;
 }
@@ -1426,7 +1404,6 @@ manage(Window w, XWindowAttributes *wa)
 	c->mon->sel = c;
 	arrange(c->mon);
 	XMapWindow(dpy, c->win);
-  updateoccupiedtags(c->mon, c->mon->occupiedtags | c->tags);
 	focus(NULL);
 }
 
@@ -1591,18 +1568,7 @@ propertynotify(XEvent *e)
 		}
 		if (ev->atom == netatom[NetWMWindowType])
 			updatewindowtype(c);
-	} else if (ev->window == root && ev->atom == dwmatom[DWMSetTags]) {
-    unsigned int new_mask;
-    if (gettextprop(root, dwmatom[DWMSetTags], stext, sizeof(stext))) {
-      new_mask = (unsigned int)atoi(stext);
-      if (new_mask & TAGMASK) {
-        selmon->tagset[selmon->seltags] = new_mask & TAGMASK;
-        updatedwmtagmaskxprop();
-        focus(NULL);
-        arrange(selmon);
-      }
-    }
-  }
+	}
 }
 
 void
@@ -2020,10 +1986,6 @@ setup(void)
 	netatom[NetWMWindowTypeDialog] = XInternAtom(dpy, "_NET_WM_WINDOW_TYPE_DIALOG", False);
 	netatom[NetWMWindowTypeDock] = XInternAtom(dpy, "_NET_WM_WINDOW_TYPE_DOCK", False);
 	netatom[NetClientList] = XInternAtom(dpy, "_NET_CLIENT_LIST", False);
-
-  dwmatom[DWMTags] = XInternAtom(dpy, "DWM_TAG_MASK", False);
-  dwmatom[DWMOccupiedTags] = XInternAtom(dpy, "DWM_OCCUPIED_TAG_MASK", False);
-  dwmatom[DWMSetTags] = XInternAtom(dpy, "DWM_SET_TAG_MASK", False);
 	/* init cursors */
 	cursor[CurNormal] = drw_cur_create(drw, XC_left_ptr);
 	cursor[CurResize] = drw_cur_create(drw, XC_sizing);
@@ -2040,20 +2002,13 @@ setup(void)
 	XChangeProperty(dpy, wmcheckwin, netatom[NetWMCheck], XA_WINDOW, 32,
 		PropModeReplace, (unsigned char *) &wmcheckwin, 1);
 	XChangeProperty(dpy, wmcheckwin, netatom[NetWMName], utf8string, 8,
-		PropModeReplace, (unsigned char *) "dwm", 3);
+		PropModeReplace, (unsigned char *) "sadewm", 6);
 	XChangeProperty(dpy, root, netatom[NetWMCheck], XA_WINDOW, 32,
 		PropModeReplace, (unsigned char *) &wmcheckwin, 1);
 	/* EWMH support per view */
 	XChangeProperty(dpy, root, netatom[NetSupported], XA_ATOM, 32,
 		PropModeReplace, (unsigned char *) netatom, NetLast);
 	XDeleteProperty(dpy, root, netatom[NetClientList]);
-
-  updatedwmtagmaskxprop();
-
-  XChangeProperty(dpy, root, dwmatom[DWMOccupiedTags], utf8string, 8, PropModeReplace,(unsigned char *) "0" , 1);
-
-  XChangeProperty(dpy, root, dwmatom[DWMSetTags], utf8string, 8,
-                  PropModeReplace,(unsigned char *) "1" , 1);
 
 	/* select events */
 	wa.cursor = cursor[CurNormal]->cursor;
@@ -2112,7 +2067,7 @@ void spawn(const Arg *arg) {
     sigaction(SIGCHLD, &sa, NULL);
 
     execvp(((char **)arg->v)[0], (char **)arg->v);
-    die("dwm: execvp '%s' failed:", ((char **)arg->v)[0]);
+    die("sadewm: execvp '%s' failed:", ((char **)arg->v)[0]);
   }
 }
 
@@ -2252,7 +2207,6 @@ tag(const Arg *arg)
 		selmon->sel->tags = arg->ui & TAGMASK;
 		focus(NULL);
 		arrange(selmon);
-    updateoccupiedtags(selmon, calcoccupiedtags(selmon));
 	}
 }
 
@@ -2354,7 +2308,6 @@ toggletag(const Arg *arg)
 	if (newtags) {
 		selmon->sel->tags = newtags;
     applytag(getdomtag(selmon->tags));
-    updatedwmtagmaskxprop();
 		focus(NULL);
 		arrange(selmon);
 	}
@@ -2368,7 +2321,6 @@ toggleview(const Arg *arg)
 	if (newtagset) {
 		selmon->tagset[selmon->seltags] = newtagset;
     applytag(getdomtag(selmon->tags));
-    updatedwmtagmaskxprop();
 		focus(NULL);
 		arrange(selmon);
 	}
@@ -2426,7 +2378,6 @@ unmanage(Client *c, int destroyed)
 	free(c);
 	focus(NULL);
 	updateclientlist();
-  updateoccupiedtags(m, calcoccupiedtags(m));
 	arrange(m);
 }
 
@@ -2453,7 +2404,7 @@ updatebars(void)
 		.background_pixmap = ParentRelative,
 		.event_mask = ButtonPressMask|ExposureMask
 	};
-	XClassHint ch = {"dwm", "dwm"};
+	XClassHint ch = {"sadewm", "sadewm"};
 	for (m = mons; m; m = m->next) {
 		if (m->barwin)
 			continue;
@@ -2635,7 +2586,7 @@ void
 updatestatus(void)
 {
 	if (!gettextprop(root, XA_WM_NAME, stext, sizeof(stext)))
-		strcpy(stext, "dwm-"VERSION);
+		strcpy(stext, "sadewm-"VERSION);
 	drawbar(selmon);
 }
 
@@ -2679,25 +2630,6 @@ updatewmhints(Client *c)
 	}
 }
 
-#define MAX_TAG_MASK_LEN 10
-void
-updatedwmtagmaskxprop(void) {
-  char dwm_tag_mask_str[MAX_TAG_MASK_LEN+1];
-  int strlength;
-  strlength = snprintf(dwm_tag_mask_str, sizeof(dwm_tag_mask_str), "%u", selmon->tagset[selmon->seltags]);
-  XChangeProperty(dpy, root, dwmatom[DWMTags], utf8string, 8,
-                  PropModeReplace,(unsigned char *) dwm_tag_mask_str , strlength);
-}
-
-void
-updateoccupiedtags(Monitor *m, unsigned int tagmask) {
-  m->occupiedtags = tagmask;
-  char dwm_occupied_tag_mask_str[MAX_TAG_MASK_LEN+1];
-  int strlength;
-  strlength = snprintf(dwm_occupied_tag_mask_str, sizeof(dwm_occupied_tag_mask_str), "%u", tagmask);
-  XChangeProperty(dpy, root, dwmatom[DWMOccupiedTags], utf8string, 8, PropModeReplace,(unsigned char *) dwm_occupied_tag_mask_str , strlength);
-}
-
 void view(const Arg *arg) {
   if ((arg->ui & TAGMASK) == selmon->tagset[selmon->seltags]) {
     return;
@@ -2707,7 +2639,6 @@ void view(const Arg *arg) {
     selmon->tagset[selmon->seltags] = arg->ui & TAGMASK;
     applytag(getdomtag(selmon->tags));
   }
-  updatedwmtagmaskxprop();
   focus(NULL);
   arrange(selmon);
 }
@@ -2785,7 +2716,7 @@ xerror(Display *dpy, XErrorEvent *ee)
 	|| (ee->request_code == X_GrabKey && ee->error_code == BadAccess)
 	|| (ee->request_code == X_CopyArea && ee->error_code == BadDrawable))
 		return 0;
-	fprintf(stderr, "dwm: fatal error: request code=%d, error code=%d\n",
+	fprintf(stderr, "sadewm: fatal error: request code=%d, error code=%d\n",
 		ee->request_code, ee->error_code);
 	return xerrorxlib(dpy, ee); /* may call exit */
 }
@@ -2801,7 +2732,7 @@ xerrordummy(Display *dpy, XErrorEvent *ee)
 int
 xerrorstart(Display *dpy, XErrorEvent *ee)
 {
-	die("dwm: another window manager is already running");
+	die("sadewm: another window manager is already running");
 	return -1;
 }
 
@@ -2821,16 +2752,16 @@ int
 main(int argc, char *argv[])
 {
   if (argc == 2 && !strcmp("-v", argv[1]))
-    die("dwm-" VERSION ": Souheab's fork");
+    die("sadewm-" VERSION ": Souheab's fork");
   else if (argc == 2 && !strcmp("-d", argv[1])) {
     debug = true;
   } else if (argc != 1)
-    die("usage: dwm [-v | -d]");
+    die("usage: sadewm [-v | -d]");
 
   if (!setlocale(LC_CTYPE, "") || !XSupportsLocale())
     fputs("warning: no locale support\n", stderr);
   if (!(dpy = XOpenDisplay(NULL)))
-    die("dwm: cannot open display");
+    die("sadewm: cannot open display");
   checkotherwm();
   setup();
   if (debug) {

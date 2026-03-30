@@ -1,6 +1,6 @@
 [Desktop Entry]
-Name=dwm
+Name=sadewm
 Comment=Dynamic window manager
-Exec=dwm
-Icon=dwm
+Exec=sadewm
+Icon=sadewm
 Type=Application

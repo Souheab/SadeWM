@@ -42,13 +42,6 @@ Rectangle {
         height: menuColumn.height + 12
         color: "transparent"
 
-        anchor {
-            window: powerButton
-            adjustment.onTarget: true
-            edges: Edges.Bottom | Edges.Right
-            gravity: Edges.Bottom | Edges.Right
-        }
-
         Rectangle {
             anchors.fill: parent
             color: Theme.menuBg
@@ -114,13 +107,6 @@ Rectangle {
                 }
             }
         }
-
-        // Close menu when clicking outside
-        MouseArea {
-            anchors.fill: parent
-            z: -1
-            onClicked: powerButton.menuOpen = false
-        }
     }
 
     // Confirmation dialog
@@ -130,13 +116,6 @@ Rectangle {
         width: 260
         height: 120
         color: "transparent"
-
-        anchor {
-            window: powerButton
-            adjustment.onTarget: true
-            edges: Edges.Bottom | Edges.Right
-            gravity: Edges.Bottom | Edges.Right
-        }
 
         Rectangle {
             anchors.fill: parent

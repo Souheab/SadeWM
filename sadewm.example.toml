@@ -1,0 +1,80 @@
+# sadewm runtime configuration
+# Copy to ~/.config/sadewm/sadewm.toml and edit to taste.
+# Any key that is omitted falls back to the compiled-in default from config.h.
+# Launch with a custom path:  sadewm -c /path/to/sadewm.toml
+
+# ---------------------------------------------------------------------------
+# Appearance
+# ---------------------------------------------------------------------------
+[appearance]
+# Width of the window border in pixels.
+borderpx = 2
+
+# Gap between tiled windows in pixels.
+gappx = 10
+
+# Snap-to-edge distance in pixels when moving/resizing floating windows.
+snap = 32
+
+# Primary font (Xft font string).
+font = "monospace:size=10"
+
+# ---------------------------------------------------------------------------
+# Colors
+# All values are hex RGB strings in the form "#rrggbb".
+# ---------------------------------------------------------------------------
+
+# Normal (unfocused) windows
+[colors.norm]
+fg     = "#bbbbbb"  # text / foreground
+bg     = "#222222"  # background
+border = "#444444"  # window border
+
+# Selected (focused) window
+[colors.sel]
+fg     = "#eeeeee"
+bg     = "#005577"
+border = "#0099ff"
+
+# ---------------------------------------------------------------------------
+# Layout defaults
+# These are the starting values; they can be adjusted at runtime with
+# the usual keybindings and persist for the session.
+# ---------------------------------------------------------------------------
+[layout]
+# Master area size as a fraction of the screen [0.05..0.95].
+mfact = 0.5
+
+# Number of clients in the master area.
+nmaster = 1
+
+# Reserve pixels at the top of each monitor (e.g. for a top bar).
+topoffset = 0
+
+# Reserve pixels at the bottom of each monitor (default leaves room for sgbar).
+bottomoffset = 48
+
+# Honour window size hints (min/max/increment) in tiled mode.  1 = yes, 0 = no.
+resizehints = 1
+
+# Keep focus locked on a fullscreen window until it exits fullscreen.  1 = yes.
+lockfullscreen = 1
+
+# ---------------------------------------------------------------------------
+# Window rules
+# Each [[rules]] entry maps a window to a tag mask, float state, and monitor.
+# A rule matches when ALL non-empty fields match (substring match on class /
+# instance / title).  Omit a field or leave it empty to match anything.
+# If this section is present it REPLACES the compiled-in rules entirely.
+# ---------------------------------------------------------------------------
+
+# Float Gimp on any tag.
+[[rules]]
+class      = "Gimp"
+isfloating = true
+
+# Send Discord to tag 9 (bit 8 = 1 << 8 = 256).
+[[rules]]
+class     = "discord"
+tags_mask = 256
+monitor   = -1  # -1 means "any monitor"

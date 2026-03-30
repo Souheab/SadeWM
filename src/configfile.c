@@ -182,3 +182,43 @@ configfile_init(const char *path)
 	configfile_load(path, &g_fileconfig);
 	applyconfigfile(&g_fileconfig);
 }
+
+void
+configfile_print(void)
+{
+	static const char *scheme_name[2] = { "norm", "sel" };
+	static const char *slot_name[3]   = { "fg", "bg", "border" };
+	int s, slot, i;
+
+	printf("[appearance]\n");
+	printf("  borderpx      = %u\n", borderpx);
+	printf("  gappx         = %u\n", gappx);
+	printf("  snap          = %u\n", snap);
+	printf("  font          = \"%s\"\n", fonts[0]);
+
+	for (s = 0; s < 2; s++) {
+		printf("[colors.%s]\n", scheme_name[s]);
+		for (slot = 0; slot < 3; slot++)
+			printf("  %-6s        = \"%s\"\n", slot_name[slot], colors[s][slot]);
+	}
+
+	printf("[layout]\n");
+	printf("  mfact         = %.2f\n", mfact);
+	printf("  nmaster       = %d\n",  nmaster);
+	printf("  topoffset     = %u\n",  topoffset);
+	printf("  bottomoffset  = %u\n",  bottomoffset);
+	printf("  resizehints   = %d\n",  resizehints);
+	printf("  lockfullscreen= %d\n",  lockfullscreen);
+
+	printf("[[rules]]  (%d active)\n", n_active_rules);
+	for (i = 0; i < n_active_rules; i++) {
+		const Rule *r = &active_rules[i];
+		printf("  [%d] class=%-16s instance=%-16s title=%-16s "
+		       "tags=0x%x isfloating=%d monitor=%d\n",
+		       i,
+		       r->class    ? r->class    : "(any)",
+		       r->instance ? r->instance : "(any)",
+		       r->title    ? r->title    : "(any)",
+		       r->tags, r->isfloating, r->monitor);
+	}
+}

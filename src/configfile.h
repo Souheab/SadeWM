@@ -42,4 +42,8 @@ typedef struct {
  * If the file is absent or unparseable, compiled-in defaults are kept. */
 void configfile_init(const char *path);
 
+/* Print the currently active config (after any overrides) to stdout.
+ * Intended for use with the -t dry-run flag. */
+void configfile_print(void);
+
 #endif /* CONFIGFILE_H */

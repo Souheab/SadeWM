@@ -2758,26 +2758,21 @@ int
 main(int argc, char *argv[])
 {
   char *cfgpath_arg = NULL;
+  bool dryrun = false;
   int argi;
   for (argi = 1; argi < argc; argi++) {
     if (!strcmp("-v", argv[argi]))
       die("sadewm-" VERSION ": Souheab's fork");
     else if (!strcmp("-d", argv[argi]))
       debug = true;
+    else if (!strcmp("-t", argv[argi]))
+      dryrun = true;
     else if (!strcmp("-c", argv[argi]) && argi + 1 < argc)
       cfgpath_arg = argv[++argi];
     else
-      die("usage: sadewm [-v] [-d] [-c config]");
+      die("usage: sadewm [-v] [-d] [-t] [-c config]");
   }
 
-  if (!setlocale(LC_CTYPE, "") || !XSupportsLocale())
-    fputs("warning: no locale support\n", stderr);
-  if (!(dpy = XOpenDisplay(NULL)))
-    die("sadewm: cannot open display");
-  checkotherwm();
-
-  /* load runtime config before setup() so scalars (colors, fonts, gaps …)
-   * take effect for the whole session. */
   homepath = getenv("HOME");
   active_rules   = rules;
   n_active_rules = LENGTH(rules);
@@ -2794,6 +2789,17 @@ main(int argc, char *argv[])
     if (cfgpath[0])
       configfile_init(cfgpath);
   }
+
+  if (dryrun) {
+    configfile_print();
+    return EXIT_SUCCESS;
+  }
+
+  if (!setlocale(LC_CTYPE, "") || !XSupportsLocale())
+    fputs("warning: no locale support\n", stderr);
+  if (!(dpy = XOpenDisplay(NULL)))
+    die("sadewm: cannot open display");
+  checkotherwm();
 
   setup();
   if (debug) {

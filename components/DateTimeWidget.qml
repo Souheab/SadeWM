@@ -130,7 +130,8 @@ Rectangle {
     Rectangle {
         id: datePopup
         parent: dateTimeWidget.popupLayer
-        visible: dateTimeWidget.dateOpen
+        visible: opacity > 0
+        opacity: dateTimeWidget.dateOpen ? 1.0 : 0.0
         x: dateTimeWidget.popupX
         y: dateTimeWidget.popupY
         width: Theme.calendarWidth
@@ -139,6 +140,11 @@ Rectangle {
         radius: Theme.menuRadius
         border.color: Theme.menuBorder
         border.width: 1
+
+        property real slideOffset: dateTimeWidget.dateOpen ? 0 : -12
+        transform: Translate { y: datePopup.slideOffset }
+        Behavior on slideOffset { NumberAnimation { duration: Theme.popupAnimDuration; easing.type: Theme.popupAnimEasing } }
+        Behavior on opacity { NumberAnimation { duration: Theme.popupAnimDuration; easing.type: Theme.popupAnimEasing } }
 
         Column {
             id: calendarContent

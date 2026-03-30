@@ -92,7 +92,8 @@ Rectangle {
     Rectangle {
         id: sidebar
         parent: networkWidget.popupLayer
-        visible: networkWidget.sidebarOpen
+        visible: opacity > 0
+        opacity: networkWidget.sidebarOpen ? 1.0 : 0.0
         x: networkWidget.popupLayer ? networkWidget.popupLayer.width - width - Theme.edgeMargin : 0
         y: Theme.barHeight + 4
         width: Theme.sidebarWidth
@@ -102,6 +103,11 @@ Rectangle {
         border.color: Theme.menuBorder
         border.width: 1
         clip: true
+
+        property real slideOffset: networkWidget.sidebarOpen ? 0 : -12
+        transform: Translate { y: sidebar.slideOffset }
+        Behavior on slideOffset { NumberAnimation { duration: Theme.popupAnimDuration; easing.type: Theme.popupAnimEasing } }
+        Behavior on opacity { NumberAnimation { duration: Theme.popupAnimDuration; easing.type: Theme.popupAnimEasing } }
 
         Column {
             id: sidebarContent

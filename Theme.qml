@@ -23,6 +23,7 @@ Singleton {
     // ── Colors ──
     readonly property color textColor: "#c0caf5"
     readonly property color dotUrgent: "#f7768e"
+    // readonly property color dotSelected: "#2ac3de"
     readonly property color dotSelected: "#7aa2f7"
     readonly property color dotOccupied: "#7aa2f7"
     readonly property color dotEmpty: "#414868"
@@ -43,6 +44,7 @@ Singleton {
     readonly property int dotActiveWidth: 24
     readonly property int dotSpacing: 6
     readonly property int tagCount: 9
+    readonly property bool dotExpansion: true
 
     // ── Logo ──
     readonly property int logoSize: 18
@@ -68,4 +70,8 @@ Singleton {
     readonly property int confirmDialogWidth: 280
     readonly property int sectionHeaderHeight: 40
     readonly property int wifiTogglePillWidth: 48
+
+    // ── Animation ──
+    readonly property int popupAnimDuration: 500
+    readonly property int popupAnimEasing: Easing.OutQuart
 }

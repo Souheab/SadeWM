@@ -33,12 +33,13 @@ Row {
                 Rectangle {
                     required property int index
 
-                    width: isSelected ? Theme.dotActiveWidth : Theme.dotSize
+                    width: (Theme.dotExpansion && isSelected) ? Theme.dotActiveWidth : Theme.dotSize
                     height: Theme.dotSize
                     radius: Theme.dotSize / 2
                     anchors.verticalCenter: parent.verticalCenter
 
                     Behavior on width {
+                        enabled: Theme.dotExpansion
                         NumberAnimation { duration: 150; easing.type: Easing.OutCubic }
                     }
 

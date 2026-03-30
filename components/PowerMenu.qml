@@ -82,7 +82,8 @@ Rectangle {
     Rectangle {
         id: menuPopup
         parent: powerButton.popupLayer
-        visible: powerButton.menuOpen
+        visible: opacity > 0
+        opacity: powerButton.menuOpen ? 1.0 : 0.0
         x: powerButton.popupX
         y: powerButton.popupY
         width: Theme.menuWidth
@@ -91,6 +92,11 @@ Rectangle {
         radius: Theme.menuRadius
         border.color: Theme.menuBorder
         border.width: 1
+
+        property real slideOffset: powerButton.menuOpen ? 0 : -12
+        transform: Translate { y: menuPopup.slideOffset }
+        Behavior on slideOffset { NumberAnimation { duration: Theme.popupAnimDuration; easing.type: Theme.popupAnimEasing } }
+        Behavior on opacity { NumberAnimation { duration: Theme.popupAnimDuration; easing.type: Theme.popupAnimEasing } }
 
         Column {
             id: menuColumn
@@ -156,7 +162,8 @@ Rectangle {
     Rectangle {
         id: confirmPopup
         parent: powerButton.popupLayer
-        visible: powerButton.confirmOpen
+        visible: opacity > 0
+        opacity: powerButton.confirmOpen ? 1.0 : 0.0
         x: powerButton.popupX + Theme.menuWidth - Theme.confirmDialogWidth
         y: powerButton.popupY
         width: Theme.confirmDialogWidth
@@ -165,6 +172,11 @@ Rectangle {
         radius: Theme.menuRadius
         border.color: Theme.menuBorder
         border.width: 1
+
+        property real slideOffset: powerButton.confirmOpen ? 0 : -12
+        transform: Translate { y: confirmPopup.slideOffset }
+        Behavior on slideOffset { NumberAnimation { duration: Theme.popupAnimDuration; easing.type: Theme.popupAnimEasing } }
+        Behavior on opacity { NumberAnimation { duration: Theme.popupAnimDuration; easing.type: Theme.popupAnimEasing } }
 
         Column {
             anchors.centerIn: parent

@@ -101,11 +101,11 @@ Rectangle {
 
             Repeater {
                 model: [
-                    { label: "Lock",     icon: "\uf023", cmd: "loginctl lock-session" },
-                    { label: "Suspend",  icon: "\uf186", cmd: "systemctl suspend" },
-                    { label: "Reboot",   icon: "\uf021", cmd: "systemctl reboot" },
-                    { label: "Shutdown", icon: "\uf011", cmd: "systemctl poweroff" },
-                    { label: "Log Out",  icon: "\uf2f5", cmd: "awesome-client 'awesome.quit()'" }
+                    { label: "Lock",     icon: "\uf023", cmd: "lock"     },
+                    { label: "Suspend",  icon: "\uf186", cmd: "suspend"  },
+                    { label: "Reboot",   icon: "\uf021", cmd: "reboot"   },
+                    { label: "Shutdown", icon: "\uf011", cmd: "shutdown" },
+                    { label: "Log Out",  icon: "\uf2f5", cmd: "logout"   }
                 ]
 
                 Rectangle {
@@ -222,7 +222,7 @@ Rectangle {
                         hoverEnabled: true
                         onClicked: {
                             powerButton.confirmOpen = false;
-                            execProcess.command = ["bash", "-c", powerButton.pendingAction];
+                            execProcess.command = ["python3", Qt.resolvedUrl("../scripts/qsctrl").toString().replace("file://", ""), "power", powerButton.pendingAction];
                             execProcess.running = true;
                         }
                     }

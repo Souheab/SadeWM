@@ -59,13 +59,9 @@ Row {
 
                         onClicked: mouse => {
                             if (mouse.button === Qt.LeftButton) {
-                                // View tag (switch to it)
-                                tagCmd.command = ["bash", "-c",
-                                    "awesome-client 'local s=require(\"awful\").screen.focused(); for _,t in ipairs(s.tags) do if t.name==\"" + tagNum + "\" then t:view_only() end end'"]
+                                tagCmd.command = ["python3", Qt.resolvedUrl("../scripts/qsctrl").toString().replace("file://", ""), "tags", "view", tagNum.toString()]
                             } else {
-                                // Toggle tag
-                                tagCmd.command = ["bash", "-c",
-                                    "awesome-client 'local s=require(\"awful\").screen.focused(); for _,t in ipairs(s.tags) do if t.name==\"" + tagNum + "\" then require(\"awful\").tag.viewtoggle(t) end end'"]
+                                tagCmd.command = ["python3", Qt.resolvedUrl("../scripts/qsctrl").toString().replace("file://", ""), "tags", "toggle", tagNum.toString()]
                             }
                             tagCmd.running = true
                         }

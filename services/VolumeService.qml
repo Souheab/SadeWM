@@ -10,7 +10,7 @@ Singleton {
 
     Process {
         id: proc
-        command: ["bash", "-c", "pamixer --get-volume"]
+        command: ["python3", Qt.resolvedUrl("../scripts/qsctrl").toString().replace("file://", ""), "volume", "get"]
 
         stdout: SplitParser {
             onRead: data => {

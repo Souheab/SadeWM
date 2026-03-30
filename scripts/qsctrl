@@ -1,0 +1,134 @@
+#!/usr/bin/env python3
+"""
+qsctrl — central control dispatcher for the Quickshell bar.
+
+Usage:
+    qsctrl tags get               Print tag state as "sel|occ|urg" (awesome-client)
+    qsctrl tags view   <N>        Switch to tag N exclusively
+    qsctrl tags toggle <N>        Toggle tag N on/off
+
+    qsctrl volume get             Print current volume as a bare integer (pamixer)
+
+    qsctrl power lock             Lock the session
+    qsctrl power suspend          Suspend the system
+    qsctrl power reboot           Reboot the system
+    qsctrl power shutdown         Power off the system
+    qsctrl power logout           Quit AwesomeWM (log out)
+"""
+
+import sys
+import subprocess
+
+
+def run(cmd: list[str]) -> None:
+    """Run a command, inheriting stdout so callers can read output."""
+    subprocess.run(cmd, check=False)
+
+
+def cmd_tags(args: list[str]) -> None:
+    if not args:
+        print_usage()
+        sys.exit(1)
+
+    action = args[0]
+
+    if action == "get":
+        lua = (
+            'local sel,occ,urg="","","";'
+            'for _,t in ipairs(require("awful").screen.focused().tags) do '
+            '  if t.selected then sel=sel..t.name end;'
+            '  if #t:clients()>0 then occ=occ..t.name end;'
+            '  if t.urgent then urg=urg..t.name end '
+            'end;'
+            'return sel.."|"..occ.."|"..urg'
+        )
+        run(["awesome-client", lua])
+
+    elif action == "view" and len(args) >= 2:
+        n = args[1]
+        lua = (
+            f'local s=require("awful").screen.focused();'
+            f'for _,t in ipairs(s.tags) do '
+            f'  if t.name=="{n}" then t:view_only() end '
+            f'end'
+        )
+        run(["awesome-client", lua])
+
+    elif action == "toggle" and len(args) >= 2:
+        n = args[1]
+        lua = (
+            f'local s=require("awful").screen.focused();'
+            f'for _,t in ipairs(s.tags) do '
+            f'  if t.name=="{n}" then require("awful").tag.viewtoggle(t) end '
+            f'end'
+        )
+        run(["awesome-client", lua])
+
+    else:
+        print_usage()
+        sys.exit(1)
+
+
+def cmd_volume(args: list[str]) -> None:
+    if not args:
+        print_usage()
+        sys.exit(1)
+
+    action = args[0]
+
+    if action == "get":
+        run(["pamixer", "--get-volume"])
+    else:
+        print_usage()
+        sys.exit(1)
+
+
+def cmd_power(args: list[str]) -> None:
+    if not args:
+        print_usage()
+        sys.exit(1)
+
+    action = args[0]
+
+    dispatch = {
+        "lock":     ["loginctl", "lock-session"],
+        "suspend":  ["systemctl", "suspend"],
+        "reboot":   ["systemctl", "reboot"],
+        "shutdown": ["systemctl", "poweroff"],
+        "logout":   ["awesome-client", 'awesome.quit()'],
+    }
+
+    if action not in dispatch:
+        print_usage()
+        sys.exit(1)
+
+    run(dispatch[action])
+
+
+def print_usage() -> None:
+    print(__doc__, file=sys.stderr)
+
+
+def main() -> None:
+    argv = sys.argv[1:]
+
+    if not argv:
+        print_usage()
+        sys.exit(1)
+
+    group = argv[0]
+    rest  = argv[1:]
+
+    if group == "tags":
+        cmd_tags(rest)
+    elif group == "volume":
+        cmd_volume(rest)
+    elif group == "power":
+        cmd_power(rest)
+    else:
+        print_usage()
+        sys.exit(1)
+
+
+if __name__ == "__main__":
+    main()

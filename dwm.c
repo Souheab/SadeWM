@@ -44,6 +44,7 @@
 
 #include "drw.h"
 #include "util.h"
+#include "ipc.h"
 
 /* macros */
 #define BUTTONMASK              (ButtonPressMask|ButtonReleaseMask)
@@ -584,6 +585,7 @@ cleanup(void)
 	XSync(dpy, False);
 	XSetInputFocus(dpy, PointerRoot, RevertToPointerRoot, CurrentTime);
 	XDeleteProperty(dpy, root, netatom[NetActiveWindow]);
+  ipc_teardown();
 }
 
 void
@@ -1773,11 +1775,31 @@ void
 run(void)
 {
 	XEvent ev;
-	/* main event loop */
+	fd_set rfds;
+	int xfd = ConnectionNumber(dpy);
+	int ipcfd, maxfd;
+
 	XSync(dpy, False);
-	while (running && !XNextEvent(dpy, &ev))
-		if (handler[ev.type])
-			handler[ev.type](&ev); /* call handler */
+	while (running) {
+		FD_ZERO(&rfds);
+		FD_SET(xfd, &rfds);
+		ipcfd = ipc_fd();
+		if (ipcfd >= 0)
+			FD_SET(ipcfd, &rfds);
+		maxfd = ipcfd > xfd ? ipcfd : xfd;
+		if (select(maxfd + 1, &rfds, NULL, NULL, NULL) < 0) {
+			if (errno == EINTR)
+				continue;
+			break;
+		}
+		if (ipcfd >= 0 && FD_ISSET(ipcfd, &rfds))
+			ipc_poll();
+		while (XPending(dpy)) {
+			XNextEvent(dpy, &ev);
+			if (handler[ev.type])
+				handler[ev.type](&ev);
+		}
+	}
 }
 
 void
@@ -2042,6 +2064,7 @@ setup(void)
 	XSelectInput(dpy, root, wa.event_mask);
 	grabkeys();
 	focus(NULL);
+  ipc_setup();
 }
 
 void
@@ -2829,3 +2852,6 @@ main(int argc, char *argv[])
 	XCloseDisplay(dpy);
 	return EXIT_SUCCESS;
 }
+
+/* IPC implementation — included here to access static symbols above */
+#include "ipc.c"

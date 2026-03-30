@@ -1,5 +1,8 @@
 /* See LICENSE file for copyright and license details. */
 
+/* IPC */
+#define IPC_SOCKET_PATH "/tmp/sadewm.sock"
+
 /* appearance */
 static const unsigned int borderpx  = 2;        /* border pixel of windows */
 static const unsigned int gappx     = 10;        /* gaps between windows */

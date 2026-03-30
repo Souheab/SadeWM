@@ -1,0 +1,36 @@
+{
+  "name": "sadewm",
+  "image": "mcr.microsoft.com/devcontainers/base:ubuntu",
+  "features": {
+    "ghcr.io/devcontainers/features/common-utils:2": {
+      "installZsh": true,
+      "configureZshAsDefaultShell": true
+    }
+  },
+  "postCreateCommand": "sudo apt-get update && sudo apt-get install -y gcc make libx11-dev libxft-dev libxinerama-dev libfontconfig1-dev libfreetype6-dev xserver-xephyr gdb",
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "bbenoist.Nix",
+        "ms-vscode.cpptools",
+        "ms-vscode.makefile-tools"
+      ],
+      "settings": {
+        "C_Cpp.default.cStandard": "c99",
+        "C_Cpp.default.compilerPath": "/usr/bin/cc",
+        "C_Cpp.default.includePath": [
+          "${workspaceFolder}",
+          "/usr/X11R6/include",
+          "/usr/include/freetype2"
+        ],
+        "C_Cpp.default.defines": [
+          "_DEFAULT_SOURCE",
+          "_BSD_SOURCE",
+          "_XOPEN_SOURCE=700L",
+          "XINERAMA"
+        ]
+      }
+    }
+  },
+  "remoteUser": "vscode"
+}

@@ -25,6 +25,8 @@ Singleton {
     readonly property int clockFontSize: 12
     readonly property int textFontSize: 12
     readonly property string clockFormat: "dddd, d'th of' MMMM yyyy, hh:mm AP"
+    readonly property string timeFormat: "hh:mm AP"
+    readonly property string dateFormat: "dddd, d'th of' MMMM yyyy"
 
     // ── Dots ──
     readonly property int dotSize: 10

@@ -10,8 +10,6 @@ import "../services"
 PanelWindow {
     id: root
 
-    property bool popupVisible: false
-
     anchors {
         top: true
         bottom: true
@@ -27,7 +25,7 @@ PanelWindow {
         x: 0
         y: 0
         width: root.width
-        height: root.popupVisible ? root.height : Theme.barHeight
+        height: popupLayer.popupVisible ? root.height : Theme.barHeight
     }
 
     // Bar background at the top
@@ -80,6 +78,10 @@ PanelWindow {
                         anchors.verticalCenter: parent.verticalCenter
                     }
 
+                    DateTimeWidget {
+                        anchors.verticalCenter: parent.verticalCenter
+                    }
+
                     VolumeWidget {
                         anchors.verticalCenter: parent.verticalCenter
                     }
@@ -94,8 +96,8 @@ PanelWindow {
         anchors.left: parent.left
         anchors.right: parent.right
         anchors.bottom: parent.bottom
-        visible: root.popupVisible
-        onClicked: root.popupVisible = false
+        visible: popupLayer.popupVisible
+        onClicked: popupLayer.popupVisible = false
     }
 
     // Popup layer: sits on top of everything.
@@ -103,6 +105,7 @@ PanelWindow {
     Item {
         id: popupLayer
         objectName: "popupLayer"
+        property bool popupVisible: false
         anchors.fill: parent
     }
 }

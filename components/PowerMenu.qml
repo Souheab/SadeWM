@@ -21,11 +21,10 @@ Rectangle {
     property real popupX: 0
     property real popupY: 0
 
-    // Find the popup layer and bar root to control visibility and position popups
+    // Find the popup layer to control visibility and position popups
     readonly property Item popupLayer: {
         let p = parent;
         while (p) {
-            // Look for the popupLayer among siblings (children of the PanelWindow contentItem)
             for (let i = 0; i < p.children.length; i++) {
                 if (p.children[i].objectName === "popupLayer")
                     return p.children[i];
@@ -33,11 +32,6 @@ Rectangle {
             p = p.parent;
         }
         return null;
-    }
-    readonly property Item barRoot: {
-        let p = parent;
-        while (p && !p.hasOwnProperty("popupVisible")) p = p.parent;
-        return p;
     }
 
     function updatePopupPosition() {
@@ -47,14 +41,14 @@ Rectangle {
         popupY = pos.y + 4;
     }
 
-    onMenuOpenChanged: if (barRoot) barRoot.popupVisible = menuOpen || confirmOpen
-    onConfirmOpenChanged: if (barRoot) barRoot.popupVisible = menuOpen || confirmOpen
+    onMenuOpenChanged: if (popupLayer) popupLayer.popupVisible = menuOpen || confirmOpen
+    onConfirmOpenChanged: if (popupLayer) popupLayer.popupVisible = menuOpen || confirmOpen
 
-    // Close popups when bar root dismisses them (click outside)
+    // Close popups when the overlay is dismissed (click outside)
     Connections {
-        target: powerButton.barRoot
+        target: powerButton.popupLayer
         function onPopupVisibleChanged() {
-            if (powerButton.barRoot && !powerButton.barRoot.popupVisible) {
+            if (powerButton.popupLayer && !powerButton.popupLayer.popupVisible) {
                 powerButton.menuOpen = false;
                 powerButton.confirmOpen = false;
             }

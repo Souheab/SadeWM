@@ -56,6 +56,10 @@ PanelWindow {
             Item {
                 width: parent.width * 0.34
                 height: parent.height
+
+                DateTimeWidget {
+                    anchors.centerIn: parent
+                }
             }
 
             // Right section - Volume + Power
@@ -67,7 +71,7 @@ PanelWindow {
                     anchors.verticalCenter: parent.verticalCenter
                     anchors.right: parent.right
                     anchors.rightMargin: Theme.edgeMargin
-                    spacing: 6
+                    spacing: Theme.spacingSM
                     layoutDirection: Qt.RightToLeft
 
                     PowerMenu {
@@ -84,10 +88,6 @@ PanelWindow {
                     }
 
                     VolumeWidget {
-                        anchors.verticalCenter: parent.verticalCenter
-                    }
-
-                    DateTimeWidget {
                         anchors.verticalCenter: parent.verticalCenter
                     }
                 }

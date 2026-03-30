@@ -31,7 +31,7 @@ Rectangle {
     function updatePopupPosition() {
         if (!popupLayer) return;
         const pos = dateTimeWidget.mapToItem(popupLayer, dateTimeWidget.width / 2, dateTimeWidget.height);
-        popupX = pos.x - 140; // half of 280 calendar width
+        popupX = pos.x - Theme.calendarWidth / 2;
         popupY = pos.y + 4;
     }
 
@@ -133,7 +133,7 @@ Rectangle {
         visible: dateTimeWidget.dateOpen
         x: dateTimeWidget.popupX
         y: dateTimeWidget.popupY
-        width: 280
+        width: Theme.calendarWidth
         height: calendarContent.height + 20
         color: Theme.menuBg
         radius: Theme.menuRadius
@@ -163,8 +163,8 @@ Rectangle {
                 anchors.right: parent.right
 
                 Rectangle {
-                    width: 28
-                    height: 28
+                    width: Theme.containerHeight
+                    height: Theme.containerHeight
                     radius: Theme.containerRadius
                     color: prevArea.containsMouse ? Theme.menuHover : "transparent"
 
@@ -173,7 +173,7 @@ Rectangle {
                         text: "\uf053"
                         color: Theme.textColor
                         font.family: Theme.iconFont
-                        font.pixelSize: 11
+                        font.pixelSize: Theme.textFontSize
                     }
                     MouseArea {
                         id: prevArea
@@ -191,22 +191,22 @@ Rectangle {
                 }
 
                 Item {
-                    width: parent.width - 56
-                    height: 28
+                    width: parent.width - Theme.containerHeight * 2
+                    height: Theme.containerHeight
 
                     Text {
                         anchors.centerIn: parent
                         text: dateTimeWidget.monthNames[dateTimeWidget.viewMonth] + " " + dateTimeWidget.viewYear
                         color: Theme.textColor
                         font.family: Theme.clockFont
-                        font.pixelSize: 13
+                        font.pixelSize: Theme.textFontSize
                         font.bold: true
                     }
                 }
 
                 Rectangle {
-                    width: 28
-                    height: 28
+                    width: Theme.containerHeight
+                    height: Theme.containerHeight
                     radius: Theme.containerRadius
                     color: nextArea.containsMouse ? Theme.menuHover : "transparent"
 
@@ -215,7 +215,7 @@ Rectangle {
                         text: "\uf054"
                         color: Theme.textColor
                         font.family: Theme.iconFont
-                        font.pixelSize: 11
+                        font.pixelSize: Theme.textFontSize
                     }
                     MouseArea {
                         id: nextArea
@@ -239,12 +239,12 @@ Rectangle {
                 Repeater {
                     model: ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"]
                     Text {
-                        width: 36
+                        width: Math.floor((Theme.calendarWidth - 20) / 7)
                         horizontalAlignment: Text.AlignHCenter
                         text: modelData
                         color: Theme.dotEmpty
                         font.family: Theme.monoFont
-                        font.pixelSize: 11
+                        font.pixelSize: Theme.textFontSize
                         font.bold: true
                     }
                 }
@@ -262,8 +262,8 @@ Rectangle {
                         required property var modelData
                         required property int index
 
-                        width: 36
-                        height: 32
+                        width: Math.floor((Theme.calendarWidth - 20) / 7)
+                        height: 34
                         radius: Theme.containerRadius
                         color: {
                             const now = new Date();

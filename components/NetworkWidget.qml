@@ -95,7 +95,7 @@ Rectangle {
         visible: networkWidget.sidebarOpen
         x: networkWidget.popupLayer ? networkWidget.popupLayer.width - width - Theme.edgeMargin : 0
         y: Theme.barHeight + 4
-        width: 300
+        width: Theme.sidebarWidth
         height: sidebarContent.height + 16
         color: Theme.menuBg
         radius: Theme.menuRadius
@@ -114,7 +114,7 @@ Rectangle {
             // ── WiFi section header ────────────────────────────────────────
             Item {
                 width: parent.width
-                height: 38
+                height: Theme.sectionHeaderHeight
 
                 Row {
                     anchors.left: parent.left
@@ -124,7 +124,7 @@ Rectangle {
                     Text {
                         text: "\uf1eb"
                         font.family: Theme.iconFont
-                        font.pixelSize: 14
+                        font.pixelSize: Theme.iconFontSize
                         color: WiFiService.wifiEnabled ? Theme.dotSelected : Theme.dotEmpty
                         anchors.verticalCenter: parent.verticalCenter
                     }
@@ -133,7 +133,7 @@ Rectangle {
                         text: "Wi-Fi"
                         color: Theme.textColor
                         font.family: Theme.clockFont
-                        font.pixelSize: 13
+                        font.pixelSize: Theme.textFontSize
                         font.bold: true
                         anchors.verticalCenter: parent.verticalCenter
                     }
@@ -143,17 +143,17 @@ Rectangle {
                 Rectangle {
                     anchors.right: parent.right
                     anchors.verticalCenter: parent.verticalCenter
-                    width: 44
-                    height: 22
-                    radius: 11
+                    width: Theme.wifiTogglePillWidth
+                    height: Theme.containerHeight
+                    radius: Theme.containerHeight / 2
                     color: WiFiService.wifiEnabled ? Theme.dotSelected : Theme.dotOccupied
 
                     Text {
                         anchors.centerIn: parent
                         text: WiFiService.wifiEnabled ? "ON" : "OFF"
-                        color: "#ffffff"
+                        color: Theme.textColor
                         font.family: Theme.monoFont
-                        font.pixelSize: 10
+                        font.pixelSize: Theme.textFontSize - 2
                         font.bold: true
                     }
 
@@ -178,7 +178,7 @@ Rectangle {
                     Text {
                         text: "\uf00c"
                         font.family: Theme.iconFont
-                        font.pixelSize: 11
+                        font.pixelSize: Theme.textFontSize
                         color: Theme.dotSelected
                         anchors.verticalCenter: parent.verticalCenter
                     }
@@ -187,7 +187,7 @@ Rectangle {
                         text: WiFiService.connectedSsid
                         color: Theme.dotSelected
                         font.family: Theme.clockFont
-                        font.pixelSize: 12
+                        font.pixelSize: Theme.textFontSize
                         font.bold: true
                         anchors.verticalCenter: parent.verticalCenter
                         elide: Text.ElideRight
@@ -222,7 +222,7 @@ Rectangle {
                 visible: WiFiService.wifiEnabled && WiFiService.scanning
                 text: "\uf110  Scanning..."
                 font.family: Theme.iconFont
-                font.pixelSize: 12
+                font.pixelSize: Theme.textFontSize
                 color: Theme.dotEmpty
                 topPadding: 4
                 bottomPadding: 4
@@ -233,7 +233,7 @@ Rectangle {
                 visible: WiFiService.wifiEnabled && !WiFiService.scanning && WiFiService.networks.length === 0
                 text: "No networks found"
                 font.family: Theme.clockFont
-                font.pixelSize: 12
+                font.pixelSize: Theme.textFontSize
                 color: Theme.dotEmpty
                 topPadding: 4
                 bottomPadding: 4
@@ -265,7 +265,7 @@ Rectangle {
                         Text {
                             text: net.secure ? "\uf023" : "\uf09c"
                             font.family: Theme.iconFont
-                            font.pixelSize: 11
+                            font.pixelSize: Theme.textFontSize
                             color: Theme.dotEmpty
                             anchors.verticalCenter: parent.verticalCenter
                         }
@@ -274,7 +274,7 @@ Rectangle {
                             text: net.ssid
                             color: net.active ? Theme.dotSelected : Theme.textColor
                             font.family: Theme.clockFont
-                            font.pixelSize: 12
+                            font.pixelSize: Theme.textFontSize
                             font.bold: net.active
                             anchors.verticalCenter: parent.verticalCenter
                             elide: Text.ElideRight
@@ -327,7 +327,7 @@ Rectangle {
             // ── Bluetooth section ──────────────────────────────────────────
             Item {
                 width: parent.width
-                height: 38
+                height: Theme.sectionHeaderHeight
                 visible: networkWidget.btAdapter !== null
 
                 Row {
@@ -338,7 +338,7 @@ Rectangle {
                     Text {
                         text: "\uf294"
                         font.family: Theme.iconFont
-                        font.pixelSize: 14
+                        font.pixelSize: Theme.iconFontSize
                         color: networkWidget.btEnabled ? Theme.dotSelected : Theme.dotEmpty
                         anchors.verticalCenter: parent.verticalCenter
                     }
@@ -347,7 +347,7 @@ Rectangle {
                         text: "Bluetooth"
                         color: Theme.textColor
                         font.family: Theme.clockFont
-                        font.pixelSize: 13
+                        font.pixelSize: Theme.textFontSize
                         font.bold: true
                         anchors.verticalCenter: parent.verticalCenter
                     }
@@ -356,17 +356,17 @@ Rectangle {
                 Rectangle {
                     anchors.right: parent.right
                     anchors.verticalCenter: parent.verticalCenter
-                    width: 44
-                    height: 22
-                    radius: 11
+                    width: Theme.wifiTogglePillWidth
+                    height: Theme.containerHeight
+                    radius: Theme.containerHeight / 2
                     color: networkWidget.btEnabled ? Theme.dotSelected : Theme.dotOccupied
 
                     Text {
                         anchors.centerIn: parent
                         text: networkWidget.btEnabled ? "ON" : "OFF"
-                        color: "#ffffff"
+                        color: Theme.textColor
                         font.family: Theme.monoFont
-                        font.pixelSize: 10
+                        font.pixelSize: Theme.textFontSize - 2
                         font.bold: true
                     }
 
@@ -386,7 +386,7 @@ Rectangle {
                 visible: networkWidget.btAdapter === null
                 text: "No Bluetooth adapter"
                 font.family: Theme.clockFont
-                font.pixelSize: 12
+                font.pixelSize: Theme.textFontSize
                 color: Theme.dotEmpty
                 topPadding: 4
                 bottomPadding: 4
@@ -398,7 +398,7 @@ Rectangle {
                 visible: networkWidget.btAdapter !== null && !networkWidget.btEnabled
                 text: "Bluetooth is disabled"
                 font.family: Theme.clockFont
-                font.pixelSize: 12
+                font.pixelSize: Theme.textFontSize
                 color: Theme.dotEmpty
                 topPadding: 4
                 bottomPadding: 4
@@ -431,7 +431,7 @@ Rectangle {
                         Text {
                             text: "\uf294"
                             font.family: Theme.iconFont
-                            font.pixelSize: 12
+                            font.pixelSize: Theme.textFontSize
                             color: modelData.connected ? Theme.dotSelected : Theme.dotEmpty
                             anchors.verticalCenter: parent.verticalCenter
                         }
@@ -440,7 +440,7 @@ Rectangle {
                             text: modelData.name || modelData.deviceName || modelData.address
                             color: modelData.connected ? Theme.dotSelected : Theme.textColor
                             font.family: Theme.clockFont
-                            font.pixelSize: 12
+                            font.pixelSize: Theme.textFontSize
                             font.bold: modelData.connected
                             anchors.verticalCenter: parent.verticalCenter
                             elide: Text.ElideRight
@@ -454,7 +454,7 @@ Rectangle {
                         anchors.verticalCenter: parent.verticalCenter
                         text: modelData.connected ? "Connected" : (modelData.paired ? "Paired" : "")
                         font.family: Theme.monoFont
-                        font.pixelSize: 10
+                        font.pixelSize: Theme.textFontSize - 2
                         color: modelData.connected ? Theme.dotSelected : Theme.dotEmpty
                     }
 
@@ -478,7 +478,7 @@ Rectangle {
                     && btRepeater.count === 0
                 text: "No paired devices"
                 font.family: Theme.clockFont
-                font.pixelSize: 12
+                font.pixelSize: Theme.textFontSize
                 color: Theme.dotEmpty
                 topPadding: 4
                 bottomPadding: 4

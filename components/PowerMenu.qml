@@ -157,10 +157,10 @@ Rectangle {
         id: confirmPopup
         parent: powerButton.popupLayer
         visible: powerButton.confirmOpen
-        x: powerButton.popupX + Theme.menuWidth - 260
+        x: powerButton.popupX + Theme.menuWidth - Theme.confirmDialogWidth
         y: powerButton.popupY
-        width: 260
-        height: 120
+        width: Theme.confirmDialogWidth
+        height: 128
         color: Theme.confirmBg
         radius: Theme.menuRadius
         border.color: Theme.menuBorder
@@ -174,7 +174,7 @@ Rectangle {
                 anchors.horizontalCenter: parent.horizontalCenter
                 text: powerButton.pendingLabel + "?"
                 color: Theme.textColor
-                font.pixelSize: 14
+                font.pixelSize: Theme.textFontSize
                 font.family: Theme.clockFont
             }
 
@@ -183,8 +183,8 @@ Rectangle {
                 spacing: 12
 
                 Rectangle {
-                    width: 90
-                    height: 32
+                    width: 100
+                    height: 34
                     radius: Theme.containerRadius
                     color: cancelArea.containsMouse ? Theme.menuHover : Theme.containerBg
 
@@ -204,8 +204,8 @@ Rectangle {
                 }
 
                 Rectangle {
-                    width: 90
-                    height: 32
+                    width: 100
+                    height: 34
                     radius: Theme.containerRadius
                     color: confirmArea.containsMouse ? Qt.darker(Theme.dangerColor, 1.2) : Theme.dangerColor
 

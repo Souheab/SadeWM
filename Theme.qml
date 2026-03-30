@@ -5,35 +5,43 @@ import QtQuick
 
 Singleton {
     // ── Bar ──
-    readonly property int barHeight: 38
+    readonly property int barHeight: 44
     readonly property color barBg: "#1a1b26"
-    readonly property color containerBg: "#24283b"
-    readonly property int containerRadius: 6
-    readonly property int containerHeight: 22
-    readonly property int containerPadding: 16
-    readonly property int edgeMargin: 8
+    readonly property color containerBg: "#292e42"
+    readonly property int containerRadius: 14
+    readonly property int containerHeight: 28
+    readonly property int containerPadding: 20
+    readonly property int edgeMargin: 12
+
+    // ── Spacing scale ──
+    readonly property int spacingXS: 4
+    readonly property int spacingSM: 8
+    readonly property int spacingMD: 12
+    readonly property int spacingLG: 16
+    readonly property int spacingXL: 24
 
     // ── Colors ──
-    readonly property color textColor: "#d8dee9"
-    readonly property color dotUrgent: '#ff0019'
-    readonly property color dotSelected: "#009fff"
-    readonly property color dotOccupied: "#5e72cc"
-    readonly property color dotEmpty: "#5c6a93"
+    readonly property color textColor: "#c0caf5"
+    readonly property color dotUrgent: "#f7768e"
+    readonly property color dotSelected: "#7aa2f7"
+    readonly property color dotOccupied: "#7aa2f7"
+    readonly property color dotEmpty: "#414868"
 
     // ── Font ──
     readonly property string clockFont: "Lexend Deca"
     readonly property string monoFont: "JetBrains Mono"
     readonly property string iconFont: "FiraCode Nerd Font"
     readonly property int clockFontSize: 12
-    readonly property int textFontSize: 12
-    readonly property int iconFontSize: 14
+    readonly property int textFontSize: 13
+    readonly property int iconFontSize: 16
     readonly property string clockFormat: "dddd, d'th of' MMMM yyyy, hh:mm AP"
     readonly property string timeFormat: "hh:mm AP"
     readonly property string dateFormat: "dddd, d'th of' MMMM yyyy"
 
     // ── Dots ──
-    readonly property int dotSize: 10
-    readonly property int dotSpacing: 8
+    readonly property int dotSize: 8
+    readonly property int dotActiveWidth: 24
+    readonly property int dotSpacing: 6
     readonly property int tagCount: 9
 
     // ── Logo ──
@@ -45,12 +53,19 @@ Singleton {
     readonly property int volumePollInterval: 2000
 
     // ── Power Menu ──
-    readonly property color menuBg: "#24283b"
-    readonly property color menuHover: "#414868"
-    readonly property color menuBorder: "#3b4252"
+    readonly property color menuBg: "#292e42"
+    readonly property color menuHover: "#3b4166"
+    readonly property color menuBorder: "#3d4166"
     readonly property int menuWidth: 200
-    readonly property int menuItemHeight: 36
-    readonly property int menuRadius: 8
+    readonly property int menuItemHeight: 40
+    readonly property int menuRadius: 12
     readonly property color dangerColor: "#bf616a"
     readonly property color confirmBg: "#1a1b26"
+
+    // ── Popup dimensions ──
+    readonly property int sidebarWidth: 320
+    readonly property int calendarWidth: 300
+    readonly property int confirmDialogWidth: 280
+    readonly property int sectionHeaderHeight: 40
+    readonly property int wifiTogglePillWidth: 48
 }

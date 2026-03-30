@@ -33,10 +33,14 @@ Row {
                 Rectangle {
                     required property int index
 
-                    width: Theme.dotSize
+                    width: isSelected ? Theme.dotActiveWidth : Theme.dotSize
                     height: Theme.dotSize
                     radius: Theme.dotSize / 2
                     anchors.verticalCenter: parent.verticalCenter
+
+                    Behavior on width {
+                        NumberAnimation { duration: 150; easing.type: Easing.OutCubic }
+                    }
 
                     property int tagNum: index + 1
                     property bool isUrgent:   TagService.urgent.indexOf(tagNum)   !== -1

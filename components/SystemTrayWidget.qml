@@ -25,7 +25,7 @@ Row {
             IconImage {
                 anchors.centerIn: parent
                 implicitSize: 16
-                source: "image://icon/" + modelData.icon
+                source: modelData.icon
                 mipmap: true
             }
 

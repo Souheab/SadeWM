@@ -4,7 +4,7 @@ import Quickshell.Io
 import ".."
 import "../services"
 
-// Power button that lives in the bar
+// Power button in the bar. Popups render as siblings in the same PanelWindow.
 Rectangle {
     id: powerButton
     width: Theme.containerHeight
@@ -16,6 +16,38 @@ Rectangle {
     property bool confirmOpen: false
     property string pendingAction: ""
     property string pendingLabel: ""
+
+    // Screen-space position for popups (relative to the PanelWindow root)
+    property real popupX: 0
+    property real popupY: 0
+
+    // Find the Bar root (PanelWindow) to control popupVisible and reparent popups
+    readonly property Item barRoot: {
+        let p = parent;
+        while (p && !p.hasOwnProperty("popupVisible")) p = p.parent;
+        return p;
+    }
+
+    function updatePopupPosition() {
+        if (!barRoot) return;
+        const pos = powerButton.mapToItem(barRoot, powerButton.width, powerButton.height);
+        popupX = pos.x - Theme.menuWidth;
+        popupY = pos.y + 4;
+    }
+
+    onMenuOpenChanged: if (barRoot) barRoot.popupVisible = menuOpen || confirmOpen
+    onConfirmOpenChanged: if (barRoot) barRoot.popupVisible = menuOpen || confirmOpen
+
+    // Close popups when bar root dismisses them (click outside)
+    Connections {
+        target: powerButton.barRoot
+        function onPopupVisibleChanged() {
+            if (powerButton.barRoot && !powerButton.barRoot.popupVisible) {
+                powerButton.menuOpen = false;
+                powerButton.confirmOpen = false;
+            }
+        }
+    }
 
     Text {
         anchors.centerIn: parent
@@ -29,79 +61,82 @@ Rectangle {
         anchors.fill: parent
         hoverEnabled: true
         onClicked: {
-            powerButton.menuOpen = !powerButton.menuOpen
-            powerButton.confirmOpen = false
+            if (powerButton.menuOpen) {
+                powerButton.menuOpen = false;
+            } else {
+                powerButton.updatePopupPosition();
+                powerButton.confirmOpen = false;
+                powerButton.menuOpen = true;
+            }
         }
     }
 
-    // Dropdown menu
-    FloatingWindow {
-        id: menuWindow
+    // Dropdown menu — reparented to the PanelWindow root
+    Rectangle {
+        id: menuPopup
+        parent: powerButton.barRoot
         visible: powerButton.menuOpen
+        x: powerButton.popupX
+        y: powerButton.popupY
         width: Theme.menuWidth
         height: menuColumn.height + 12
-        color: "transparent"
+        color: Theme.menuBg
+        radius: Theme.menuRadius
+        border.color: Theme.menuBorder
+        border.width: 1
 
-        Rectangle {
-            anchors.fill: parent
-            color: Theme.menuBg
-            radius: Theme.menuRadius
-            border.color: Theme.menuBorder
-            border.width: 1
+        Column {
+            id: menuColumn
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.top: parent.top
+            anchors.margins: 6
 
-            Column {
-                id: menuColumn
-                anchors.left: parent.left
-                anchors.right: parent.right
-                anchors.top: parent.top
-                anchors.margins: 6
+            Repeater {
+                model: [
+                    { label: "Lock", icon: "🔒", cmd: "loginctl lock-session" },
+                    { label: "Suspend", icon: "🌙", cmd: "systemctl suspend" },
+                    { label: "Reboot", icon: "🔄", cmd: "systemctl reboot" },
+                    { label: "Shutdown", icon: "⏻", cmd: "systemctl poweroff" },
+                    { label: "Log Out", icon: "🚪", cmd: "awesome-client 'awesome.quit()'" }
+                ]
 
-                Repeater {
-                    model: [
-                        { label: "Lock", icon: "🔒", cmd: "loginctl lock-session" },
-                        { label: "Suspend", icon: "🌙", cmd: "systemctl suspend" },
-                        { label: "Reboot", icon: "🔄", cmd: "systemctl reboot" },
-                        { label: "Shutdown", icon: "⏻", cmd: "systemctl poweroff" },
-                        { label: "Log Out", icon: "🚪", cmd: "awesome-client 'awesome.quit()'" }
-                    ]
+                Rectangle {
+                    required property var modelData
+                    required property int index
+                    width: menuColumn.width
+                    height: Theme.menuItemHeight
+                    radius: Theme.containerRadius
+                    color: itemArea.containsMouse ? Theme.menuHover : "transparent"
 
-                    Rectangle {
-                        required property var modelData
-                        required property int index
-                        width: menuColumn.width
-                        height: Theme.menuItemHeight
-                        radius: Theme.containerRadius
-                        color: itemArea.containsMouse ? Theme.menuHover : "transparent"
+                    Row {
+                        anchors.fill: parent
+                        anchors.leftMargin: 10
+                        spacing: 8
 
-                        Row {
-                            anchors.fill: parent
-                            anchors.leftMargin: 10
-                            spacing: 8
-
-                            Text {
-                                text: modelData.icon
-                                font.pixelSize: 14
-                                anchors.verticalCenter: parent.verticalCenter
-                            }
-
-                            Text {
-                                text: modelData.label
-                                color: Theme.textColor
-                                font.pixelSize: Theme.textFontSize
-                                anchors.verticalCenter: parent.verticalCenter
-                            }
+                        Text {
+                            text: modelData.icon
+                            font.pixelSize: 14
+                            anchors.verticalCenter: parent.verticalCenter
                         }
 
-                        MouseArea {
-                            id: itemArea
-                            anchors.fill: parent
-                            hoverEnabled: true
-                            onClicked: {
-                                powerButton.pendingAction = modelData.cmd
-                                powerButton.pendingLabel = modelData.label
-                                powerButton.menuOpen = false
-                                powerButton.confirmOpen = true
-                            }
+                        Text {
+                            text: modelData.label
+                            color: Theme.textColor
+                            font.pixelSize: Theme.textFontSize
+                            anchors.verticalCenter: parent.verticalCenter
+                        }
+                    }
+
+                    MouseArea {
+                        id: itemArea
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        onClicked: {
+                            powerButton.pendingAction = modelData.cmd;
+                            powerButton.pendingLabel = modelData.label;
+                            powerButton.menuOpen = false;
+                            powerButton.confirmOpen = true;
                         }
                     }
                 }
@@ -109,82 +144,78 @@ Rectangle {
         }
     }
 
-    // Confirmation dialog
-    FloatingWindow {
-        id: confirmWindow
+    // Confirmation dialog — reparented to the PanelWindow root
+    Rectangle {
+        id: confirmPopup
+        parent: powerButton.barRoot
         visible: powerButton.confirmOpen
+        x: powerButton.popupX + Theme.menuWidth - 260
+        y: powerButton.popupY
         width: 260
         height: 120
-        color: "transparent"
+        color: Theme.confirmBg
+        radius: Theme.menuRadius
+        border.color: Theme.menuBorder
+        border.width: 1
 
-        Rectangle {
-            anchors.fill: parent
-            color: Theme.confirmBg
-            radius: Theme.menuRadius
-            border.color: Theme.menuBorder
-            border.width: 1
+        Column {
+            anchors.centerIn: parent
+            spacing: 16
 
-            Column {
-                anchors.centerIn: parent
-                spacing: 16
+            Text {
+                anchors.horizontalCenter: parent.horizontalCenter
+                text: powerButton.pendingLabel + "?"
+                color: Theme.textColor
+                font.pixelSize: 14
+                font.family: Theme.clockFont
+            }
 
-                Text {
-                    anchors.horizontalCenter: parent.horizontalCenter
-                    text: powerButton.pendingLabel + "?"
-                    color: Theme.textColor
-                    font.pixelSize: 14
-                    font.family: Theme.clockFont
-                }
+            Row {
+                anchors.horizontalCenter: parent.horizontalCenter
+                spacing: 12
 
-                Row {
-                    anchors.horizontalCenter: parent.horizontalCenter
-                    spacing: 12
+                Rectangle {
+                    width: 90
+                    height: 32
+                    radius: Theme.containerRadius
+                    color: cancelArea.containsMouse ? Theme.menuHover : Theme.containerBg
 
-                    // Cancel button
-                    Rectangle {
-                        width: 90
-                        height: 32
-                        radius: Theme.containerRadius
-                        color: cancelArea.containsMouse ? Theme.menuHover : Theme.containerBg
-
-                        Text {
-                            anchors.centerIn: parent
-                            text: "Cancel"
-                            color: Theme.textColor
-                            font.pixelSize: Theme.textFontSize
-                        }
-
-                        MouseArea {
-                            id: cancelArea
-                            anchors.fill: parent
-                            hoverEnabled: true
-                            onClicked: powerButton.confirmOpen = false
-                        }
+                    Text {
+                        anchors.centerIn: parent
+                        text: "Cancel"
+                        color: Theme.textColor
+                        font.pixelSize: Theme.textFontSize
                     }
 
-                    // Confirm button
-                    Rectangle {
-                        width: 90
-                        height: 32
-                        radius: Theme.containerRadius
-                        color: confirmArea.containsMouse ? Qt.darker(Theme.dangerColor, 1.2) : Theme.dangerColor
+                    MouseArea {
+                        id: cancelArea
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        onClicked: powerButton.confirmOpen = false
+                    }
+                }
 
-                        Text {
-                            anchors.centerIn: parent
-                            text: "Confirm"
-                            color: "#ffffff"
-                            font.pixelSize: Theme.textFontSize
-                        }
+                Rectangle {
+                    width: 90
+                    height: 32
+                    radius: Theme.containerRadius
+                    color: confirmArea.containsMouse ? Qt.darker(Theme.dangerColor, 1.2) : Theme.dangerColor
 
-                        MouseArea {
-                            id: confirmArea
-                            anchors.fill: parent
-                            hoverEnabled: true
-                            onClicked: {
-                                powerButton.confirmOpen = false
-                                execProcess.command = ["bash", "-c", powerButton.pendingAction]
-                                execProcess.running = true
-                            }
+                    Text {
+                        anchors.centerIn: parent
+                        text: "Confirm"
+                        color: "#ffffff"
+                        font.pixelSize: Theme.textFontSize
+                    }
+
+                    MouseArea {
+                        id: confirmArea
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        onClicked: {
+                            powerButton.confirmOpen = false;
+                            execProcess.command = ["bash", "-c", powerButton.pendingAction];
+                            execProcess.running = true;
                         }
                     }
                 }

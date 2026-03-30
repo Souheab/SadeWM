@@ -3,60 +3,98 @@ import QtQuick
 import ".."
 import "../services"
 
+// Full-screen PanelWindow: the bar is a Rectangle at the top,
+// and popup content (dropdowns, dialogs) renders below it as siblings.
+// When no popup is open, the mask restricts input to the bar strip only,
+// making the rest of the screen click-through.
 PanelWindow {
+    id: root
+
+    property bool popupVisible: false
+
     anchors {
         top: true
+        bottom: true
         left: true
         right: true
     }
-    implicitHeight: Theme.barHeight
-    color: Theme.barBg
+    exclusionMode: ExclusionMode.Ignore
+    color: "transparent"
 
-    Row {
-        anchors.fill: parent
-        spacing: 0
+    // Input mask: only the bar is interactive when no popup is open.
+    // When a popup is open, the full window accepts input (for click-outside-to-close).
+    mask: Region {
+        x: 0
+        y: 0
+        width: root.width
+        height: root.popupVisible ? root.height : Theme.barHeight
+    }
 
-        // Left section - Workspace dots
-        Item {
-            width: parent.width * 0.33
-            height: parent.height
+    // Bar background at the top
+    Rectangle {
+        id: barArea
+        anchors.top: parent.top
+        anchors.left: parent.left
+        anchors.right: parent.right
+        height: Theme.barHeight
+        color: Theme.barBg
 
-            WorkspaceDots {
-                anchors.verticalCenter: parent.verticalCenter
-                x: Theme.edgeMargin
-            }
-        }
+        Row {
+            anchors.fill: parent
+            spacing: 0
 
-        // Center section - Date and time
-        Item {
-            width: parent.width * 0.34
-            height: parent.height
+            // Left section - Workspace dots
+            Item {
+                width: parent.width * 0.33
+                height: parent.height
 
-            Clock {
-                anchors.centerIn: parent
-            }
-        }
-
-        // Right section - Volume + Power
-        Item {
-            width: parent.width * 0.33
-            height: parent.height
-
-            Row {
-                anchors.verticalCenter: parent.verticalCenter
-                anchors.right: parent.right
-                anchors.rightMargin: Theme.edgeMargin
-                spacing: 6
-                layoutDirection: Qt.RightToLeft
-
-                PowerMenu {
+                WorkspaceDots {
                     anchors.verticalCenter: parent.verticalCenter
-                }
-
-                VolumeWidget {
-                    anchors.verticalCenter: parent.verticalCenter
+                    x: Theme.edgeMargin
                 }
             }
+
+            // Center section - Date and time
+            Item {
+                width: parent.width * 0.34
+                height: parent.height
+
+                Clock {
+                    anchors.centerIn: parent
+                }
+            }
+
+            // Right section - Volume + Power
+            Item {
+                width: parent.width * 0.33
+                height: parent.height
+
+                Row {
+                    anchors.verticalCenter: parent.verticalCenter
+                    anchors.right: parent.right
+                    anchors.rightMargin: Theme.edgeMargin
+                    spacing: 6
+                    layoutDirection: Qt.RightToLeft
+
+                    PowerMenu {
+                        anchors.verticalCenter: parent.verticalCenter
+                    }
+
+                    VolumeWidget {
+                        anchors.verticalCenter: parent.verticalCenter
+                    }
+                }
+            }
         }
+    }
+
+    // Click-outside-to-close: covers the area below the bar
+    MouseArea {
+        anchors.top: barArea.bottom
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.bottom: parent.bottom
+        visible: root.popupVisible
+        onClicked: root.popupVisible = false
     }
 }

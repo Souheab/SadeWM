@@ -11,7 +11,7 @@
   "customizations": {
     "vscode": {
       "extensions": [
-        "bbenoist.Nix",
+        "jnoortheen.nix-ide",
         "ms-vscode.cpptools",
         "ms-vscode.makefile-tools"
       ],

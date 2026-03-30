@@ -76,6 +76,7 @@ PanelWindow {
 
                     SystemTrayWidget {
                         anchors.verticalCenter: parent.verticalCenter
+                        shellWindow: root
                     }
 
                     VolumeWidget {

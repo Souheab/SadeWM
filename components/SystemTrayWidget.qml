@@ -8,6 +8,9 @@ Row {
     spacing: 2
     height: Theme.containerHeight
 
+    // Must be set to the enclosing PanelWindow (pass `root` from Bar.qml)
+    property var shellWindow: null
+
     Repeater {
         model: SystemTray.items
 
@@ -33,7 +36,7 @@ Row {
                 acceptedButtons: Qt.LeftButton | Qt.RightButton
                 onClicked: mouse => {
                     if (mouse.button === Qt.RightButton || modelData.onlyMenu) {
-                        modelData.display(null, 0, 0);
+                        modelData.display(shellWindow, 0, 0);
                     } else {
                         modelData.activate();
                     }

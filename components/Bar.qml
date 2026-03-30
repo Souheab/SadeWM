@@ -52,14 +52,10 @@ PanelWindow {
                 }
             }
 
-            // Center section - Date and time
+            // Center section
             Item {
                 width: parent.width * 0.34
                 height: parent.height
-
-                Clock {
-                    anchors.centerIn: parent
-                }
             }
 
             // Right section - Volume + Power
@@ -78,11 +74,11 @@ PanelWindow {
                         anchors.verticalCenter: parent.verticalCenter
                     }
 
-                    DateTimeWidget {
+                    VolumeWidget {
                         anchors.verticalCenter: parent.verticalCenter
                     }
 
-                    VolumeWidget {
+                    DateTimeWidget {
                         anchors.verticalCenter: parent.verticalCenter
                     }
                 }

@@ -4,9 +4,9 @@
 #define IPC_SOCKET_PATH "/tmp/sadewm.sock"
 
 /* appearance */
-static const unsigned int borderpx  = 2;        /* border pixel of windows */
-static const unsigned int gappx     = 10;        /* gaps between windows */
-static const unsigned int snap      = 32;       /* snap pixel */
+static unsigned int borderpx  = 2;        /* border pixel of windows */
+static unsigned int gappx     = 10;        /* gaps between windows */
+static unsigned int snap      = 32;       /* snap pixel */
 static const int showbar            = 0;        /* 0 means no bar */
 static const int topbar             = 1;        /* 0 means bottom bar */
 static const char *fonts[]          = { "monospace:size=10" };
@@ -36,12 +36,12 @@ static const Rule rules[] = {
 };
 
 /* layout(s) */
-static const float mfact     = 0.5; /* factor of master area size [0.05..0.95] */
-static const int nmaster     = 1;    /* number of clients in master area */
-static const int resizehints = 1;    /* 1 means respect size hints in tiled resizals */
-static const int lockfullscreen = 1; /* 1 will force focus on the fullscreen window */
-static const unsigned int topoffset = 0;
-static const unsigned int bottomoffset = 48;
+static float mfact     = 0.5; /* factor of master area size [0.05..0.95] */
+static int nmaster     = 1;    /* number of clients in master area */
+static int resizehints = 1;    /* 1 means respect size hints in tiled resizals */
+static int lockfullscreen = 1; /* 1 will force focus on the fullscreen window */
+static unsigned int topoffset = 0;
+static unsigned int bottomoffset = 48;
 
 static const Layout layouts[] = {
 	/* symbol     arrange function */

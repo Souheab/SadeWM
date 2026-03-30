@@ -3,7 +3,7 @@
 
 include config.mk
 
-SRC = drw.c sadewm.c util.c
+SRC = drw.c sadewm.c util.c tomlc17.c
 OBJ = ${SRC:.c=.o}
 
 all: sadewm
@@ -23,7 +23,7 @@ clean:
 dist: clean
 	mkdir -p sadewm-${VERSION}
 	cp -R LICENSE Makefile config.mk\
-		drw.h util.h ipc.h ipc.c ${SRC} sadewm.desktop sadewmctl sadewm-${VERSION}
+		drw.h util.h ipc.h ipc.c configfile.h configfile.c tomlc17.h tomlc17.c ${SRC} sadewm.desktop sadewmctl sadewm-${VERSION}
 	tar -cf sadewm-${VERSION}.tar sadewm-${VERSION}
 	gzip sadewm-${VERSION}.tar
 	rm -rf sadewm-${VERSION}

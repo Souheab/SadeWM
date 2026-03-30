@@ -45,6 +45,7 @@
 #include "drw.h"
 #include "util.h"
 #include "ipc.h"
+#include "configfile.h"
 
 /* macros */
 #define BUTTONMASK              (ButtonPressMask|ButtonReleaseMask)
@@ -324,6 +325,11 @@ static Window root, wmcheckwin;
 /* configuration, allows nested code to access above variables */
 #include "config.h"
 
+/* active rule set — points to compiled-in rules[] by default; redirected to
+ * loaded_rules[] by applyconfigfile() when a [[rules]] section is present. */
+static const Rule *active_rules;
+static int         n_active_rules;
+
 /* compile-time check if all tags fit into an unsigned int bit array. */
 struct NumTags { char limitexceeded[LENGTH(tags) > 31 ? -1 : 1]; };
 
@@ -344,8 +350,8 @@ applyrules(Client *c)
 	class    = ch.res_class ? ch.res_class : broken;
 	instance = ch.res_name  ? ch.res_name  : broken;
 
-	for (i = 0; i < LENGTH(rules); i++) {
-		r = &rules[i];
+	for (i = 0; i < (unsigned int)n_active_rules; i++) {
+		r = &active_rules[i];
 		if ((!r->title || strstr(c->name, r->title))
 		&& (!r->class || strstr(class, r->class))
 		&& (!r->instance || strstr(instance, r->instance)))
@@ -2751,18 +2757,44 @@ zoom(const Arg *arg)
 int
 main(int argc, char *argv[])
 {
-  if (argc == 2 && !strcmp("-v", argv[1]))
-    die("sadewm-" VERSION ": Souheab's fork");
-  else if (argc == 2 && !strcmp("-d", argv[1])) {
-    debug = true;
-  } else if (argc != 1)
-    die("usage: sadewm [-v | -d]");
+  char *cfgpath_arg = NULL;
+  int argi;
+  for (argi = 1; argi < argc; argi++) {
+    if (!strcmp("-v", argv[argi]))
+      die("sadewm-" VERSION ": Souheab's fork");
+    else if (!strcmp("-d", argv[argi]))
+      debug = true;
+    else if (!strcmp("-c", argv[argi]) && argi + 1 < argc)
+      cfgpath_arg = argv[++argi];
+    else
+      die("usage: sadewm [-v] [-d] [-c config]");
+  }
 
   if (!setlocale(LC_CTYPE, "") || !XSupportsLocale())
     fputs("warning: no locale support\n", stderr);
   if (!(dpy = XOpenDisplay(NULL)))
     die("sadewm: cannot open display");
   checkotherwm();
+
+  /* load runtime config before setup() so scalars (colors, fonts, gaps …)
+   * take effect for the whole session. */
+  homepath = getenv("HOME");
+  active_rules   = rules;
+  n_active_rules = LENGTH(rules);
+  {
+    char cfgpath[512];
+    if (cfgpath_arg) {
+      snprintf(cfgpath, sizeof cfgpath, "%s", cfgpath_arg);
+    } else if (homepath) {
+      snprintf(cfgpath, sizeof cfgpath,
+               "%s/.config/sadewm/sadewm.toml", homepath);
+    } else {
+      cfgpath[0] = '\0';
+    }
+    if (cfgpath[0])
+      configfile_init(cfgpath);
+  }
+
   setup();
   if (debug) {
     logselmoninfo();
@@ -2774,13 +2806,15 @@ main(int argc, char *argv[])
 		die("pledge");
 #endif /* __OpenBSD__ */
 	scan();
-  homepath = getenv("HOME");
   startup();
 	run();
 	cleanup();
 	XCloseDisplay(dpy);
 	return EXIT_SUCCESS;
 }
+
+/* config file implementation — included here to access static symbols above */
+#include "configfile.c"
 
 /* IPC implementation — included here to access static symbols above */
 #include "ipc.c"

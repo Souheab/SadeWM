@@ -31,7 +31,7 @@
 #define CLEANMASK(mask)         (mask & ~(numlockmask|LockMask) & (ShiftMask|ControlMask|Mod1Mask|Mod2Mask|Mod3Mask|Mod4Mask|Mod5Mask))
 #define INTERSECT(x,y,w,h,m)    (MAX(0, MIN((x)+(w),(m)->wx+(m)->ww) - MAX((x),(m)->wx)) \
                                * MAX(0, MIN((y)+(h),(m)->wy+(m)->wh) - MAX((y),(m)->wy)))
-#define ISVISIBLE(C)            ((C->tags & C->mon->tagset[C->mon->seltags]) && !C->minimized)
+#define ISVISIBLE(C)            ((C->tags & C->mon->tagset[C->mon->seltags]) && !C->minimized && !C->isdock)
 #define LENGTH(X)               (sizeof X / sizeof X[0])
 #define MOUSEMASK               (BUTTONMASK|PointerMotionMask)
 #define WIDTH(X)                ((X)->w + 2 * (X)->bw)
@@ -86,6 +86,7 @@ struct Client {
   bool maximized;
   bool minimized;
   bool isabove;
+  bool isdock;
 };
 
 typedef struct {
@@ -1345,6 +1346,7 @@ manage(Window w, XWindowAttributes *wa)
 			c->isabove = 1;         /* Enforce always on top */
 			c->isfloating = 1;      /* Don't tile, keeps its own placement */
 			c->tags = ~0;           /* Visible on all tags */
+			c->isdock = true;       /* Mark as dock — excluded from focus cycling */
 		}
 	}
 

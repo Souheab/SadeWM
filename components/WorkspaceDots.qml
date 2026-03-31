@@ -128,9 +128,9 @@ Row {
 
                         onClicked: mouse => {
                             if (mouse.button === Qt.LeftButton) {
-                                tagCmd.command = ["sadewmctl", "tag_view", tagNum.toString()]
+                                tagCmd.command = [Qt.resolvedUrl("../scripts/qsctrl"), "tags", "view", tagNum.toString()]
                             } else {
-                                tagCmd.command = ["sadewmctl", "tag_toggle_view", tagNum.toString()]
+                                tagCmd.command = [Qt.resolvedUrl("../scripts/qsctrl"), "tags", "toggleview", tagNum.toString()]
                             }
                             tagCmd.running = true
                         }

@@ -130,6 +130,31 @@ ipc_handle_get_state(int fd)
 }
 
 static void
+ipc_handle_tags_state(int fd)
+{
+  char buf[256];
+  int n = 0;
+  int i;
+  unsigned int occ = 0;
+  Client *c;
+
+  for (c = selmon->clients; c; c = c->next)
+    occ |= c->tags;
+
+  n += snprintf(buf + n, sizeof(buf) - n, "{\"ok\":true,\"tags_state\":[");
+  for (i = 0; i < LENGTH(tags); i++) {
+    char state = 'I';
+    if (selmon->tagset[selmon->seltags] & (1 << i))
+      state = 'A';
+    else if (occ & (1 << i))
+      state = 'O';
+    n += snprintf(buf + n, sizeof(buf) - n, "%s\"%c\"", i == 0 ? "" : ",", state);
+  }
+  n += snprintf(buf + n, sizeof(buf) - n, "]}\n");
+  ipc_write(fd, buf, n);
+}
+
+static void
 ipc_handle_tag_cmd(int fd, const char *cmd, unsigned int mask)
 {
   const char *ok = "{\"ok\":true}\n";
@@ -180,6 +205,8 @@ ipc_poll(void)
 
   if (strcmp(cmd, "get_state") == 0) {
     ipc_handle_get_state(cfd);
+  } else if (strcmp(cmd, "tags_state") == 0) {
+    ipc_handle_tags_state(cfd);
   } else if (strcmp(cmd, "reload") == 0) {
     reloadconfig(NULL);
     const char *ok = "{\"ok\":true}\n";

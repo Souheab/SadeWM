@@ -136,17 +136,23 @@ ipc_handle_tags_state(int fd)
   int n = 0;
   int i;
   unsigned int occ = 0;
+  unsigned int urg = 0;
   Client *c;
 
   for (c = selmon->clients; c; c = c->next) {
-    if ((c->tags & TAGMASK) != TAGMASK)
+    if ((c->tags & TAGMASK) != TAGMASK) {
       occ |= c->tags;
+      if (c->isurgent)
+        urg |= c->tags;
+    }
   }
 
   n += snprintf(buf + n, sizeof(buf) - n, "{\"ok\":true,\"tags_state\":[");
   for (i = 0; i < LENGTH(tags); i++) {
     char state = 'I';
-    if (selmon->tagset[selmon->seltags] & (1 << i))
+    if (urg & (1 << i))
+      state = 'U';
+    else if (selmon->tagset[selmon->seltags] & (1 << i))
       state = 'A';
     else if (occ & (1 << i))
       state = 'O';

@@ -47,17 +47,24 @@
           };
         });
 
-      nixosModules.default = { config, lib, pkgs, system ? pkgs.system, ... }:
+      nixosModules.default = { config, lib, pkgs, ... }:
         let
-          cfg = config.programs.sadewm;
+          cfg = config.services.xserver.windowManager.sadewm;
+          sadewm = self.packages.${pkgs.system}.default;
         in {
-          options.programs.sadewm.enable =
+          options.services.xserver.windowManager.sadewm.enable =
             lib.mkEnableOption "sadewm window manager";
 
           config = lib.mkIf cfg.enable {
-            services.xserver.displayManager.sessionPackages = [
-              self.packages.${system}.default
-            ];
+            services.xserver.windowManager.session = lib.singleton {
+              name = "sadewm";
+              start = ''
+                ${sadewm}/bin/sadewm &
+                waitPID=$!
+              '';
+            };
+
+            environment.systemPackages = [ sadewm ];
           };
         };
 

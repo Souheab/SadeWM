@@ -238,6 +238,8 @@ static void toggletag(const Arg *arg);
 static void toggleview(const Arg *arg);
 static void togglemaximize(const Arg *arg);
 static void toggletiledir(const Arg *arg);
+static void layoutnext(const Arg *arg);
+static void layoutprev(const Arg *arg);
 static void unfocus(Client *c, int setfocus);
 static void unmanage(Client *c, int destroyed);
 static void unmapnotify(XEvent *e);
@@ -2269,6 +2271,40 @@ void
 toggletiledir(const Arg *arg) {
   Tag *t = getdomtag(selmon->tags);
   t->isrighttiled = !t->isrighttiled;
+  applytag(t);
+  arrange(selmon);
+}
+
+void
+layoutnext(const Arg *arg) {
+  Tag *t = getdomtag(selmon->tags);
+  if (!t) return;
+  if (t->lt == &layouts[TILE]) {
+    if (!t->isrighttiled)
+      t->isrighttiled = true;
+    else
+      t->lt = &layouts[FLOAT];
+  } else {
+    t->lt = &layouts[TILE];
+    t->isrighttiled = false;
+  }
+  applytag(t);
+  arrange(selmon);
+}
+
+void
+layoutprev(const Arg *arg) {
+  Tag *t = getdomtag(selmon->tags);
+  if (!t) return;
+  if (t->lt == &layouts[TILE]) {
+    if (t->isrighttiled)
+      t->isrighttiled = false;
+    else
+      t->lt = &layouts[FLOAT];
+  } else {
+    t->lt = &layouts[TILE];
+    t->isrighttiled = true;
+  }
   applytag(t);
   arrange(selmon);
 }

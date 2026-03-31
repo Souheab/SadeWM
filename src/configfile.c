@@ -79,6 +79,8 @@ static const struct { const char *name; void (*func)(const Arg *); } func_table[
 	{ "togglefullscr",  togglefullscr  },
 	{ "togglemaximize", togglemaximize },
 	{ "toggletiledir",  toggletiledir  },
+	{ "layoutnext",     layoutnext     },
+	{ "layoutprev",     layoutprev     },
 	{ "movemouse",      movemouse      },
 	{ "resizemouse",    resizemouse    },
 	{ "quit",           quit           },

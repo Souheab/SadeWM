@@ -36,6 +36,8 @@
 
             installFlags = [ "PREFIX=${placeholder "out"}" ];
 
+            passthru.providedSessions = [ "sadewm" ];
+
             meta = with pkgs.lib; {
               description = "sadewm";
               license = licenses.mit;

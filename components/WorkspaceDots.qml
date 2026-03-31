@@ -129,7 +129,7 @@ Row {
                             if (mouse.button === Qt.LeftButton) {
                                 tagCmd.command = ["python3", Qt.resolvedUrl("../scripts/qsctrl").toString().replace("file://", ""), "tags", "view", tagNum.toString()]
                             } else {
-                                tagCmd.command = ["python3", Qt.resolvedUrl("../scripts/qsctrl").toString().replace("file://", ""), "tags", "toggle", tagNum.toString()]
+                                tagCmd.command = ["python3", Qt.resolvedUrl("../scripts/qsctrl").toString().replace("file://", ""), "tags", "toggleview", tagNum.toString()]
                             }
                             tagCmd.running = true
                         }

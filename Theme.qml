@@ -5,7 +5,7 @@ import QtQuick
 
 Singleton {
     // ── Bar ──
-    readonly property int barHeight: 44
+    readonly property int barHeight: 40 
     readonly property color barBg: "#1a1b26"
     readonly property color containerBg: "#292e42"
     readonly property int containerRadius: 14

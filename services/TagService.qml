@@ -16,12 +16,26 @@ Singleton {
 
         stdout: SplitParser {
             onRead: data => {
-                var match = data.match(/string "([^"]*)"/);
-                if (match && match[1]) {
-                    var parts = match[1].split("|");
-                    TagService.selected = parts[0].split("").map(function(t) { return parseInt(t) });
-                    TagService.occupied = parts[1] ? parts[1].split("").map(function(t) { return parseInt(t) }) : [];
-                    TagService.urgent = parts[2] ? parts[2].split("").map(function(t) { return parseInt(t) }) : [];
+                const parts = data.trim().split("|");
+                if (parts.length === 3) {
+                    const selMask = parseInt(parts[0]) || 0;
+                    const occMask = parseInt(parts[1]) || 0;
+                    const urgMask = parseInt(parts[2]) || 0;
+
+                    const sel = [];
+                    const occ = [];
+                    const urg = [];
+
+                    for (let i = 0; i < Theme.tagCount; i++) {
+                        const mask = 1 << i;
+                        if (selMask & mask) sel.push(i + 1);
+                        if (occMask & mask) occ.push(i + 1);
+                        if (urgMask & mask) urg.push(i + 1);
+                    }
+
+                    TagService.selected = sel;
+                    TagService.occupied = occ;
+                    TagService.urgent = urg;
                 }
             }
         }

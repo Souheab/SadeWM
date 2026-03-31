@@ -24,6 +24,27 @@ Usage:
 
 import sys
 import subprocess
+import json
+import socket
+import os
+
+SOCKET_PATH = os.environ.get("SADEWM_SOCKET", "/tmp/sadewm.sock")
+
+
+def sadewm_request(request: dict) -> dict:
+    with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as s:
+        try:
+            s.connect(SOCKET_PATH)
+        except FileNotFoundError:
+            return {"ok": False, "error": f"socket not found at {SOCKET_PATH}"}
+        except ConnectionRefusedError:
+            return {"ok": False, "error": f"connection refused at {SOCKET_PATH}"}
+        s.sendall(json.dumps(request).encode())
+        s.shutdown(socket.SHUT_WR)
+        data = b""
+        while chunk := s.recv(4096):
+            data += chunk
+    return json.loads(data)
 
 
 def run(cmd: list[str]) -> None:
@@ -39,36 +60,32 @@ def cmd_tags(args: list[str]) -> None:
     action = args[0]
 
     if action == "get":
-        lua = (
-            'local sel,occ,urg="","","";'
-            'for _,t in ipairs(require("awful").screen.focused().tags) do '
-            '  if t.selected then sel=sel..t.name end;'
-            '  if #t:clients()>0 then occ=occ..t.name end;'
-            '  if t.urgent then urg=urg..t.name end '
-            'end;'
-            'return sel.."|"..occ.."|"..urg'
-        )
-        run(["awesome-client", lua])
+        res = sadewm_request({"cmd": "get_state"})
+        if not res.get("ok"):
+            print("||", end="")
+            return
+
+        sel = res.get("tag_mask", 0)
+        occ = 0
+        urg = 0
+
+        for client in res.get("clients", []):
+            mask = client.get("tags", 0)
+            occ |= mask
+            if client.get("urgent"):
+                urg |= mask
+
+        print(f"{sel}|{occ}|{urg}")
 
     elif action == "view" and len(args) >= 2:
-        n = args[1]
-        lua = (
-            f'local s=require("awful").screen.focused();'
-            f'for _,t in ipairs(s.tags) do '
-            f'  if t.name=="{n}" then t:view_only() end '
-            f'end'
-        )
-        run(["awesome-client", lua])
+        tag_num = int(args[1])
+        mask = 1 << (tag_num - 1)
+        sadewm_request({"cmd": "view", "mask": mask})
 
-    elif action == "toggle" and len(args) >= 2:
-        n = args[1]
-        lua = (
-            f'local s=require("awful").screen.focused();'
-            f'for _,t in ipairs(s.tags) do '
-            f'  if t.name=="{n}" then require("awful").tag.viewtoggle(t) end '
-            f'end'
-        )
-        run(["awesome-client", lua])
+    elif action == "toggleview" and len(args) >= 2:
+        tag_num = int(args[1])
+        mask = 1 << (tag_num - 1)
+        sadewm_request({"cmd": "toggleview", "mask": mask})
 
     else:
         print_usage()

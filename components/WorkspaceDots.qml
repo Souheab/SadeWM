@@ -108,10 +108,12 @@ Row {
 
                     property int tagNum: index + 1
                     property string tagState: (TagService.tags && TagService.tags.length > index) ? TagService.tags[index] : "I"
+                    property bool isUrgent:   tagState === "U"
                     property bool isSelected: tagState === "A"
                     property bool isOccupied: tagState === "O"
 
                     color: {
+                        if (isUrgent)   return dotArea.containsMouse ? Qt.darker(Theme.dotUrgent,   1.25) : Theme.dotUrgent
                         if (isSelected) return dotArea.containsMouse ? Qt.darker(Theme.dotSelected, 1.25) : Theme.dotSelected
                         if (isOccupied) return dotArea.containsMouse ? Qt.darker(Theme.dotOccupied, 1.25) : Theme.dotOccupied
                         return dotArea.containsMouse ? Qt.darker(Theme.dotEmpty, 1.4) : Theme.dotEmpty

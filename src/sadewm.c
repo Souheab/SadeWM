@@ -1388,7 +1388,6 @@ movemouse(const Arg *arg)
 	Client *c;
 	Monitor *m;
 	XEvent ev;
-	Time lasttime = 0;
 
 	if (!(c = selmon->sel))
 		return;
@@ -1411,10 +1410,7 @@ movemouse(const Arg *arg)
 			handler[ev.type](&ev);
 			break;
 		case MotionNotify:
-			if ((ev.xmotion.time - lasttime) <= (1000 / 60))
-				continue;
-			lasttime = ev.xmotion.time;
-
+			while (XCheckMaskEvent(dpy, MOUSEMASK, &ev));
 			nx = ocx + (ev.xmotion.x - x);
 			ny = ocy + (ev.xmotion.y - y);
 			if (abs(selmon->wx - nx) < snap)
@@ -1425,11 +1421,20 @@ movemouse(const Arg *arg)
 				ny = selmon->wy;
 			else if (abs((selmon->wy + selmon->wh) - (ny + HEIGHT(c))) < snap)
 				ny = selmon->wy + selmon->wh - HEIGHT(c);
-			if (!c->isfloating && selmon->lt->arrange
-			&& (abs(nx - c->x) > snap || abs(ny - c->y) > snap))
-				togglefloating(NULL);
-			if (!selmon->lt->arrange || c->isfloating)
+
+			if (!c->isfloating && selmon->lt->arrange) {
+				m = wintomon(c->win);
+				for (Client *t = m->clients; t; t = t->next) {
+					if (t != c && !t->isfloating && ISVISIBLE(t) &&
+						ev.xmotion.x >= t->x && ev.xmotion.x <= t->x + t->w &&
+						ev.xmotion.y >= t->y && ev.xmotion.y <= t->y + t->h) {
+						swapclients(c, t);
+						break;
+					}
+				}
+			} else {
 				resize(c, nx, ny, c->w, c->h, 1);
+			}
 			break;
 		}
 	} while (ev.type != ButtonRelease);
@@ -1588,7 +1593,6 @@ resizemouse(const Arg *arg)
 	Client *c;
 	Monitor *m;
 	XEvent ev;
-	Time lasttime = 0;
 
 	if (!(c = selmon->sel))
 		return;
@@ -1610,9 +1614,14 @@ resizemouse(const Arg *arg)
 			handler[ev.type](&ev);
 			break;
 		case MotionNotify:
-			if ((ev.xmotion.time - lasttime) <= (1000 / 60))
+			while (XCheckMaskEvent(dpy, MOUSEMASK, &ev));
+
+			if (!c->isfloating && selmon->lt->arrange) {
+				float f = (float)(ev.xmotion.x - selmon->wx) / (float)selmon->ww;
+				Arg a = { .f = (selmon->isrighttiled ? 1.0 - f : f) + 1.0 };
+				setmfact(&a);
 				continue;
-			lasttime = ev.xmotion.time;
+			}
 
 			nw = MAX(ev.xmotion.x - ocx - 2 * c->bw + 1, 1);
 			nh = MAX(ev.xmotion.y - ocy - 2 * c->bw + 1, 1);

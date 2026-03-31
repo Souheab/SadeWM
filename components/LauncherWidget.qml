@@ -37,11 +37,9 @@ Rectangle {
     Behavior on slideOffset { NumberAnimation { duration: Theme.popupAnimDuration; easing.type: Theme.popupAnimEasing } }
     Behavior on opacity    { NumberAnimation { duration: Theme.popupAnimDuration; easing.type: Theme.popupAnimEasing } }
 
-    // Reset search when closed; grab focus when opened
+    // Reset search when closed
     onLauncherOpenChanged: {
-        if (launcherOpen)
-            searchInput.forceActiveFocus();
-        else
+        if (!launcherOpen)
             searchInput.clear();
     }
 
@@ -189,7 +187,7 @@ Rectangle {
 
                         Text {
                             text: modelData.comment || modelData.genericName || ""
-                            color: Theme.dotEmpty
+                            color: Qt.alpha(Theme.textColor, 0.55)
                             font.family: Theme.monoFont
                             font.pixelSize: Theme.textFontSize - 2
                             elide: Text.ElideRight

@@ -16,6 +16,8 @@ Rectangle {
     property bool confirmOpen: false
     property string pendingAction: ""
     property string pendingLabel: ""
+    property string pendingIcon: ""
+    property color  pendingColor: Theme.dangerColor
 
     // Screen-space position for popups (relative to the PanelWindow root)
     property real popupX: 0
@@ -58,9 +60,10 @@ Rectangle {
     Text {
         anchors.centerIn: parent
         text: "\uf011"
-        color: Theme.textColor
+        color: buttonArea.containsMouse ? Theme.dangerColor : Qt.alpha(Theme.textColor, 0.8)
         font.family: Theme.iconFont
         font.pixelSize: Theme.iconFontSize
+        Behavior on color { ColorAnimation { duration: 150 } }
     }
 
     MouseArea {
@@ -78,7 +81,7 @@ Rectangle {
         }
     }
 
-    // Dropdown menu — reparented to the popup layer
+    // ── Dropdown menu ─────────────────────────────────────────────────────────
     Rectangle {
         id: menuPopup
         parent: powerButton.popupLayer
@@ -87,7 +90,7 @@ Rectangle {
         x: powerButton.popupX
         y: powerButton.popupY
         width: Theme.menuWidth
-        height: menuColumn.height + 12
+        height: menuColumn.implicitHeight
         color: Theme.menuBg
         radius: Theme.menuRadius
         border.color: Theme.menuBorder
@@ -103,54 +106,87 @@ Rectangle {
             anchors.left: parent.left
             anchors.right: parent.right
             anchors.top: parent.top
-            anchors.margins: 6
+            topPadding: 6
+            bottomPadding: 6
 
             Repeater {
                 model: [
-                    { label: "Lock",     icon: "\uf023", cmd: "lock"     },
-                    { label: "Suspend",  icon: "\uf186", cmd: "suspend"  },
-                    { label: "Reboot",   icon: "\uf021", cmd: "reboot"   },
-                    { label: "Shutdown", icon: "\uf011", cmd: "shutdown" },
-                    { label: "Log Out",  icon: "\uf2f5", cmd: "logout"   }
+                    { label: "Lock",     icon: "\uf023", cmd: "lock",     color: "#7aa2f7", sep: false },
+                    { label: "Suspend",  icon: "\uf186", cmd: "suspend",  color: "#bb9af7", sep: true  },
+                    { label: "Reboot",   icon: "\uf021", cmd: "reboot",   color: "#e0af68", sep: false },
+                    { label: "Shutdown", icon: "\uf011", cmd: "shutdown", color: "#f7768e", sep: false },
+                    { label: "Log Out",  icon: "\uf2f5", cmd: "logout",   color: "#7dcfff", sep: false }
                 ]
 
-                Rectangle {
+                Item {
                     required property var modelData
                     required property int index
                     width: menuColumn.width
-                    height: Theme.menuItemHeight
-                    radius: Theme.containerRadius
-                    color: itemArea.containsMouse ? Theme.menuHover : "transparent"
+                    // Extra height for the separator gap after the item
+                    height: Theme.menuItemHeight + (modelData.sep ? 9 : 0)
 
-                    Row {
-                        anchors.fill: parent
-                        anchors.leftMargin: 10
-                        spacing: 8
+                    // Item background
+                    Rectangle {
+                        x: 5; y: 2
+                        width: parent.width - 10
+                        height: Theme.menuItemHeight - 4
+                        radius: Theme.containerRadius - 2
+                        color: itemArea.containsMouse ? Theme.menuHover : "transparent"
 
-                        Text {
-                            text: modelData.icon
-                            font.family: Theme.iconFont
-                            font.pixelSize: Theme.iconFontSize
-                            anchors.verticalCenter: parent.verticalCenter
+                        Row {
+                            anchors.fill: parent
+                            anchors.leftMargin: 14
+                            spacing: 10
+
+                            // Icon column — fixed width for alignment
+                            Item {
+                                width: 16
+                                height: parent.height
+
+                                Text {
+                                    anchors.centerIn: parent
+                                    text: modelData.icon
+                                    color: itemArea.containsMouse ? modelData.color : Qt.alpha(Theme.textColor, 0.55)
+                                    font.family: Theme.iconFont
+                                    font.pixelSize: 13
+                                    Behavior on color { ColorAnimation { duration: 150 } }
+                                }
+                            }
+
+                            Text {
+                                text: modelData.label
+                                color: itemArea.containsMouse ? Theme.textColor : Qt.alpha(Theme.textColor, 0.82)
+                                font.family: Theme.monoFont
+                                font.pixelSize: Theme.textFontSize
+                                anchors.verticalCenter: parent.verticalCenter
+                                Behavior on color { ColorAnimation { duration: 150 } }
+                            }
                         }
+                    }
 
-                        Text {
-                            text: modelData.label
-                            color: Theme.textColor
-                            font.pixelSize: Theme.textFontSize
-                            anchors.verticalCenter: parent.verticalCenter
-                        }
+                    // Thin divider drawn below items where sep:true
+                    Rectangle {
+                        visible: modelData.sep
+                        x: 14
+                        y: Theme.menuItemHeight + 2
+                        width: parent.width - 28
+                        height: 1
+                        color: Qt.alpha(Theme.menuBorder, 0.8)
                     }
 
                     MouseArea {
                         id: itemArea
-                        anchors.fill: parent
+                        x: 5; y: 2
+                        width: parent.width - 10
+                        height: Theme.menuItemHeight - 4
                         hoverEnabled: true
                         onClicked: {
                             powerButton.pendingAction = modelData.cmd;
-                            powerButton.pendingLabel = modelData.label;
-                            powerButton.menuOpen = false;
-                            powerButton.confirmOpen = true;
+                            powerButton.pendingLabel  = modelData.label;
+                            powerButton.pendingIcon   = modelData.icon;
+                            powerButton.pendingColor  = modelData.color;
+                            powerButton.menuOpen      = false;
+                            powerButton.confirmOpen   = true;
                         }
                     }
                 }
@@ -158,7 +194,7 @@ Rectangle {
         }
     }
 
-    // Confirmation dialog — reparented to the popup layer
+    // ── Confirmation dialog ───────────────────────────────────────────────────
     Rectangle {
         id: confirmPopup
         parent: powerButton.popupLayer
@@ -167,7 +203,7 @@ Rectangle {
         x: powerButton.popupX + Theme.menuWidth - Theme.confirmDialogWidth
         y: powerButton.popupY
         width: Theme.confirmDialogWidth
-        height: 128
+        height: confirmContent.implicitHeight + 40
         color: Theme.confirmBg
         radius: Theme.menuRadius
         border.color: Theme.menuBorder
@@ -179,31 +215,68 @@ Rectangle {
         Behavior on opacity { NumberAnimation { duration: Theme.popupAnimDuration; easing.type: Theme.popupAnimEasing } }
 
         Column {
+            id: confirmContent
             anchors.centerIn: parent
-            spacing: 16
+            width: parent.width - 40
+            spacing: 12
 
+            // Large colored icon circle
+            Rectangle {
+                width: 52
+                height: 52
+                radius: 26
+                color: Qt.alpha(powerButton.pendingColor, 0.15)
+                anchors.horizontalCenter: parent.horizontalCenter
+
+                Text {
+                    anchors.centerIn: parent
+                    text: powerButton.pendingIcon
+                    color: powerButton.pendingColor
+                    font.family: Theme.iconFont
+                    font.pixelSize: 22
+                }
+            }
+
+            // Action name
             Text {
                 anchors.horizontalCenter: parent.horizontalCenter
-                text: powerButton.pendingLabel + "?"
+                text: powerButton.pendingLabel
                 color: Theme.textColor
-                font.pixelSize: Theme.textFontSize
                 font.family: Theme.clockFont
+                font.pixelSize: Theme.textFontSize + 3
             }
+
+            // Subtext
+            Text {
+                anchors.horizontalCenter: parent.horizontalCenter
+                text: "Are you sure?"
+                color: Qt.alpha(Theme.textColor, 0.4)
+                font.family: Theme.monoFont
+                font.pixelSize: Theme.textFontSize - 1
+            }
+
+            // Buttons
+            Item { width: 1; height: 2 }  // small extra gap before buttons
 
             Row {
                 anchors.horizontalCenter: parent.horizontalCenter
-                spacing: 12
+                spacing: Theme.spacingSM
 
+                // Cancel — outline style
                 Rectangle {
-                    width: 100
+                    width: 104
                     height: 34
                     radius: Theme.containerRadius
-                    color: cancelArea.containsMouse ? Theme.menuHover : Theme.containerBg
+                    color: cancelArea.containsMouse ? Theme.menuHover : "transparent"
+                    border.color: Qt.alpha(Theme.textColor, 0.18)
+                    border.width: 1
+                    Behavior on color { ColorAnimation { duration: 120 } }
 
                     Text {
                         anchors.centerIn: parent
                         text: "Cancel"
-                        color: Theme.textColor
+                        color: Qt.alpha(Theme.textColor, 0.65)
+                        font.family: Theme.monoFont
                         font.pixelSize: Theme.textFontSize
                     }
 
@@ -215,17 +288,23 @@ Rectangle {
                     }
                 }
 
+                // Confirm — solid action color
                 Rectangle {
-                    width: 100
+                    width: 104
                     height: 34
                     radius: Theme.containerRadius
-                    color: confirmArea.containsMouse ? Qt.darker(Theme.dangerColor, 1.2) : Theme.dangerColor
+                    color: confirmArea.containsMouse
+                        ? Qt.darker(powerButton.pendingColor, 1.18)
+                        : powerButton.pendingColor
+                    Behavior on color { ColorAnimation { duration: 120 } }
 
                     Text {
                         anchors.centerIn: parent
-                        text: "Confirm"
-                        color: "#ffffff"
+                        text: powerButton.pendingLabel
+                        color: "#1a1b26"
+                        font.family: Theme.monoFont
                         font.pixelSize: Theme.textFontSize
+                        font.weight: Font.Medium
                     }
 
                     MouseArea {
@@ -247,3 +326,4 @@ Rectangle {
         id: execProcess
     }
 }
+

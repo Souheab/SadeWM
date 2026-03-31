@@ -2660,7 +2660,7 @@ void view(const Arg *arg) {
     selmon->tagset[selmon->seltags] = arg->ui & TAGMASK;
     applytag(getdomtag(selmon->tags));
   }
-  focus(NULL);
+  focus(nexttiled(selmon->clients));
   arrange(selmon);
 }
 

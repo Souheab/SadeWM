@@ -873,6 +873,9 @@ focusdown(const Arg *arg)
   Client *c = selmon->sel;
   if (c != NULL) {
     Client *newc = getdownclient(c);
+    if (newc == c) {
+      newc = getrightclient(c);
+    }
     if (newc != c) {
       focus(newc);
     }

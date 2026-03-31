@@ -180,6 +180,10 @@ ipc_poll(void)
 
   if (strcmp(cmd, "get_state") == 0) {
     ipc_handle_get_state(cfd);
+  } else if (strcmp(cmd, "reload") == 0) {
+    reloadconfig(NULL);
+    const char *ok = "{\"ok\":true}\n";
+    ipc_write(cfd, ok, strlen(ok));
   } else if (strcmp(cmd, "view")       == 0
           || strcmp(cmd, "toggleview") == 0
           || strcmp(cmd, "tag")        == 0

@@ -252,6 +252,7 @@ static void updatetitle(Client *c);
 static void updatewindowtype(Client *c);
 static void updatewmhints(Client *c);
 static void view(const Arg *arg);
+static void reloadconfig(const Arg *arg);
 static void viewprev(const Arg *arg);
 static void viewnext(const Arg *arg);
 static Client *wintoclient(Window w);
@@ -286,6 +287,7 @@ static void (*handler[LASTEvent]) (XEvent *) = {
 static Atom wmatom[WMLast], netatom[NetLast];
 static Atom utf8string;
 static int running = 1;
+static char current_cfgpath[512];
 static Cursor cursor[CurLast];
 static unsigned long border_norm, border_sel; /* window border pixel values */
 static Display *dpy;
@@ -2548,6 +2550,46 @@ void view(const Arg *arg) {
   arrange(selmon);
 }
 
+void
+reloadconfig(const Arg *arg)
+{
+  Monitor *m;
+  Client *c;
+  int i;
+
+  if (current_cfgpath[0] == '\0')
+    return;
+
+  configfile_init(current_cfgpath);
+
+  for (m = mons; m; m = m->next) {
+    m->gappx = gappx;
+    for (i = 0; i < LENGTH(tags); i++) {
+      m->tags[i].mfact = mfact;
+      m->tags[i].nmaster = nmaster;
+    }
+    
+    for (c = m->clients; c; c = c->next) {
+      c->bw = borderpx;
+      XSetWindowBorderWidth(dpy, c->win, c->bw);
+    }
+    
+    m->wx = m->mx;
+    m->wy = m->my;
+    m->ww = m->mw;
+    m->wh = m->mh;
+
+    m->wy += topoffset;
+    m->wh -= (topoffset + bottomoffset);
+    
+    arrange(m);
+  }
+  
+  XUngrabKey(dpy, AnyKey, AnyModifier, root);
+  grabkeys();
+  
+  focus(NULL);
+}
 
 void
 viewprev(const Arg *arg) {
@@ -2686,8 +2728,10 @@ main(int argc, char *argv[])
     } else {
       cfgpath[0] = '\0';
     }
-    if (cfgpath[0])
+    if (cfgpath[0]) {
+      snprintf(current_cfgpath, sizeof current_cfgpath, "%s", cfgpath);
       configfile_init(cfgpath);
+    }
   }
 
   if (dryrun) {

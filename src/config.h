@@ -27,8 +27,8 @@ static float mfact     = 0.5; /* factor of master area size [0.05..0.95] */
 static int nmaster     = 1;    /* number of clients in master area */
 static int resizehints = 1;    /* 1 means respect size hints in tiled resizals */
 static int lockfullscreen = 1; /* 1 will force focus on the fullscreen window */
-static unsigned int topoffset = 0;
-static unsigned int bottomoffset = 48;
+static unsigned int topoffset = 10;
+static unsigned int bottomoffset = 10;
 
 static const Layout layouts[] = {
 	/* symbol     arrange function */
@@ -111,6 +111,7 @@ static const Key keys[] = {
 	TAGKEYS(                        XK_7,                      6)
 	TAGKEYS(                        XK_8,                      7)
 	TAGKEYS(                        XK_9,                      8)
+	{ MODKEY|ShiftMask,             XK_r,      reloadconfig,   {0} },
 	{ MODKEY|ShiftMask,             XK_q,      quit,           {0} },
 };
 

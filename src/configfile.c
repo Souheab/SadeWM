@@ -64,6 +64,7 @@ static const struct { const char *name; void (*func)(const Arg *); } func_table[
 	{ "minimize",       minimize       },
 	{ "restore",        restore        },
 	{ "view",           view           },
+	{ "reloadconfig",   reloadconfig   },
 	{ "viewprev",       viewprev       },
 	{ "viewnext",       viewnext       },
 	{ "toggleview",     toggleview     },

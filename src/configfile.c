@@ -61,6 +61,8 @@ static const struct { const char *name; void (*func)(const Arg *); } func_table[
 	{ "swapright",      swapright      },
 	{ "zoom",           zoom           },
 	{ "killclient",     killclient     },
+	{ "minimize",       minimize       },
+	{ "restore",        restore        },
 	{ "view",           view           },
 	{ "viewprev",       viewprev       },
 	{ "viewnext",       viewnext       },

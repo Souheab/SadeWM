@@ -51,7 +51,7 @@
 #define CLEANMASK(mask)         (mask & ~(numlockmask|LockMask) & (ShiftMask|ControlMask|Mod1Mask|Mod2Mask|Mod3Mask|Mod4Mask|Mod5Mask))
 #define INTERSECT(x,y,w,h,m)    (MAX(0, MIN((x)+(w),(m)->wx+(m)->ww) - MAX((x),(m)->wx)) \
                                * MAX(0, MIN((y)+(h),(m)->wy+(m)->wh) - MAX((y),(m)->wy)))
-#define ISVISIBLE(C)            ((C->tags & C->mon->tagset[C->mon->seltags]))
+#define ISVISIBLE(C)            ((C->tags & C->mon->tagset[C->mon->seltags]) && !C->minimized)
 #define LENGTH(X)               (sizeof X / sizeof X[0])
 #define MOUSEMASK               (BUTTONMASK|PointerMotionMask)
 #define WIDTH(X)                ((X)->w + 2 * (X)->bw)
@@ -103,6 +103,7 @@ struct Client {
 	Monitor *mon;
 	Window win;
   bool maximized;
+  bool minimized;
 };
 
 typedef struct {
@@ -209,6 +210,7 @@ static void logselclientinfo(void);
 static void logselmoninfo(void);
 static void logselmonclients(void);
 static void manage(Window w, XWindowAttributes *wa);
+static void minimize(const Arg *arg);
 static void mappingnotify(XEvent *e);
 static void maprequest(XEvent *e);
 static void motionnotify(XEvent *e);
@@ -218,6 +220,7 @@ static bool onlyclient(Client *c);
 static void pop(Client *c);
 static void propertynotify(XEvent *e);
 static void quit(const Arg *arg);
+static void restore(const Arg *arg);
 static Monitor *recttomon(int x, int y, int w, int h);
 static void resize(Client *c, int x, int y, int w, int h, int interact);
 static void resizeclient(Client *c, int x, int y, int w, int h);
@@ -316,6 +319,11 @@ static Window root, wmcheckwin;
  * loaded_rules[] by applyconfigfile() when a [[rules]] section is present. */
 static const Rule *active_rules;
 static int         n_active_rules;
+
+/* minimize stack — LIFO of minimized clients */
+#define MINIMIZE_STACK_MAX 256
+static Client *minimize_stack[MINIMIZE_STACK_MAX];
+static int     minimize_stack_n = 0;
 
 /* active key set — points to compiled-in keys[] by default; redirected to
  * loaded_keys[] by applyconfigfile() when a [[keys]] section is present. */
@@ -1226,6 +1234,34 @@ killclient(const Arg *arg)
 		XSetErrorHandler(xerror);
 		XUngrabServer(dpy);
 	}
+}
+
+void
+minimize(const Arg *arg)
+{
+	Client *c = selmon->sel;
+	if (!c || c->minimized)
+		return;
+	if (minimize_stack_n >= MINIMIZE_STACK_MAX)
+		return;
+	c->minimized = true;
+	minimize_stack[minimize_stack_n++] = c;
+	XMoveWindow(dpy, c->win, WIDTH(c) * -2, c->y);
+	focus(NULL);
+	arrange(selmon);
+}
+
+void
+restore(const Arg *arg)
+{
+	if (minimize_stack_n <= 0)
+		return;
+	Client *c = minimize_stack[--minimize_stack_n];
+	c->minimized = false;
+	XMoveWindow(dpy, c->win, c->x, c->y);
+	arrange(c->mon);
+	focus(c);
+	restack(c->mon);
 }
 
 void
@@ -2267,6 +2303,15 @@ unmanage(Client *c, int destroyed)
 
 	detach(c);
 	detachstack(c);
+	/* remove from minimize stack if present */
+	for (int i = 0; i < minimize_stack_n; i++) {
+		if (minimize_stack[i] == c) {
+			memmove(&minimize_stack[i], &minimize_stack[i + 1],
+				(minimize_stack_n - i - 1) * sizeof(Client *));
+			minimize_stack_n--;
+			break;
+		}
+	}
 	if (!destroyed) {
 		wc.border_width = c->oldbw;
 		XGrabServer(dpy); /* avoid race conditions */

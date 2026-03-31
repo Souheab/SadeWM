@@ -82,6 +82,8 @@ static const Key keys[] = {
 	{ MODKEY|ControlMask,           XK_l,      setmfact,       {.f = +0.05} },
 	{ MODKEY|ShiftMask,             XK_Return, zoom,           {0} },
 	{ MODKEY,                       XK_q,      killclient,     {0} },
+	{ MODKEY,                       XK_n,      minimize,       {0} },
+	{ MODKEY|ControlMask,           XK_n,      restore,        {0} },
 	{ MODKEY,                       XK_t,      setlayout,      {.v = &layouts[TILE]} },
 	{ MODKEY|ShiftMask,             XK_f,      setlayout,      {.v = &layouts[FLOAT]} },
 	{ MODKEY,                       XK_f,      togglefullscr,  {0} },

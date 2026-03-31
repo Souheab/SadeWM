@@ -1,5 +1,5 @@
 # sadewm version
-VERSION = 6.5
+VERSION = 0.9
 
 # Customize below to fit your system
 

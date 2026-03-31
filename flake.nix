@@ -14,7 +14,7 @@
         in {
           default = pkgs.stdenv.mkDerivation {
             pname = "sadewm";
-            version = "6.5";
+            version = "0.9";
             src = self;
 
             nativeBuildInputs = with pkgs; [ gnumake pkg-config ];

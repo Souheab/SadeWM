@@ -1342,11 +1342,14 @@ manage(Window w, XWindowAttributes *wa)
 		wtype = *(Atom *)p;
 		XFree(p);
 		if (wtype == netatom[NetWMWindowTypeDock]) {
-			c->bw = 0;              /* No border */
+			c->bw = c->oldbw = 0;    /* Force zero border immediately */
 			c->isabove = 1;         /* Enforce always on top */
 			c->isfloating = 1;      /* Don't tile, keeps its own placement */
 			c->tags = ~0;           /* Visible on all tags */
 			c->isdock = true;       /* Mark as dock — excluded from focus cycling */
+			/* Bypass size hints to prevent the WM from "correcting" the 0,0 position */
+			c->hintsvalid = 1;
+			c->basew = c->baseh = c->minw = c->minh = c->maxw = c->maxh = 0;
 		}
 	}
 

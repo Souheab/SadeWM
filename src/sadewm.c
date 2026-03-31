@@ -837,16 +837,16 @@ focusstack(const Arg *arg)
 	if (!selmon->sel || (selmon->sel->isfullscreen && lockfullscreen))
 		return;
 	if (arg->i > 0) {
-		for (c = selmon->sel->next; c && (!ISVISIBLE(c) || c->isabove); c = c->next);
+		for (c = selmon->sel->next; c && !ISVISIBLE(c); c = c->next);
 		if (!c)
-			for (c = selmon->clients; c && (!ISVISIBLE(c) || c->isabove); c = c->next);
+			for (c = selmon->clients; c && !ISVISIBLE(c); c = c->next);
 	} else {
 		for (i = selmon->clients; i != selmon->sel; i = i->next)
-			if (ISVISIBLE(i) && !i->isabove)
+			if (ISVISIBLE(i))
 				c = i;
 		if (!c)
 			for (; i; i = i->next)
-				if (ISVISIBLE(i) && !i->isabove)
+				if (ISVISIBLE(i))
 					c = i;
 	}
 	if (c) {
@@ -1296,14 +1296,9 @@ manage(Window w, XWindowAttributes *wa)
 		wtype = *(Atom *)p;
 		XFree(p);
 		if (wtype == netatom[NetWMWindowTypeDock]) {
-			/* EXCEPTION: Manage quickshell as a normal window even if it's a dock */
-			char name[256];
-			bool is_quickshell = (gettextprop(w, netatom[NetWMName], name, sizeof(name)) && strstr(name, "quickshell"));
-			if (!is_quickshell) {
-				/* Don't manage dock windows - just map them */
-				XMapWindow(dpy, w);
-				return;
-			}
+			/* Don't manage dock windows - just map them */
+			XMapWindow(dpy, w);
+			return;
 		}
 	}
 
@@ -1324,14 +1319,6 @@ manage(Window w, XWindowAttributes *wa)
 	} else {
 		c->mon = selmon;
 		applyrules(c);
-	}
-
-	/* Overrides for quickshell */
-	if (strstr(c->name, "quickshell")) {
-		c->bw = 0;              /* No border */
-		c->isabove = 1;         /* Always on top */
-		c->isfloating = 1;      /* Don't tile */
-		c->tags = ~0;           /* All tags */
 	}
 
 	if (c->x + WIDTH(c) > c->mon->wx + c->mon->ww)

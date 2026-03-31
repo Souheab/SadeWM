@@ -18,13 +18,11 @@ typedef struct {
 
 typedef struct {
 	/* appearance */
-	unsigned int borderpx;  int has_borderpx;
-	unsigned int gappx;     int has_gappx;
-	unsigned int snap;      int has_snap;
-	char font[128];         int has_font;
-	/* colors[scheme][slot]: 0=fg, 1=bg, 2=border */
-	char colors[2][3][8];
-	int  has_colors[2][3];
+	unsigned int borderpx;    int has_borderpx;
+	unsigned int gappx;       int has_gappx;
+	unsigned int snap;        int has_snap;
+	char border_norm[8];      int has_border_norm;
+	char border_sel[8];       int has_border_sel;
 	/* layout */
 	float        mfact;           int has_mfact;
 	int          nmaster;         int has_nmaster;

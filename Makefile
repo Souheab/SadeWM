@@ -5,7 +5,7 @@ include config.mk
 
 VPATH = src
 
-SRC = drw.c sadewm.c util.c tomlc17.c
+SRC = sadewm.c util.c tomlc17.c
 OBJ = ${SRC:.c=.o}
 
 all: sadewm

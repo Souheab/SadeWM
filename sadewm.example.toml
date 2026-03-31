@@ -16,9 +16,6 @@ gappx = 10
 # Snap-to-edge distance in pixels when moving/resizing floating windows.
 snap = 32
 
-# Primary font (Xft font string).
-font = "monospace:size=10"
-
 # ---------------------------------------------------------------------------
 # Colors
 # All values are hex RGB strings in the form "#rrggbb".
@@ -26,15 +23,11 @@ font = "monospace:size=10"
 
 # Normal (unfocused) windows
 [colors.norm]
-fg     = "#bbbbbb"  # text / foreground
-bg     = "#222222"  # background
 border = "#444444"  # window border
 
 # Selected (focused) window
 [colors.sel]
-fg     = "#eeeeee"
-bg     = "#005577"
-border = "#0099ff"
+border = "#0099ff"  # window border
 
 # ---------------------------------------------------------------------------
 # Layout defaults

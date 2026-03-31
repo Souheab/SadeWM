@@ -39,29 +39,16 @@ configfile_load(const char *path, FileConfig *out)
 	v = toml_seek(root, "appearance.snap");
 	if (v.type == TOML_INT64) { out->snap = (unsigned int)v.u.int64; out->has_snap = 1; }
 
-	v = toml_seek(root, "appearance.font");
+	/* [colors.norm] / [colors.sel] — border only */
+	v = toml_seek(root, "colors.norm.border");
 	if (v.type == TOML_STRING) {
-		snprintf(out->font, sizeof out->font, "%s", v.u.s);
-		out->has_font = 1;
+		snprintf(out->border_norm, sizeof out->border_norm, "%s", v.u.s);
+		out->has_border_norm = 1;
 	}
-
-	/* [colors.norm] and [colors.sel] */
-	{
-		static const char *scheme_keys[2] = { "colors.norm", "colors.sel" };
-		static const char *slot_keys[3]   = { "fg", "bg", "border" };
-		int s, slot;
-		for (s = 0; s < 2; s++) {
-			toml_datum_t scheme = toml_seek(root, scheme_keys[s]);
-			if (scheme.type != TOML_TABLE) continue;
-			for (slot = 0; slot < 3; slot++) {
-				v = toml_get(scheme, slot_keys[slot]);
-				if (v.type == TOML_STRING) {
-					snprintf(out->colors[s][slot],
-					         sizeof out->colors[s][slot], "%s", v.u.s);
-					out->has_colors[s][slot] = 1;
-				}
-			}
-		}
+	v = toml_seek(root, "colors.sel.border");
+	if (v.type == TOML_STRING) {
+		snprintf(out->border_sel, sizeof out->border_sel, "%s", v.u.s);
+		out->has_border_sel = 1;
 	}
 
 	/* [layout] */
@@ -134,18 +121,11 @@ configfile_load(const char *path, FileConfig *out)
 static void
 applyconfigfile(const FileConfig *fc)
 {
-	if (fc->has_borderpx)     borderpx      = fc->borderpx;
-	if (fc->has_gappx)        gappx         = fc->gappx;
-	if (fc->has_snap)         snap          = fc->snap;
-	if (fc->has_font)         fonts[0]      = fc->font;
-
-	{
-		int s, slot;
-		for (s = 0; s < 2; s++)
-			for (slot = 0; slot < 3; slot++)
-				if (fc->has_colors[s][slot])
-					colors[s][slot] = fc->colors[s][slot];
-	}
+	if (fc->has_borderpx)      borderpx      = fc->borderpx;
+	if (fc->has_gappx)         gappx         = fc->gappx;
+	if (fc->has_snap)          snap          = fc->snap;
+	if (fc->has_border_norm)   snprintf(col_border_norm, sizeof col_border_norm, "%s", fc->border_norm);
+	if (fc->has_border_sel)    snprintf(col_border_sel,  sizeof col_border_sel,  "%s", fc->border_sel);
 
 	if (fc->has_mfact)          mfact          = fc->mfact;
 	if (fc->has_nmaster)        nmaster        = fc->nmaster;
@@ -186,21 +166,17 @@ configfile_init(const char *path)
 void
 configfile_print(void)
 {
-	static const char *scheme_name[2] = { "norm", "sel" };
-	static const char *slot_name[3]   = { "fg", "bg", "border" };
-	int s, slot, i;
+	int i;
 
 	printf("[appearance]\n");
 	printf("  borderpx      = %u\n", borderpx);
 	printf("  gappx         = %u\n", gappx);
 	printf("  snap          = %u\n", snap);
-	printf("  font          = \"%s\"\n", fonts[0]);
 
-	for (s = 0; s < 2; s++) {
-		printf("[colors.%s]\n", scheme_name[s]);
-		for (slot = 0; slot < 3; slot++)
-			printf("  %-6s        = \"%s\"\n", slot_name[slot], colors[s][slot]);
-	}
+	printf("[colors.norm]\n");
+	printf("  border        = \"%s\"\n", col_border_norm);
+	printf("[colors.sel]\n");
+	printf("  border        = \"%s\"\n", col_border_sel);
 
 	printf("[layout]\n");
 	printf("  mfact         = %.2f\n", mfact);

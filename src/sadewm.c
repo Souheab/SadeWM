@@ -44,6 +44,7 @@
 enum { CurNormal, CurResize, CurMove, CurLast }; /* cursor */
 enum { NetSupported, NetWMName, NetWMState, NetWMCheck,
        NetWMFullscreen, NetActiveWindow, NetWMWindowType,
+       NetWMStateAbove, NetWMStateStaysOnTop,
        NetWMWindowTypeDialog, NetWMWindowTypeDock, NetClientList, NetLast }; /* EWMH atoms */
 enum { WMProtocols, WMDelete, WMState, WMTakeFocus, WMLast }; /* default atoms */
 enum { ClkClientWin, ClkRootWin, ClkLast }; /* clicks */
@@ -84,6 +85,7 @@ struct Client {
 	Window win;
   bool maximized;
   bool minimized;
+  bool isabove;
 };
 
 typedef struct {
@@ -213,6 +215,7 @@ static void sendmon(Client *c, Monitor *m);
 static void setclientstate(Client *c, long state);
 static void setfocus(Client *c);
 static void setfullscreen(Client *c, int fullscreen);
+static void setabove(Client *c, int above);
 static void setgaps(const Arg *arg);
 static void setlayout(const Arg *arg);
 static void setmfact(const Arg *arg);
@@ -565,6 +568,12 @@ clientmessage(XEvent *e)
 		|| cme->data.l[2] == netatom[NetWMFullscreen])
 			setfullscreen(c, (cme->data.l[0] == 1 /* _NET_WM_STATE_ADD    */
 				|| (cme->data.l[0] == 2 /* _NET_WM_STATE_TOGGLE */ && !c->isfullscreen)));
+		if (cme->data.l[1] == netatom[NetWMStateAbove]
+		|| cme->data.l[2] == netatom[NetWMStateAbove]
+		|| cme->data.l[1] == netatom[NetWMStateStaysOnTop]
+		|| cme->data.l[2] == netatom[NetWMStateStaysOnTop])
+			setabove(c, (cme->data.l[0] == 1 /* _NET_WM_STATE_ADD    */
+				|| (cme->data.l[0] == 2 /* _NET_WM_STATE_TOGGLE */ && !c->isabove)));
 	} else if (cme->message_type == netatom[NetActiveWindow]) {
 		if (c != selmon->sel && !c->isurgent)
 			seturgent(c, 1);
@@ -1658,17 +1667,21 @@ restack(Monitor *m)
 
 	if (!m->sel)
 		return;
-	if (m->sel->isfloating || !m->lt->arrange)
+	if (m->sel->isfloating || m->sel->isabove || !m->lt->arrange)
 		XRaiseWindow(dpy, m->sel->win);
 	if (m->lt->arrange) {
 		wc.stack_mode = Below;
 		wc.sibling = root;
 		for (c = m->stack; c; c = c->snext)
-			if (!c->isfloating && ISVISIBLE(c)) {
+			if (!c->isfloating && !c->isabove && ISVISIBLE(c)) {
 				XConfigureWindow(dpy, c->win, CWSibling|CWStackMode, &wc);
 				wc.sibling = c->win;
 			}
 	}
+	/* raise all floating/above windows */
+	for (c = m->stack; c; c = c->snext)
+		if (ISVISIBLE(c) && (c->isfloating || c->isabove))
+			XRaiseWindow(dpy, c->win);
 	XSync(dpy, False);
 	while (XCheckMaskEvent(dpy, EnterWindowMask, &ev));
 }
@@ -1822,6 +1835,22 @@ setfullscreen(Client *c, int fullscreen)
 }
 
 void
+setabove(Client *c, int above)
+{
+	if (above && !c->isabove) {
+		XChangeProperty(dpy, c->win, netatom[NetWMState], XA_ATOM, 32,
+			PropModeReplace, (unsigned char*)&netatom[NetWMStateAbove], 1);
+		c->isabove = 1;
+		XRaiseWindow(dpy, c->win);
+	} else if (!above && c->isabove) {
+		XChangeProperty(dpy, c->win, netatom[NetWMState], XA_ATOM, 32,
+			PropModeReplace, (unsigned char*)0, 0);
+		c->isabove = 0;
+		arrange(c->mon);
+	}
+}
+
+void
 setgaps(const Arg *arg)
 {
 	if ((arg->i == 0) || (selmon->gappx + arg->i < 0))
@@ -1913,6 +1942,8 @@ setup(void)
 	netatom[NetWMCheck] = XInternAtom(dpy, "_NET_SUPPORTING_WM_CHECK", False);
 	netatom[NetWMFullscreen] = XInternAtom(dpy, "_NET_WM_STATE_FULLSCREEN", False);
 	netatom[NetWMWindowType] = XInternAtom(dpy, "_NET_WM_WINDOW_TYPE", False);
+	netatom[NetWMStateAbove] = XInternAtom(dpy, "_NET_WM_STATE_ABOVE", False);
+	netatom[NetWMStateStaysOnTop] = XInternAtom(dpy, "_NET_WM_STATE_STAYS_ON_TOP", False);
 	netatom[NetWMWindowTypeDialog] = XInternAtom(dpy, "_NET_WM_WINDOW_TYPE_DIALOG", False);
 	netatom[NetWMWindowTypeDock] = XInternAtom(dpy, "_NET_WM_WINDOW_TYPE_DOCK", False);
 	netatom[NetClientList] = XInternAtom(dpy, "_NET_CLIENT_LIST", False);
@@ -2559,6 +2590,8 @@ updatewindowtype(Client *c)
 
 	if (state == netatom[NetWMFullscreen])
 		setfullscreen(c, 1);
+	if (state == netatom[NetWMStateAbove] || state == netatom[NetWMStateStaysOnTop])
+		setabove(c, 1);
 	if (wtype == netatom[NetWMWindowTypeDialog])
 		c->isfloating = 1;
 }

@@ -17,6 +17,91 @@ static char loaded_rule_instance[CONFIGFILE_MAX_RULES][64];
 static char loaded_rule_title[CONFIGFILE_MAX_RULES][64];
 static Rule loaded_rules[CONFIGFILE_MAX_RULES];
 
+/* Persistent storage for merged keybindings. */
+static Key  loaded_keys[CONFIGFILE_MAX_KEYS];
+static char loaded_key_cmds[CONFIGFILE_MAX_KEYS][256];
+static const char *loaded_key_shcmd[CONFIGFILE_MAX_KEYS][4];
+
+/* ---- modifier name → mask lookup ---- */
+static const struct { const char *name; unsigned int mask; } mod_table[] = {
+	{ "super",   Mod4Mask    },
+	{ "alt",     Mod1Mask    },
+	{ "shift",   ShiftMask   },
+	{ "control", ControlMask },
+	{ "ctrl",    ControlMask },
+	{ NULL, 0 }
+};
+
+static unsigned int
+resolve_mods(const FileKey *fk)
+{
+	unsigned int mask = 0;
+	int i, j;
+	for (i = 0; i < fk->nmod; i++)
+		for (j = 0; mod_table[j].name; j++)
+			if (strcasecmp(fk->mod_strs[i], mod_table[j].name) == 0) {
+				mask |= mod_table[j].mask;
+				break;
+			}
+	return mask;
+}
+
+/* ---- action name → function pointer lookup ---- */
+static const struct { const char *name; void (*func)(const Arg *); } func_table[] = {
+	{ "spawn",          spawn          },
+	{ "focusstack",     focusstack     },
+	{ "focusup",        focusup        },
+	{ "focusdown",      focusdown      },
+	{ "focusleft",      focusleft      },
+	{ "focusright",     focusright     },
+	{ "focusmon",       focusmon       },
+	{ "swapup",         swapup         },
+	{ "swapdown",       swapdown       },
+	{ "swapleft",       swapleft       },
+	{ "swapright",      swapright      },
+	{ "zoom",           zoom           },
+	{ "killclient",     killclient     },
+	{ "view",           view           },
+	{ "viewprev",       viewprev       },
+	{ "viewnext",       viewnext       },
+	{ "toggleview",     toggleview     },
+	{ "tag",            tag            },
+	{ "toggletag",      toggletag      },
+	{ "tagmon",         tagmon         },
+	{ "setlayout",      setlayout      },
+	{ "setmfact",       setmfact       },
+	{ "setgaps",        setgaps        },
+	{ "incnmaster",     incnmaster     },
+	{ "togglefloating", togglefloating },
+	{ "togglefullscr",  togglefullscr  },
+	{ "togglemaximize", togglemaximize },
+	{ "toggletiledir",  toggletiledir  },
+	{ "movemouse",      movemouse      },
+	{ "resizemouse",    resizemouse    },
+	{ "quit",           quit           },
+	{ "togglebar",      togglebar      },
+	{ NULL, NULL }
+};
+
+static void (*resolve_func(const char *name))(const Arg *)
+{
+	int i;
+	for (i = 0; func_table[i].name; i++)
+		if (strcmp(name, func_table[i].name) == 0)
+			return func_table[i].func;
+	return NULL;
+}
+
+static const char *
+resolve_funcname(void (*func)(const Arg *))
+{
+	int i;
+	for (i = 0; func_table[i].name; i++)
+		if (func_table[i].func == func)
+			return func_table[i].name;
+	return "?";
+}
+
 static void
 configfile_load(const char *path, FileConfig *out)
 {
@@ -115,6 +200,88 @@ configfile_load(const char *path, FileConfig *out)
 		}
 	}
 
+	/* [[keys]] */
+	{
+		toml_datum_t keys_arr = toml_get(root, "keys");
+		if (keys_arr.type == TOML_ARRAY) {
+			int n = keys_arr.u.arr.size;
+			int i;
+			if (n > CONFIGFILE_MAX_KEYS) n = CONFIGFILE_MAX_KEYS;
+			out->has_keys = 1;
+			out->nkeys    = n;
+			for (i = 0; i < n; i++) {
+				toml_datum_t entry = keys_arr.u.arr.elem[i];
+				FileKey *fk = &out->fkeys[i];
+				if (entry.type != TOML_TABLE) continue;
+
+				/* mod = ["super", "shift"] */
+				v = toml_get(entry, "mod");
+				if (v.type == TOML_ARRAY) {
+					int nm = v.u.arr.size;
+					int j;
+					if (nm > 8) nm = 8;
+					fk->nmod = nm;
+					for (j = 0; j < nm; j++) {
+						toml_datum_t ms = v.u.arr.elem[j];
+						if (ms.type == TOML_STRING)
+							snprintf(fk->mod_strs[j], sizeof fk->mod_strs[j], "%s", ms.u.s);
+					}
+				}
+
+				v = toml_get(entry, "key");
+				if (v.type == TOML_STRING)
+					snprintf(fk->key, sizeof fk->key, "%s", v.u.s);
+
+				v = toml_get(entry, "action");
+				if (v.type == TOML_STRING)
+					snprintf(fk->action, sizeof fk->action, "%s", v.u.s);
+
+				v = toml_get(entry, "cmd");
+				if (v.type == TOML_STRING)
+					snprintf(fk->cmd, sizeof fk->cmd, "%s", v.u.s);
+
+				v = toml_get(entry, "layout");
+				if (v.type == TOML_STRING)
+					snprintf(fk->layout, sizeof fk->layout, "%s", v.u.s);
+
+				v = toml_get(entry, "arg_int");
+				if (v.type == TOML_INT64) { fk->arg_int = (int)v.u.int64; fk->has_arg_int = 1; }
+
+				v = toml_get(entry, "arg_uint");
+				if (v.type == TOML_INT64) { fk->arg_uint = (unsigned int)v.u.int64; fk->has_arg_uint = 1; }
+
+				v = toml_get(entry, "arg_float");
+				if      (v.type == TOML_FP64)  { fk->arg_float = (float)v.u.fp64;  fk->has_arg_float = 1; }
+				else if (v.type == TOML_INT64)  { fk->arg_float = (float)v.u.int64; fk->has_arg_float = 1; }
+			}
+		}
+	}
+
+	/* [[tagkeys]] */
+	{
+		toml_datum_t tk_arr = toml_get(root, "tagkeys");
+		if (tk_arr.type == TOML_ARRAY) {
+			int n = tk_arr.u.arr.size;
+			int i;
+			if (n > CONFIGFILE_MAX_KEYS) n = CONFIGFILE_MAX_KEYS;
+			out->has_tagkeys = 1;
+			out->ntagkeys    = n;
+			for (i = 0; i < n; i++) {
+				toml_datum_t entry = tk_arr.u.arr.elem[i];
+				FileTagKey *tk = &out->ftagkeys[i];
+				if (entry.type != TOML_TABLE) continue;
+
+				v = toml_get(entry, "key");
+				if (v.type == TOML_STRING)
+					snprintf(tk->key, sizeof tk->key, "%s", v.u.s);
+
+				v = toml_get(entry, "tag");
+				if (v.type == TOML_INT64)
+					tk->tag = (int)v.u.int64;
+			}
+		}
+	}
+
 	toml_free(res);
 }
 
@@ -153,6 +320,145 @@ applyconfigfile(const FileConfig *fc)
 		}
 		active_rules   = loaded_rules;
 		n_active_rules = n;
+	}
+
+	/* merge keybindings */
+	if (fc->has_keys || fc->has_tagkeys) {
+		int count, i, j;
+		/* start from compiled-in keys */
+		count = LENGTH(keys);
+		if (count > CONFIGFILE_MAX_KEYS) count = CONFIGFILE_MAX_KEYS;
+		for (i = 0; i < count; i++)
+			loaded_keys[i] = keys[i];
+
+		/* merge [[keys]] */
+		if (fc->has_keys) {
+			for (i = 0; i < fc->nkeys; i++) {
+				const FileKey *fk = &fc->fkeys[i];
+				unsigned int mod = resolve_mods(fk);
+				KeySym ks = XStringToKeysym(fk->key);
+				if (ks == NoSymbol) {
+					fprintf(stderr, "sadewm: unknown keysym \"%s\", skipping\n", fk->key);
+					continue;
+				}
+
+				/* action = "none" → unbind */
+				if (strcmp(fk->action, "none") == 0) {
+					for (j = 0; j < count; j++) {
+						if (loaded_keys[j].keysym == ks && loaded_keys[j].mod == mod) {
+							memmove(&loaded_keys[j], &loaded_keys[j+1],
+								(count - j - 1) * sizeof(Key));
+							count--;
+							break;
+						}
+					}
+					continue;
+				}
+
+				void (*func)(const Arg *) = resolve_func(fk->action);
+				if (!func) {
+					fprintf(stderr, "sadewm: unknown action \"%s\", skipping\n", fk->action);
+					continue;
+				}
+
+				/* build arg */
+				Arg arg = {0};
+				if (fk->cmd[0]) {
+					/* find a slot index for persistent storage */
+					int slot = -1;
+					for (j = 0; j < count; j++) {
+						if (loaded_keys[j].keysym == ks && loaded_keys[j].mod == mod) {
+							slot = j; break;
+						}
+					}
+					if (slot < 0) {
+						if (count >= CONFIGFILE_MAX_KEYS) continue;
+						slot = count;
+					}
+					snprintf(loaded_key_cmds[slot], sizeof loaded_key_cmds[slot],
+						"%s", fk->cmd);
+					loaded_key_shcmd[slot][0] = "/bin/sh";
+					loaded_key_shcmd[slot][1] = "-c";
+					loaded_key_shcmd[slot][2] = loaded_key_cmds[slot];
+					loaded_key_shcmd[slot][3] = NULL;
+					arg.v = loaded_key_shcmd[slot];
+				} else if (fk->layout[0]) {
+					if (strcmp(fk->layout, "tile") == 0)
+						arg.v = &layouts[TILE];
+					else if (strcmp(fk->layout, "float") == 0)
+						arg.v = &layouts[FLOAT];
+				} else if (fk->has_arg_float) {
+					arg.f = fk->arg_float;
+				} else if (fk->has_arg_uint) {
+					arg.ui = fk->arg_uint;
+				} else if (fk->has_arg_int) {
+					arg.i = fk->arg_int;
+				}
+
+				/* find existing (mod, keysym) to overwrite, or append */
+				int found = 0;
+				for (j = 0; j < count; j++) {
+					if (loaded_keys[j].keysym == ks && loaded_keys[j].mod == mod) {
+						loaded_keys[j].func = func;
+						loaded_keys[j].arg  = arg;
+						found = 1;
+						break;
+					}
+				}
+				if (!found && count < CONFIGFILE_MAX_KEYS) {
+					loaded_keys[count].mod    = mod;
+					loaded_keys[count].keysym = ks;
+					loaded_keys[count].func   = func;
+					loaded_keys[count].arg    = arg;
+					count++;
+				}
+			}
+		}
+
+		/* merge [[tagkeys]] */
+		if (fc->has_tagkeys) {
+			for (i = 0; i < fc->ntagkeys; i++) {
+				const FileTagKey *tk = &fc->ftagkeys[i];
+				KeySym ks = XStringToKeysym(tk->key);
+				if (ks == NoSymbol) {
+					fprintf(stderr, "sadewm: unknown tagkey keysym \"%s\", skipping\n", tk->key);
+					continue;
+				}
+				if (tk->tag < 0 || tk->tag > 8) continue;
+
+				struct { unsigned int mod; void (*func)(const Arg *); } tkmaps[4] = {
+					{ MODKEY,                         view       },
+					{ MODKEY|ControlMask,             toggleview },
+					{ MODKEY|ShiftMask,               tag        },
+					{ MODKEY|ControlMask|ShiftMask,   toggletag  },
+				};
+
+				int m;
+				for (m = 0; m < 4; m++) {
+					unsigned int mod = tkmaps[m].mod;
+					Arg arg = { .ui = 1u << tk->tag };
+					int found = 0;
+					for (j = 0; j < count; j++) {
+						if (loaded_keys[j].keysym == ks && loaded_keys[j].mod == mod) {
+							loaded_keys[j].func = tkmaps[m].func;
+							loaded_keys[j].arg  = arg;
+							found = 1;
+							break;
+						}
+					}
+					if (!found && count < CONFIGFILE_MAX_KEYS) {
+						loaded_keys[count].mod    = mod;
+						loaded_keys[count].keysym = ks;
+						loaded_keys[count].func   = tkmaps[m].func;
+						loaded_keys[count].arg    = arg;
+						count++;
+					}
+				}
+			}
+		}
+
+		active_keys   = loaded_keys;
+		n_active_keys = count;
 	}
 }
 
@@ -196,5 +502,42 @@ configfile_print(void)
 		       r->instance ? r->instance : "(any)",
 		       r->title    ? r->title    : "(any)",
 		       r->tags, r->isfloating, r->monitor);
+	}
+
+	printf("[[keys]]  (%d active)\n", n_active_keys);
+	for (i = 0; i < n_active_keys; i++) {
+		const Key *k = &active_keys[i];
+		const char *ksname = XKeysymToString(k->keysym);
+		const char *fname  = resolve_funcname(k->func);
+		char modbuf[64] = "";
+		if (k->mod & Mod4Mask)    strcat(modbuf, "super+");
+		if (k->mod & Mod1Mask)    strcat(modbuf, "alt+");
+		if (k->mod & ControlMask) strcat(modbuf, "ctrl+");
+		if (k->mod & ShiftMask)   strcat(modbuf, "shift+");
+		/* remove trailing '+' */
+		{
+			size_t len = strlen(modbuf);
+			if (len > 0 && modbuf[len-1] == '+') modbuf[len-1] = '\0';
+		}
+		printf("  [%d] %-24s %-8s -> %-18s",
+		       i, modbuf, ksname ? ksname : "?", fname);
+		if (strcmp(fname, "spawn") == 0 && k->arg.v) {
+			const char **argv = (const char **)k->arg.v;
+			/* SHCMD: argv = {"/bin/sh", "-c", cmd, NULL} */
+			if (argv[0] && argv[1] && strcmp(argv[1], "-c") == 0 && argv[2])
+				printf(" cmd=\"%s\"", argv[2]);
+			else if (argv[0])
+				printf(" cmd=\"%s\"", argv[0]);
+		} else if (strcmp(fname, "setlayout") == 0 && k->arg.v) {
+			const Layout *lt = (const Layout *)k->arg.v;
+			printf(" layout=\"%s\"", lt->symbol);
+		} else if (strcmp(fname, "setmfact") == 0) {
+			printf(" f=%.2f", k->arg.f);
+		} else if (k->arg.ui != 0) {
+			printf(" ui=0x%x", k->arg.ui);
+		} else if (k->arg.i != 0) {
+			printf(" i=%d", k->arg.i);
+		}
+		printf("\n");
 	}
 }

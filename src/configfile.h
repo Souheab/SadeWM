@@ -6,6 +6,7 @@
 #define CONFIGFILE_H
 
 #define CONFIGFILE_MAX_RULES 64
+#define CONFIGFILE_MAX_KEYS  256
 
 typedef struct {
 	char class[64];
@@ -15,6 +16,23 @@ typedef struct {
 	int isfloating;
 	int monitor;
 } FileRule;
+
+typedef struct {
+	char mod_strs[8][16];
+	int  nmod;
+	char key[32];
+	char action[32];
+	char cmd[256];
+	char layout[16];
+	int          arg_int;    int has_arg_int;
+	unsigned int arg_uint;   int has_arg_uint;
+	float        arg_float;  int has_arg_float;
+} FileKey;
+
+typedef struct {
+	char key[32];
+	int  tag;
+} FileTagKey;
 
 typedef struct {
 	/* appearance */
@@ -34,6 +52,14 @@ typedef struct {
 	int has_rules;
 	int nrules;
 	FileRule rules[CONFIGFILE_MAX_RULES];
+	/* keys */
+	int has_keys;
+	int nkeys;
+	FileKey fkeys[CONFIGFILE_MAX_KEYS];
+	/* tagkeys */
+	int has_tagkeys;
+	int ntagkeys;
+	FileTagKey ftagkeys[CONFIGFILE_MAX_KEYS];
 } FileConfig;
 
 /* Load the TOML config at `path` and apply it to the running config.

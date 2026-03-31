@@ -71,3 +71,60 @@ isfloating = true
 class     = "discord"
 tags_mask = 256
 monitor   = -1  # -1 means "any monitor"
+
+# ---------------------------------------------------------------------------
+# Keybindings
+# Each [[keys]] entry overrides or adds a keybinding.  Keybindings are
+# MERGED on top of the compiled-in defaults — you only need to list
+# keys you want to change, add, or remove.
+#
+# Fields:
+#   mod       — array of modifier names: "super", "alt", "shift", "control"/"ctrl"
+#   key       — X11 keysym name (without XK_ prefix): "h", "Return", "space", "1"
+#   action    — function name: "spawn", "focusleft", "killclient", "view", etc.
+#               Use "none" to unbind a compiled-in key.
+#   cmd       — (spawn only) shell command string
+#   layout    — (setlayout only) "tile" or "float"
+#   arg_int   — integer argument (e.g. focusstack direction +1/-1)
+#   arg_uint  — unsigned int argument (e.g. tag mask)
+#   arg_float — float argument (e.g. setmfact delta)
+# ---------------------------------------------------------------------------
+
+# Example: launch dmenu instead of rofi
+# [[keys]]
+# mod    = ["super"]
+# key    = "p"
+# action = "spawn"
+# cmd    = "dmenu_run"
+
+# Example: unbind Super+q (killclient)
+# [[keys]]
+# mod    = ["super"]
+# key    = "q"
+# action = "none"
+
+# Example: override mfact step to 0.1
+# [[keys]]
+# mod       = ["super", "control"]
+# key       = "h"
+# action    = "setmfact"
+# arg_float = -0.1
+
+# ---------------------------------------------------------------------------
+# Tag keybindings (shorthand)
+# Each [[tagkeys]] entry generates the four standard bindings for one tag:
+#   Super+key         → view tag
+#   Super+Ctrl+key    → toggleview tag
+#   Super+Shift+key   → tag (move window to tag)
+#   Super+Ctrl+Shift  → toggletag
+# The "tag" field is the 0-based tag index (0–8).
+# ---------------------------------------------------------------------------
+
+# Example: bind F1–F9 to tags 1–9 instead of number keys
+# [[tagkeys]]
+# key = "F1"
+# tag = 0
+#
+# [[tagkeys]]
+# key = "F2"
+# tag = 1

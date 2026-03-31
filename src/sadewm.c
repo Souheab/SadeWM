@@ -109,7 +109,7 @@ typedef struct {
 	unsigned int mod;
 	KeySym keysym;
 	void (*func)(const Arg *);
-	const Arg arg;
+	Arg arg;
 } Key;
 
 typedef struct {
@@ -316,6 +316,11 @@ static Window root, wmcheckwin;
  * loaded_rules[] by applyconfigfile() when a [[rules]] section is present. */
 static const Rule *active_rules;
 static int         n_active_rules;
+
+/* active key set — points to compiled-in keys[] by default; redirected to
+ * loaded_keys[] by applyconfigfile() when a [[keys]] section is present. */
+static const Key *active_keys;
+static int        n_active_keys;
 
 /* compile-time check if all tags fit into an unsigned int bit array. */
 struct NumTags { char limitexceeded[LENGTH(tags) > 31 ? -1 : 1]; };
@@ -1144,12 +1149,12 @@ grabkeys(void)
 		if (!syms)
 			return;
 		for (k = start; k <= end; k++)
-			for (i = 0; i < LENGTH(keys); i++)
+			for (i = 0; i < (unsigned int)n_active_keys; i++)
 				/* skip modifier codes, we do that ourselves */
-				if (keys[i].keysym == syms[(k - start) * skip])
+				if (active_keys[i].keysym == syms[(k - start) * skip])
 					for (j = 0; j < LENGTH(modifiers); j++)
 						XGrabKey(dpy, k,
-							 keys[i].mod | modifiers[j],
+							 active_keys[i].mod | modifiers[j],
 							 root, True,
 							 GrabModeAsync, GrabModeAsync);
 		XFree(syms);
@@ -1200,11 +1205,11 @@ keypress(XEvent *e)
 
 	ev = &e->xkey;
 	keysym = XKeycodeToKeysym(dpy, (KeyCode)ev->keycode, 0);
-	for (i = 0; i < LENGTH(keys); i++)
-		if (keysym == keys[i].keysym
-		&& CLEANMASK(keys[i].mod) == CLEANMASK(ev->state)
-		&& keys[i].func)
-			keys[i].func(&(keys[i].arg));
+	for (i = 0; i < (unsigned int)n_active_keys; i++)
+		if (keysym == active_keys[i].keysym
+		&& CLEANMASK(active_keys[i].mod) == CLEANMASK(ev->state)
+		&& active_keys[i].func)
+			active_keys[i].func(&(active_keys[i].arg));
 }
 
 void
@@ -2644,6 +2649,8 @@ main(int argc, char *argv[])
   homepath = getenv("HOME");
   active_rules   = rules;
   n_active_rules = LENGTH(rules);
+  active_keys    = keys;
+  n_active_keys  = LENGTH(keys);
   {
     char cfgpath[512];
     if (cfgpath_arg) {

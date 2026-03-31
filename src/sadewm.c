@@ -1296,9 +1296,23 @@ manage(Window w, XWindowAttributes *wa)
 		wtype = *(Atom *)p;
 		XFree(p);
 		if (wtype == netatom[NetWMWindowTypeDock]) {
-			/* Don't manage dock windows - just map them */
-			XMapWindow(dpy, w);
-			return;
+			/* EXCEPTION: If the dock also has NetWMStateAbove or NetWMStateStaysOnTop, 
+			 * manage it as a client so we can ensure it stays on top, but keep it
+			 * floating and borderless so it keeps control of its placement. */
+			bool isabove = false;
+			if (XGetWindowProperty(dpy, w, netatom[NetWMState], 0L, sizeof(Atom), False, XA_ATOM,
+				&da, &di, &dl, &dl, &p) == Success && p) {
+				Atom s = *(Atom *)p;
+				XFree(p);
+				if (s == netatom[NetWMStateAbove] || s == netatom[NetWMStateStaysOnTop])
+					isabove = true;
+			}
+			
+			if (!isabove) {
+				/* Don't manage normal dock windows - just map them */
+				XMapWindow(dpy, w);
+				return;
+			}
 		}
 	}
 
@@ -1319,6 +1333,19 @@ manage(Window w, XWindowAttributes *wa)
 	} else {
 		c->mon = selmon;
 		applyrules(c);
+	}
+
+	/* Overrides for DOCKS that are marked as ABOVE/STAYSONTOP */
+	if (XGetWindowProperty(dpy, w, netatom[NetWMWindowType], 0L, sizeof(Atom), False, XA_ATOM,
+		&da, &di, &dl, &dl, &p) == Success && p) {
+		wtype = *(Atom *)p;
+		XFree(p);
+		if (wtype == netatom[NetWMWindowTypeDock]) {
+			c->bw = 0;              /* No border */
+			c->isabove = 1;         /* Enforce always on top */
+			c->isfloating = 1;      /* Don't tile, keeps its own placement */
+			c->tags = ~0;           /* Visible on all tags */
+		}
 	}
 
 	if (c->x + WIDTH(c) > c->mon->wx + c->mon->ww)

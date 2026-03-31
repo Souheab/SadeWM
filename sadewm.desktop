@@ -3,4 +3,4 @@ Name=sadewm
 Comment=Dynamic window manager
 Exec=sadewm
 Icon=sadewm
-Type=Application
+Type=XSession

@@ -8,6 +8,57 @@
       systems = [ "x86_64-linux" "aarch64-linux" ];
       forAllSystems = f: nixpkgs.lib.genAttrs systems f;
     in {
+      packages = forAllSystems (system:
+        let
+          pkgs = nixpkgs.legacyPackages.${system};
+        in {
+          default = pkgs.stdenv.mkDerivation {
+            pname = "sadewm";
+            version = "6.5";
+            src = self;
+
+            nativeBuildInputs = with pkgs; [ gnumake pkg-config ];
+            buildInputs = with pkgs; [
+              libX11
+              libXft
+              libXinerama
+              fontconfig
+              freetype
+            ];
+
+            # Override the hardcoded paths in config.mk so the Nix store paths
+            # are used instead of /usr/X11R6 and /usr/include/freetype2.
+            makeFlags = [
+              "X11INC=${pkgs.libX11.dev}/include"
+              "X11LIB=${pkgs.libX11}/lib"
+              "FREETYPEINC=${pkgs.freetype.dev}/include/freetype2"
+            ];
+
+            installFlags = [ "PREFIX=${placeholder "out"}" ];
+
+            meta = with pkgs.lib; {
+              description = "sadewm";
+              license = licenses.mit;
+              platforms = [ "x86_64-linux" "aarch64-linux" ];
+              mainProgram = "sadewm";
+            };
+          };
+        });
+
+      nixosModules.default = { config, lib, pkgs, system ? pkgs.system, ... }:
+        let
+          cfg = config.programs.sadewm;
+        in {
+          options.programs.sadewm.enable =
+            lib.mkEnableOption "sadewm window manager";
+
+          config = lib.mkIf cfg.enable {
+            services.xserver.displayManager.sessionPackages = [
+              self.packages.${system}.default
+            ];
+          };
+        };
+
       devShells = forAllSystems (system:
         let
           pkgs = nixpkgs.legacyPackages.${system};

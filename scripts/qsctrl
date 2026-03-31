@@ -6,6 +6,7 @@ Usage:
     qsctrl tags get               Print tag state as "sel|occ|urg" (awesome-client)
     qsctrl tags view   <N>        Switch to tag N exclusively
     qsctrl tags toggle <N>        Toggle tag N on/off
+    qsctrl tags watch             Emit tag state JSON on each change (persistent)
 
     qsctrl volume get             Print current volume as a bare integer (pamixer)
 
@@ -52,6 +53,7 @@ def run(cmd: list[str]) -> None:
     subprocess.run(cmd, check=False)
 
 
+
 def cmd_tags(args: list[str]) -> None:
     if not args:
         print_usage()
@@ -86,6 +88,22 @@ def cmd_tags(args: list[str]) -> None:
         tag_num = int(args[1])
         mask = 1 << (tag_num - 1)
         sadewm_request({"cmd": "toggleview", "mask": mask})
+
+    elif action == "state":
+        res = sadewm_request({"cmd": "tags_state"})
+        print(json.dumps(res))
+
+    elif action == "watch":
+        import time
+        last = None
+        while True:
+            res = sadewm_request({"cmd": "tags_state"})
+            if res.get("ok"):
+                tags_state = res.get("tags_state")
+                if tags_state != last:
+                    last = tags_state
+                    print(json.dumps(res), flush=True)
+            time.sleep(0.05)
 
     else:
         print_usage()

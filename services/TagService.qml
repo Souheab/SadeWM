@@ -2,49 +2,26 @@ pragma Singleton
 
 import Quickshell
 import Quickshell.Io
-import QtQuick
-import ".."
 
 Singleton {
-    property var selected: []
-    property var occupied: []
-    property var urgent: []
+    property var tags: []
 
     Process {
         id: proc
-        command: ["python3", Qt.resolvedUrl("../scripts/qsctrl").toString().replace("file://", ""), "tags", "get"]
+        running: true
+        command: [Qt.resolvedUrl("../scripts/qsctrl"), "tags", "watch"]
 
         stdout: SplitParser {
             onRead: data => {
-                const parts = data.trim().split("|");
-                if (parts.length === 3) {
-                    const selMask = parseInt(parts[0]) || 0;
-                    const occMask = parseInt(parts[1]) || 0;
-                    const urgMask = parseInt(parts[2]) || 0;
-
-                    const sel = [];
-                    const occ = [];
-                    const urg = [];
-
-                    for (let i = 0; i < Theme.tagCount; i++) {
-                        const mask = 1 << i;
-                        if (selMask & mask) sel.push(i + 1);
-                        if (occMask & mask) occ.push(i + 1);
-                        if (urgMask & mask) urg.push(i + 1);
+                try {
+                    const json = JSON.parse(data);
+                    if (json.ok && Array.isArray(json.tags_state)) {
+                        TagService.tags = json.tags_state;
                     }
-
-                    TagService.selected = sel;
-                    TagService.occupied = occ;
-                    TagService.urgent = urg;
+                } catch (e) {
+                    console.error("Failed to parse tags_state JSON:", e);
                 }
             }
         }
-    }
-
-    Timer {
-        interval: Theme.tagPollInterval
-        running: true
-        repeat: true
-        onTriggered: proc.running = true
     }
 }

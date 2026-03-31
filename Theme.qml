@@ -25,7 +25,7 @@ Singleton {
     readonly property color dotUrgent: "#f7768e"
     // readonly property color dotSelected: "#2ac3de"
     readonly property color dotSelected: "#7aa2f7"
-    readonly property color dotOccupied: "#7aa2f7"
+    readonly property color dotOccupied: "#666f99"
     readonly property color dotEmpty: "#414868"
 
     // ── Font ──

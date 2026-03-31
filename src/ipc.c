@@ -138,8 +138,10 @@ ipc_handle_tags_state(int fd)
   unsigned int occ = 0;
   Client *c;
 
-  for (c = selmon->clients; c; c = c->next)
-    occ |= c->tags;
+  for (c = selmon->clients; c; c = c->next) {
+    if ((c->tags & TAGMASK) != TAGMASK)
+      occ |= c->tags;
+  }
 
   n += snprintf(buf + n, sizeof(buf) - n, "{\"ok\":true,\"tags_state\":[");
   for (i = 0; i < LENGTH(tags); i++) {

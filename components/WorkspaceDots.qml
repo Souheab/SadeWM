@@ -21,7 +21,7 @@ Row {
         return null;
     }
 
-    property bool launcherOpen: false
+    property bool menuOpen: false
     property real popupX: 0
     property real popupY: 0
 
@@ -32,15 +32,15 @@ Row {
         popupY = pos.y + 4;
     }
 
-    onLauncherOpenChanged: {
-        if (popupLayer) popupLayer.popupVisible = launcherOpen;
+    onMenuOpenChanged: {
+        if (popupLayer) popupLayer.popupVisible = menuOpen;
     }
 
     Connections {
         target: workspaceDots.popupLayer
         function onPopupVisibleChanged() {
             if (workspaceDots.popupLayer && !workspaceDots.popupLayer.popupVisible)
-                workspaceDots.launcherOpen = false;
+                workspaceDots.menuOpen = false;
         }
     }
 
@@ -68,11 +68,11 @@ Row {
             hoverEnabled: true
             cursorShape: Qt.PointingHandCursor
             onClicked: {
-                if (workspaceDots.launcherOpen) {
-                    workspaceDots.launcherOpen = false;
+                if (workspaceDots.menuOpen) {
+                    workspaceDots.menuOpen = false;
                 } else {
                     workspaceDots.updatePopupPosition();
-                    workspaceDots.launcherOpen = true;
+                    workspaceDots.menuOpen = true;
                 }
             }
         }
@@ -143,12 +143,12 @@ Row {
         }
     }
 
-    // ── Launcher popup ────────────────────────────────────────────────────
-    LauncherWidget {
+    // ── Quick menu popup ─────────────────────────────────────────────────────
+    QuickMenu {
         popupLayer: workspaceDots.popupLayer
-        launcherOpen: workspaceDots.launcherOpen
+        menuOpen: workspaceDots.menuOpen
         anchorX: workspaceDots.popupX
         anchorY: workspaceDots.popupY
-        onCloseRequested: workspaceDots.launcherOpen = false
+        onCloseRequested: workspaceDots.menuOpen = false
     }
 }

@@ -102,7 +102,10 @@ PanelWindow {
         anchors.right: parent.right
         anchors.bottom: parent.bottom
         visible: popupLayer.maskActive
-        onClicked: popupLayer.popupVisible = false
+        onClicked: {
+            popupLayer.popupVisible = false
+            popupLayer.mediaVisible = false
+        }
     }
 
     // Popup layer: sits on top of everything.
@@ -111,13 +114,14 @@ PanelWindow {
         id: popupLayer
         objectName: "popupLayer"
         property bool popupVisible: false
+        property bool mediaVisible: false
         // maskActive leads popupVisible on open (expands immediately)
         // and trails it on close (collapses after the animation finishes)
         property bool maskActive: false
         anchors.fill: parent
 
         onPopupVisibleChanged: {
-            if (popupVisible) {
+            if (popupVisible || mediaVisible) {
                 maskCollapseTimer.stop();
                 maskActive = true;
             } else {
@@ -125,10 +129,28 @@ PanelWindow {
             }
         }
 
+        onMediaVisibleChanged: {
+            if (popupVisible || mediaVisible) {
+                maskCollapseTimer.stop();
+                maskActive = true;
+            } else {
+                maskCollapseTimer.restart();
+            }
+        }
+
+        MediaDetails {
+            id: mediaPopup
+            popupLayer: popupLayer
+            menuOpen: popupLayer.mediaVisible
+            anchorX: (root.width - Theme.mediaCardWidth) / 2
+            anchorY: Theme.barHeight + 4
+            onCloseRequested: popupLayer.mediaVisible = false
+        }
+
         Timer {
             id: maskCollapseTimer
             interval: Theme.popupAnimDuration
-            onTriggered: popupLayer.maskActive = false
+            onTriggered: popupLayer.maskActive = (popupLayer.popupVisible || popupLayer.mediaVisible)
         }
     }
 }

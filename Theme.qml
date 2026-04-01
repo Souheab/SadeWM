@@ -74,6 +74,22 @@ Singleton {
     readonly property int launcherMaxHeight: 480
     readonly property int launcherItemHeight: 52
 
+    // ── Media ──
+    readonly property int mediaCardHeight: 180
+    readonly property int mediaCardWidth: 320
+    readonly property int mediaLabelMaxWidth: 800
+    readonly property color mediaProgressTrackBg: "#1f2237"
+    readonly property color mediaProgressColor: "#7aa2f7"
+    readonly property string iconPlay: "\uf04b"
+    readonly property string iconPause: "\uf04c"
+    readonly property string iconNext: "\uf051"
+    readonly property string iconPrev: "\uf048"
+
+    // ── Buttons
+    // Default circular button background (distinct from menu background)
+    readonly property color buttonBg: "#323851"
+    readonly property color buttonHoverBg: menuHover
+
     // ── Animation ──
     readonly property int popupAnimDuration: 500
     readonly property int popupAnimEasing: Easing.OutQuart

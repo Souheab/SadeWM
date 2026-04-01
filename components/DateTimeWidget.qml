@@ -1,15 +1,20 @@
 import QtQuick
+import QtQuick.Layouts
 import Quickshell
 import ".."
+import "../services"
 
 Rectangle {
     id: dateTimeWidget
-    width: timeText.width + Theme.containerPadding
+    width: Math.ceil(pillLayout.implicitWidth)
     height: Theme.containerHeight
     radius: Theme.containerRadius
-    color: dateArea.containsMouse ? Theme.menuHover : Theme.containerBg
+    color: Theme.containerBg
+
+    Behavior on width { NumberAnimation { duration: 300; easing.type: Easing.OutQuart } }
 
     property bool dateOpen: false
+    property bool mediaOpen: false
     property string timeStr: ""
     property string dateStr: ""
 
@@ -44,11 +49,21 @@ Rectangle {
         }
     }
 
+    // Media Popup handling
+    onMediaOpenChanged: {
+        if (popupLayer) popupLayer.mediaVisible = mediaOpen;
+    }
+
     Connections {
         target: dateTimeWidget.popupLayer
         function onPopupVisibleChanged() {
             if (dateTimeWidget.popupLayer && !dateTimeWidget.popupLayer.popupVisible) {
                 dateTimeWidget.dateOpen = false;
+            }
+        }
+        function onMediaVisibleChanged() {
+            if (dateTimeWidget.popupLayer && !dateTimeWidget.popupLayer.mediaVisible) {
+                dateTimeWidget.mediaOpen = false;
             }
         }
     }
@@ -65,25 +80,119 @@ Rectangle {
         }
     }
 
-    Text {
-        id: timeText
-        anchors.centerIn: parent
-        text: dateTimeWidget.timeStr
-        color: Theme.textColor
-        font.family: Theme.monoFont
-        font.pixelSize: Theme.textFontSize
-    }
-
-    MouseArea {
-        id: dateArea
+    RowLayout {
+        id: pillLayout
         anchors.fill: parent
-        hoverEnabled: true
-        onClicked: {
-            if (dateTimeWidget.dateOpen) {
-                dateTimeWidget.dateOpen = false;
-            } else {
-                dateTimeWidget.updatePopupPosition();
-                dateTimeWidget.dateOpen = true;
+        spacing: 0
+
+        // Time Section
+        Rectangle {
+            Layout.fillWidth: !MediaService.hasMedia
+            Layout.preferredWidth: timeText.implicitWidth + Theme.containerPadding * (MediaService.hasMedia ? 1 : 2)
+            Layout.fillHeight: true
+            radius: parent.height / 2
+            color: dateArea.containsMouse ? Theme.menuHover : "transparent"
+
+            // Clip corners for the non-outer edges when media is active
+            Rectangle {
+                anchors.right: parent.right
+                width: parent.radius
+                height: parent.height
+                color: parent.color
+                visible: MediaService.hasMedia && parent.color !== "transparent"
+            }
+
+            MouseArea {
+                id: dateArea
+                anchors.fill: parent
+                hoverEnabled: true
+                onClicked: {
+                    if (dateTimeWidget.dateOpen) {
+                        dateTimeWidget.dateOpen = false;
+                    } else {
+                        dateTimeWidget.updatePopupPosition();
+                        dateTimeWidget.dateOpen = true;
+                    }
+                }
+
+                Text {
+                    id: timeText
+                    anchors.centerIn: parent
+                    text: dateTimeWidget.timeStr
+                    color: Theme.textColor
+                    font.family: Theme.monoFont
+                    font.pixelSize: Theme.textFontSize
+                }
+            }
+        }
+
+        // Separator
+        Rectangle {
+            Layout.preferredWidth: 1
+            Layout.fillHeight: true
+            Layout.topMargin: 4
+            Layout.bottomMargin: 4
+            color: Theme.textColor
+            opacity: 0.2
+            visible: MediaService.hasMedia
+        }
+
+        // Now Playing Section
+        Rectangle {
+            Layout.preferredHeight: parent.height
+            Layout.preferredWidth: Math.min(mediaLabel.implicitWidth + Theme.spacingSM + Theme.containerPadding, 300)
+            Layout.fillHeight: true
+            radius: parent.height / 2
+            color: mediaArea.containsMouse ? Theme.menuHover : "transparent"
+            visible: MediaService.hasMedia
+
+            // Square the left corners to meet the separator nicely
+            Rectangle {
+                anchors.left: parent.left
+                width: parent.radius
+                height: parent.height
+                color: parent.color
+                visible: parent.color !== "transparent"
+            }
+
+            MouseArea {
+                id: mediaArea
+                anchors.fill: parent
+                hoverEnabled: true
+
+                onClicked: {
+                    if (dateTimeWidget.mediaOpen) {
+                        dateTimeWidget.mediaOpen = false;
+                    } else {
+                        dateTimeWidget.mediaOpen = true;
+                    }
+                }
+
+                Row {
+                    anchors.centerIn: parent
+                    spacing: Theme.spacingXS
+                    
+                    Text {
+                        id: iconText
+                        text: "\uf001" // Music icon
+                        color: Theme.textColor
+                        font.family: Theme.iconFont
+                        font.pixelSize: 12
+                        opacity: 0.7
+                        anchors.verticalCenter: parent.verticalCenter
+                    }
+
+                    Text {
+                        id: mediaLabel
+                        text: MediaService.title
+                        color: Theme.textColor
+                        font.family: Theme.monoFont
+                        font.pixelSize: Theme.textFontSize
+                        elide: Text.ElideRight
+                        width: Math.min(implicitWidth, Theme.mediaLabelMaxWidth)
+                        anchors.verticalCenter: parent.verticalCenter
+                    }
+                }
             }
         }
     }

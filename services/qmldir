@@ -2,3 +2,5 @@ singleton TagService TagService.qml
 singleton VolumeService VolumeService.qml
 singleton WiFiService WiFiService.qml
 singleton AppService AppService.qml
+singleton MediaService MediaService.qml
+DebugService DebugService.qml

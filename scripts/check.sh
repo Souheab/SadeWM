@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# Validate Quickshell config without a display server.
+# Validate Quickshell config with a virtual X11 display (xvfb-run).
 # Usage: ./scripts/check.sh [path-to-config-dir]
+# Requires: xvfb, libxcb-cursor0  (apt install xvfb libxcb-cursor0)
 # Exits 0 if the config loads successfully, non-zero on errors.
 
 set -euo pipefail
@@ -8,15 +9,21 @@ set -euo pipefail
 config_dir="${1:-$(cd "$(dirname "$0")/.." && pwd)}"
 timeout_sec="${QS_CHECK_TIMEOUT:-5}"
 
-export QT_QPA_PLATFORM=offscreen
 export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/tmp/qs-runtime}"
 mkdir -p "$XDG_RUNTIME_DIR"
 
-# Run quickshell with a timeout, capturing output for analysis.
+# Force software rendering — Xvfb has no GPU/GLX support
+export QT_QUICK_BACKEND=software
+export LIBGL_ALWAYS_SOFTWARE=1
+
+# xvfb-run provides a virtual X11 display so PanelWindow loads normally.
 set +e
-output=$(timeout "$timeout_sec" quickshell -p "$config_dir" 2>&1)
+output=$(xvfb-run --auto-servernum timeout "$timeout_sec" quickshell -p "$config_dir" 2>&1)
 exit_code=$?
 set -e
+
+# Strip ANSI color codes for reliable text matching
+output=$(printf '%s' "$output" | sed 's/\x1b\[[0-9;]*m//g')
 
 echo "$output"
 
@@ -27,13 +34,9 @@ if [[ $exit_code -eq 124 ]]; then
   exit 0
 fi
 
-# "No PanelWindow backend loaded" is expected in offscreen mode (no compositor).
-# This error cascades upward ("Type Bar unavailable" etc.) but means QML
-# parsing/type-checking of the actual config passed — treat as success.
-if echo "$output" | grep -q "No PanelWindow backend loaded" \
-   && ! echo "$output" | grep -qE "Cannot assign|is not a type"; then
-  echo "Config OK (no compositor — panel backend unavailable, but config parsed successfully)"
-  exit 0
+# Any real ERROR lines indicate a genuine config problem.
+if echo "$output" | grep -q " ERROR"; then
+  exit 1
 fi
 
 exit "$exit_code"

@@ -1,46 +1,52 @@
 #!/usr/bin/env bash
+# Evaluate a QML expression inside a headless Quickshell instance.
+# Uses xvfb-run so PanelWindow loads correctly without a real display.
+# Requires: xvfb, libxcb-cursor0  (apt install xvfb libxcb-cursor0)
+#
+# Usage: ./scripts/test_eval.sh "<expression>"
+# Example: ./scripts/test_eval.sh "1+1"
 
-# Use the first argument as the code to evaluate, default to "2 + 2" if empty
+set -euo pipefail
+
 CODE="${1:-2 + 2}"
 
 # Create a temporary runtime directory to avoid conflicts with any running instance
 export XDG_RUNTIME_DIR=$(mktemp -d -t qs-test-XXXXXX)
 
-# Force Qt QML to use the software renderer instead of OpenGL/GLX for headless testing
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+REPO_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+CONFIG="$REPO_DIR/test_shell.qml"
+
+# Force software rendering — Xvfb has no GPU/GLX support
 export QT_QUICK_BACKEND=software
 export LIBGL_ALWAYS_SOFTWARE=1
 
 echo "Starting Quickshell in the background..."
-# Run quickshell redirecting output to a log file
-quickshell -p "$(pwd)/shell.qml" > "$XDG_RUNTIME_DIR/qs.log" 2>&1 &
+xvfb-run --auto-servernum quickshell -p "$CONFIG" > "$XDG_RUNTIME_DIR/qs.log" 2>&1 &
 QS_PID=$!
 
-# Set a trap to ensure we always clean up the background process
-trap 'if kill -0 $QS_PID 2>/dev/null; then kill $QS_PID; fi' EXIT
+trap 'kill $QS_PID 2>/dev/null; sleep 0.2; rm -rf -- "$XDG_RUNTIME_DIR" 2>/dev/null; true' EXIT
 
 echo "Waiting for Quickshell to initialize..."
-# Poll for up to 5 seconds to see if it stays alive and creates its runtime folder
-for i in {1..10}; do
+for i in {1..20}; do
     if ! kill -0 $QS_PID 2>/dev/null; then
         break
     fi
-    # Wait until quickshell creates its IPC socket directory
     if [ -d "$XDG_RUNTIME_DIR/quickshell" ]; then
-        sleep 1 # Give it one more second to finish loading QML components
+        sleep 1
         break
     fi
     sleep 0.5
 done
 
-# Check if the process is still running
 if kill -0 $QS_PID 2>/dev/null; then
-    echo "Quickshell is running successfully (PID $QS_PID)."
+    echo "Quickshell is running (PID $QS_PID)."
     echo "Evaluating: $CODE"
     echo "--------------------------------------------------------"
-    python3 "$(pwd)/scripts/qsctrl" debug eval "$CODE"
+    quickshell -p "$CONFIG" ipc call debug evaluate "$CODE"
     echo "--------------------------------------------------------"
 else
-    echo "Error: Quickshell failed to start or crashed. Here are the logs:"
+    echo "Error: Quickshell failed to start or crashed. Logs:"
     echo "--------------------------------------------------------"
     cat "$XDG_RUNTIME_DIR/qs.log"
     echo "--------------------------------------------------------"

@@ -12,8 +12,6 @@ Rectangle {
     property bool menuOpen: false
     property real anchorX: 0
     property real anchorY: 0
-    property bool scrubbing: false
-    property real scrubPosition: 0
     
     signal closeRequested()
     
@@ -108,76 +106,18 @@ Rectangle {
             Layout.fillWidth: true
             spacing: Theme.spacingXS
 
-            Rectangle {
-                id: progressTrack
+            SmoothSlider {
+                id: seekBar
                 Layout.fillWidth: true
-                height: 4
-                radius: 2
-                color: Theme.mediaProgressTrackBg
-
-                Rectangle {
-                    id: progressFill
-                    anchors.left: parent.left
-                    width: parent.width * (MediaService.length > 0 ? ((mediaDetails.scrubbing ? mediaDetails.scrubPosition : MediaService.position) / MediaService.length) : 0)
-                    height: parent.height
-                    radius: 2
-                    color: Theme.mediaProgressColor
-                }
-
-                // Seek thumb
-                Rectangle {
-                    id: thumb
-                    width: 10
-                    height: 10
-                    radius: 5
-                    color: Theme.buttonBg
-                    border.color: Theme.textColor
-                    border.width: 1
-                    anchors.verticalCenter: parent.verticalCenter
-                    x: Math.max(0, Math.min(progressTrack.width - width, (MediaService.length > 0 ? ((mediaDetails.scrubbing ? mediaDetails.scrubPosition : MediaService.position) / MediaService.length) : 0) * progressTrack.width - width / 2))
-                }
-
-                MouseArea {
-                    id: progressArea
-                    anchors.fill: parent
-                    hoverEnabled: true
-                    cursorShape: Qt.PointingHandCursor
-
-                    property real seekValue: 0
-
-                    function _mouseToRatio(mouse) {
-                        const w = progressTrack.width;
-                        if (w <= 0) return 0;
-                        return Math.max(0, Math.min(1, mouse.x / w));
-                    }
-
-                    onPressed: function(mouse) {
-                        mediaDetails.scrubbing = true;
-                        seekValue = _mouseToRatio(mouse);
-                        mediaDetails.scrubPosition = seekValue * MediaService.length;
-                    }
-
-                    onPositionChanged: function(mouse) {
-                        if (pressed) {
-                            seekValue = _mouseToRatio(mouse);
-                            mediaDetails.scrubPosition = seekValue * MediaService.length;
-                        }
-                    }
-
-                    onReleased: function(mouse) {
-                        seekValue = _mouseToRatio(mouse);
-                        const target = seekValue * MediaService.length;
-                        mediaDetails.scrubbing = false;
-                        MediaService.seekTo(target);
-                    }
-                }
+                value: MediaService.length > 0 ? MediaService.position / MediaService.length : 0
+                onReleased: v => MediaService.seekTo(v * MediaService.length)
             }
 
             RowLayout {
                 Layout.fillWidth: true
                 Text {
                     id: currentTimeLabel
-                    text: MediaService.formatTime(mediaDetails.scrubbing ? mediaDetails.scrubPosition : MediaService.position)
+                    text: MediaService.formatTime(seekBar.displayValue * MediaService.length)
                     color: Theme.textColor
                     font.family: Theme.monoFont
                     font.pixelSize: 11

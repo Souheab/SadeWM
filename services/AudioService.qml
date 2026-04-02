@@ -22,6 +22,28 @@ Singleton {
 
     readonly property string binary: Qt.resolvedUrl("../scripts/pulse_monitor").toString().replace("file://", "")
 
+    // Track active slider drags; while > 0 suppress monitor state writes to
+    // prevent Repeater delegate destruction mid-drag.
+    property int  _activeDrags:   0
+    property var  _bufferedState: null
+
+    function beginDrag() { _activeDrags++ }
+    function endDrag() {
+        if (_activeDrags > 0) _activeDrags--
+        if (_activeDrags === 0 && _bufferedState !== null) {
+            _applyState(_bufferedState)
+            _bufferedState = null
+        }
+    }
+
+    function _applyState(obj) {
+        sinks         = obj.sinks          ?? []
+        sources       = obj.sources        ?? []
+        sinkInputs    = obj.sink_inputs    ?? []
+        defaultSink   = obj.default_sink   ?? ""
+        defaultSource = obj.default_source ?? ""
+    }
+
     // ── Streaming monitor process ───────────────────────────────────────
     // pulse_monitor monitor streams one JSON line per state change.
     Process {
@@ -33,11 +55,11 @@ Singleton {
                 try {
                     const obj = JSON.parse(data.trim())
                     if (obj.event === "state") {
-                        root.sinks         = obj.sinks         ?? []
-                        root.sources       = obj.sources       ?? []
-                        root.sinkInputs    = obj.sink_inputs   ?? []
-                        root.defaultSink   = obj.default_sink  ?? ""
-                        root.defaultSource = obj.default_source ?? ""
+                        if (root._activeDrags > 0) {
+                            root._bufferedState = obj
+                        } else {
+                            root._applyState(obj)
+                        }
                     }
                 } catch (_) {}
             }
@@ -64,6 +86,42 @@ Singleton {
         const proc = Qt.createQmlObject('import Quickshell.Io; Process {}', root)
         proc.command = [root.binary].concat(args)
         proc.running = true
+    }
+
+    // Single persistent process + one-slot pending queue for drag operations.
+    // Prevents process pile-up when called at 60 fps without array churn.
+    Process {
+        id: applyProc
+        property var pendingArgs: null
+        command: [root.binary]
+        onRunningChanged: {
+            if (!running && pendingArgs !== null) {
+                command = [root.binary].concat(pendingArgs)
+                pendingArgs = null
+                running = true
+            }
+        }
+    }
+
+    function _applyQueued(args) {
+        if (applyProc.running) {
+            applyProc.pendingArgs = args
+            return
+        }
+        applyProc.command = [root.binary].concat(args)
+        applyProc.pendingArgs = null
+        applyProc.running = true
+    }
+
+    // Drag-only variants: no array churn, process-queued. Use for onDragging.
+    function applySinkVolume(index, vol) {
+        _applyQueued(["set-sink-volume", String(index), Math.max(0, Math.min(1, vol)).toFixed(4)])
+    }
+    function applySourceVolume(index, vol) {
+        _applyQueued(["set-source-volume", String(index), Math.max(0, Math.min(1, vol)).toFixed(4)])
+    }
+    function applySinkInputVolume(index, vol) {
+        _applyQueued(["set-sink-input-volume", String(index), Math.max(0, Math.min(1, vol)).toFixed(4)])
     }
 
     function setSinkVolume(index, vol) {

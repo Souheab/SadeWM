@@ -132,35 +132,15 @@ Rectangle {
                     required property var modelData
                     required property int index
 
-                    property real dragValue: modelData.brightness
-                    property bool isDragging: false
-                    readonly property real displayBrightness: isDragging ? dragValue : modelData.brightness
-
-                    // Keep dragValue in sync when not dragging (external brightness changes)
-                    onModelDataChanged: if (!isDragging) dragValue = modelData.brightness
-
                     width: popupContent.width
                     height: 52
 
-                    // Fires every 16ms while isDragging — calls applyBrightness (no array churn)
-                    // repeat:true/running binding means it self-manages: no restart() needed
-                    Timer {
-                        id: applyTimer
-                        interval: 16
-                        repeat: true
-                        running: displayItem.isDragging
-                        onTriggered: BrightnessService.applyBrightness(
-                            displayItem.modelData.name, displayItem.dragValue)
-                    }
-
                     Column {
-                        id: displayColumn
                         anchors.fill: parent
                         anchors.leftMargin: 4
                         anchors.rightMargin: 4
                         spacing: 6
 
-                        // Display name + percentage
                         Row {
                             width: parent.width
                             spacing: 6
@@ -176,7 +156,7 @@ Rectangle {
 
                             Text {
                                 id: pctLabel
-                                text: Math.round(displayItem.displayBrightness * 100) + "%"
+                                text: Math.round(brightnessSlider.displayValue * 100) + "%"
                                 color: Theme.dotSelected
                                 font.family: Theme.monoFont
                                 font.pixelSize: Theme.textFontSize - 1
@@ -184,58 +164,13 @@ Rectangle {
                             }
                         }
 
-                        // Slider track (visual only — interaction handled by fullAreaMouse below)
-                        Rectangle {
-                            id: track
+                        SmoothSlider {
+                            id: brightnessSlider
                             width: parent.width
-                            height: 4
-                            radius: 2
-                            color: Theme.mediaProgressTrackBg
-
-                            Rectangle {
-                                width: parent.width * displayItem.displayBrightness
-                                height: parent.height
-                                radius: 2
-                                color: Theme.mediaProgressColor
-                            }
-
-                            Rectangle {
-                                id: thumb
-                                width: 12; height: 12; radius: 6
-                                color: Theme.buttonBg
-                                border.color: Theme.textColor
-                                border.width: 1
-                                anchors.verticalCenter: parent.verticalCenter
-                                x: Math.max(0, Math.min(track.width - width,
-                                    displayItem.displayBrightness * track.width - width / 2))
-                            }
-                        }
-                    }
-
-                    // Full-height MouseArea so vertical drift never breaks the grab.
-                    // QML maintains the mouse grab outside bounds once pressed, so
-                    // the user can drag anywhere in the popup and keep control.
-                    MouseArea {
-                        id: fullAreaMouse
-                        anchors.fill: parent
-                        preventStealing: true
-                        cursorShape: Qt.PointingHandCursor
-
-                        // mouse.x is in displayItem coords; track starts at column leftMargin (4px)
-                        function _ratio(mx) {
-                            return Math.max(0.05, Math.min(1.0, (mx - 4) / track.width))
-                        }
-
-                        onPressed: mouse => {
-                            displayItem.dragValue = _ratio(mouse.x)
-                            displayItem.isDragging = true
-                        }
-                        onPositionChanged: mouse => {
-                            if (pressed) displayItem.dragValue = _ratio(mouse.x)
-                        }
-                        onReleased: mouse => {
-                            displayItem.isDragging = false
-                            BrightnessService.setDisplay(displayItem.modelData.name, displayItem.dragValue)
+                            value: modelData.brightness
+                            min:   0.05
+                            onDragging: v => BrightnessService.applyBrightness(modelData.name, v)
+                            onReleased: v => BrightnessService.setDisplay(modelData.name, v)
                         }
                     }
                 }

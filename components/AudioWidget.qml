@@ -145,13 +145,15 @@ Rectangle {
                     property string label: ""
                     property string sublabel: ""
                     property bool isDefault: false
-                    signal volumeChanged(real v)
+                    signal volumeDragging(real v)
+                    signal volumeReleased(real v)
                     signal muteToggled()
                     signal selectClicked()
+                    // Exposed so Repeater delegates can wire AudioService.beginDrag/endDrag
+                    readonly property bool dragging: volSlider.isDragging
 
                     width: parent ? parent.width : 0
                     height: sublabel !== "" ? 64 : 52
-                    property bool _dragging: false
 
                     // Row: bullet/check + label + mute button
                     Row {
@@ -235,48 +237,24 @@ Rectangle {
                         anchors.rightMargin: 4
                         height: 16
 
-                        Rectangle {
-                            id: vTrack
-                            anchors.verticalCenter: parent.verticalCenter
+                        SmoothSlider {
+                            id: volSlider
                             anchors.left: parent.left
                             anchors.right: pctTxt.left
                             anchors.rightMargin: 6
-                            height: 4
-                            radius: 2
-                            color: sliderRoot.muted ? Qt.alpha(Theme.mediaProgressTrackBg, 0.5)
-                                                    : Theme.mediaProgressTrackBg
-                            opacity: sliderRoot.muted ? 0.5 : 1.0
-
-                            Rectangle {
-                                width: parent.width * (sliderRoot._dragging ? sliderRoot.value : sliderRoot.value)
-                                height: parent.height; radius: 2
-                                color: sliderRoot.muted ? Theme.dotOccupied : Theme.mediaProgressColor
-                            }
-                            Rectangle {
-                                width: 12; height: 12; radius: 6
-                                color: Theme.buttonBg
-                                border.color: Theme.textColor; border.width: 1
-                                anchors.verticalCenter: parent.verticalCenter
-                                x: Math.max(0, Math.min(vTrack.width - width, sliderRoot.value * vTrack.width - width / 2))
-                            }
-
-                            MouseArea {
-                                anchors.fill: parent
-                                anchors.margins: -6
-                                hoverEnabled: true
-                                cursorShape: Qt.PointingHandCursor
-                                function _r(mx) { return Math.max(0, Math.min(1, (mx - 6) / vTrack.width)) }
-                                onPressed:  mouse => { sliderRoot._dragging = true;  sliderRoot.volumeChanged(_r(mouse.x)) }
-                                onPositionChanged: mouse => { if (pressed) sliderRoot.volumeChanged(_r(mouse.x)) }
-                                onReleased: mouse => { sliderRoot._dragging = false; sliderRoot.volumeChanged(_r(mouse.x)) }
-                            }
+                            anchors.verticalCenter: parent.verticalCenter
+                            value:     sliderRoot.value
+                            opacity:   sliderRoot.muted ? 0.5 : 1.0
+                            fillColor: sliderRoot.muted ? Theme.dotOccupied : Theme.mediaProgressColor
+                            onDragging: v => sliderRoot.volumeDragging(v)
+                            onReleased: v => sliderRoot.volumeReleased(v)
                         }
 
                         Text {
                             id: pctTxt
                             anchors.right: parent.right
                             anchors.verticalCenter: parent.verticalCenter
-                            text: Math.round(sliderRoot.value * 100) + "%"
+                            text: Math.round(volSlider.displayValue * 100) + "%"
                             color: Qt.alpha(Theme.textColor, 0.55)
                             font.family: Theme.monoFont
                             font.pixelSize: Theme.textFontSize - 2
@@ -307,7 +285,9 @@ Rectangle {
                         value:     modelData.volume
                         muted:     modelData.muted
                         isDefault: modelData.name === AudioService.defaultSink
-                        onVolumeChanged: v => AudioService.setSinkVolume(modelData.index, v)
+                        onDraggingChanged: dragging ? AudioService.beginDrag() : AudioService.endDrag()
+                        onVolumeDragging: v => AudioService.applySinkVolume(modelData.index, v)
+                        onVolumeReleased: v => AudioService.setSinkVolume(modelData.index, v)
                         onMuteToggled:   AudioService.toggleSinkMute(modelData.index)
                         onSelectClicked: AudioService.setDefaultSink(modelData.name)
                     }
@@ -335,7 +315,9 @@ Rectangle {
                         value:     modelData.volume
                         muted:     modelData.muted
                         isDefault: modelData.name === AudioService.defaultSource
-                        onVolumeChanged: v => AudioService.setSourceVolume(modelData.index, v)
+                        onDraggingChanged: dragging ? AudioService.beginDrag() : AudioService.endDrag()
+                        onVolumeDragging: v => AudioService.applySourceVolume(modelData.index, v)
+                        onVolumeReleased: v => AudioService.setSourceVolume(modelData.index, v)
                         onMuteToggled:   AudioService.toggleSourceMute(modelData.index)
                         onSelectClicked: AudioService.setDefaultSource(modelData.name)
                     }
@@ -420,43 +402,26 @@ Rectangle {
                                 anchors.leftMargin: 18
                                 height: 12
 
-                                Rectangle {
-                                    id: stTrack
-                                    anchors.verticalCenter: parent.verticalCenter
+                                SmoothSlider {
+                                    id: streamSlider
                                     anchors.left: parent.left
                                     anchors.right: stPct.left
                                     anchors.rightMargin: 6
-                                    height: 4; radius: 2
-                                    color: Theme.mediaProgressTrackBg
-                                    opacity: modelData.muted ? 0.4 : 1.0
-
-                                    Rectangle {
-                                        width: parent.width * modelData.volume
-                                        height: parent.height; radius: 2
-                                        color: modelData.muted ? Theme.dotOccupied : Theme.mediaProgressColor
-                                    }
-                                    Rectangle {
-                                        width: 10; height: 10; radius: 5
-                                        color: Theme.buttonBg
-                                        border.color: Theme.textColor; border.width: 1
-                                        anchors.verticalCenter: parent.verticalCenter
-                                        x: Math.max(0, Math.min(stTrack.width - width, modelData.volume * stTrack.width - width / 2))
-                                    }
-                                    MouseArea {
-                                        anchors.fill: parent; anchors.margins: -6
-                                        hoverEnabled: true; cursorShape: Qt.PointingHandCursor
-                                        function _r(mx) { return Math.max(0, Math.min(1, (mx - 6) / stTrack.width)) }
-                                        onPressed: mouse => AudioService.setSinkInputVolume(modelData.index, _r(mouse.x))
-                                        onPositionChanged: mouse => { if (pressed) AudioService.setSinkInputVolume(modelData.index, _r(mouse.x)) }
-                                        onReleased: mouse => AudioService.setSinkInputVolume(modelData.index, _r(mouse.x))
-                                    }
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    thumbSize: 10
+                                    value:     modelData.volume
+                                    opacity:   modelData.muted ? 0.4 : 1.0
+                                    fillColor: modelData.muted ? Theme.dotOccupied : Theme.mediaProgressColor
+                                    onIsDraggingChanged: isDragging ? AudioService.beginDrag() : AudioService.endDrag()
+                                    onDragging: v => AudioService.applySinkInputVolume(modelData.index, v)
+                                    onReleased: v => AudioService.setSinkInputVolume(modelData.index, v)
                                 }
 
                                 Text {
                                     id: stPct
                                     anchors.right: parent.right
                                     anchors.verticalCenter: parent.verticalCenter
-                                    text: Math.round(modelData.volume * 100) + "%"
+                                    text: Math.round(streamSlider.displayValue * 100) + "%"
                                     color: Qt.alpha(Theme.textColor, 0.45)
                                     font.family: Theme.monoFont
                                     font.pixelSize: Theme.textFontSize - 3

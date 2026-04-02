@@ -18,7 +18,9 @@
         "bbenoist.Nix",
         "mads-hartmann.bash-ide-vscode",
         "timonwong.shellcheck",
-        "nickmillerdev.qml-tools"
+        "nickmillerdev.qml-tools",
+        "theqtcompany.qt-qml",
+        "ms-python.python"
       ],
       "settings": {
         "files.associations": {

@@ -62,7 +62,7 @@ PanelWindow {
                 }
             }
 
-            // Right section - Volume + Power
+            // Right section - Tray + Settings cog
             Item {
                 width: parent.width * 0.33
                 height: parent.height
@@ -74,25 +74,13 @@ PanelWindow {
                     spacing: Theme.spacingSM
                     layoutDirection: Qt.RightToLeft
 
-                    PowerMenu {
+                    SettingsButton {
                         anchors.verticalCenter: parent.verticalCenter
                     }
 
                     SystemTrayWidget {
                         anchors.verticalCenter: parent.verticalCenter
                         shellWindow: root
-                    }
-
-                    NetworkWidget {
-                        anchors.verticalCenter: parent.verticalCenter
-                    }
-
-                    BrightnessWidget {
-                        anchors.verticalCenter: parent.verticalCenter
-                    }
-
-                    AudioWidget {
-                        anchors.verticalCenter: parent.verticalCenter
                     }
                 }
             }
@@ -150,6 +138,9 @@ PanelWindow {
             anchorY: Theme.barHeight + 4
             onCloseRequested: popupLayer.mediaVisible = false
         }
+
+        // Notification toast popups (always visible on top)
+        NotificationPopups {}
 
         Timer {
             id: maskCollapseTimer

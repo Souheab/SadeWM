@@ -66,6 +66,7 @@ Singleton {
 
     // ── Popup dimensions ──
     readonly property int sidebarWidth: 320
+    readonly property int settingsPanelWidth: 360
     readonly property int calendarWidth: 300
     readonly property int confirmDialogWidth: 280
     readonly property int sectionHeaderHeight: 40

@@ -28,22 +28,46 @@ Singleton {
         id: setProc
         property string display: ""
         property string value: "1.000"
+        // Queue at most one pending call so xrandr processes never pile up
+        property string pendingDisplay: ""
+        property string pendingValue: ""
         command: [BrightnessService.script, "set", setProc.display, setProc.value]
-        onRunningChanged: if (!running) listProc.running = true
+        onRunningChanged: {
+            if (!running && pendingValue !== "") {
+                display = pendingDisplay
+                value = pendingValue
+                pendingDisplay = ""
+                pendingValue = ""
+                running = true
+            }
+        }
     }
 
+    // Only fires xrandr — does NOT touch displays[]. Safe to call at 60fps during drag.
+    function applyBrightness(name, value) {
+        const v = Math.max(0.05, Math.min(1.0, value)).toFixed(3)
+        if (setProc.running) {
+            setProc.pendingDisplay = name
+            setProc.pendingValue = v
+            return
+        }
+        setProc.display = name
+        setProc.value = v
+        setProc.pendingDisplay = ""
+        setProc.pendingValue = ""
+        setProc.running = true
+    }
+
+    // Optimistic state update + xrandr. Use on release/click, not during drag.
     function setDisplay(name, value) {
         const v = Math.max(0.05, Math.min(1.0, value))
-        // Optimistic local update for snappy slider feel
         const idx = displays.findIndex(d => d.name === name)
         if (idx >= 0) {
             const copy = displays.slice()
             copy[idx] = Object.assign({}, copy[idx], { brightness: v })
             displays = copy
         }
-        setProc.display = name
-        setProc.value   = v.toFixed(3)
-        setProc.running = true
+        applyBrightness(name, v)
     }
 
     Component.onCompleted: listProc.running = true

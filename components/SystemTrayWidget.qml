@@ -5,6 +5,14 @@ import Quickshell.Widgets
 import ".."
 
 Rectangle {
+    function resolveIcon(icon) {
+        if (icon.includes("?path=")) {
+            const [name, path] = icon.split("?path=");
+            return Qt.resolvedUrl(path + "/" + name.slice(name.lastIndexOf("/") + 1));
+        }
+        return icon;
+    }
+
     // Must be set to the enclosing PanelWindow (pass `root` from Bar.qml)
     property var shellWindow: null
 
@@ -36,7 +44,7 @@ Rectangle {
                 IconImage {
                     anchors.centerIn: parent
                     implicitSize: 16
-                    source: modelData.icon
+                    source: resolveIcon(modelData.icon)
                     mipmap: true
                 }
 

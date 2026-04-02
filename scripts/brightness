@@ -1,0 +1,43 @@
+#!/usr/bin/env bash
+# Brightness control via xrandr (X11 software gamma).
+#
+# Usage:
+#   brightness list                  - JSON array: [{name, brightness}]
+#   brightness get <output>          - print current brightness as float
+#   brightness set <output> <value>  - set brightness (0.05–1.0)
+
+set -euo pipefail
+
+list_displays() {
+    local output="" connected=0 first=1
+    printf '['
+    while IFS= read -r line; do
+        if [[ "$line" =~ ^([A-Za-z0-9_-]+)[[:space:]]+(connected|disconnected) ]]; then
+            output="${BASH_REMATCH[1]}"
+            connected=$([[ "${BASH_REMATCH[2]}" == "connected" ]] && echo 1 || echo 0)
+        elif [[ $connected -eq 1 && "$line" =~ [Bb]rightness:[[:space:]]*([0-9.]+) ]]; then
+            [[ $first -eq 0 ]] && printf ','
+            first=0
+            printf '{"name":"%s","brightness":%s}' "$output" "${BASH_REMATCH[1]}"
+            connected=0  # capture first brightness entry per output only
+        fi
+    done < <(xrandr --verbose 2>/dev/null)
+    printf ']'
+    echo
+}
+
+get_display() {
+    xrandr --verbose 2>/dev/null \
+        | awk -v t="$1" 'BEGIN{f=0} $1==t && $2~/connected/{f=1} f && /Brightness:/{print $2; exit}'
+}
+
+set_display() {
+    xrandr --output "$1" --brightness "$2"
+}
+
+case "${1:-}" in
+    list) list_displays ;;
+    get)  [[ $# -ge 2 ]] && get_display "$2" || { echo "Usage: brightness get <output>" >&2; exit 1; } ;;
+    set)  [[ $# -ge 3 ]] && set_display "$2" "$3" || { echo "Usage: brightness set <output> <value>" >&2; exit 1; } ;;
+    *)    echo "Usage: brightness list|get <output>|set <output> <value>" >&2; exit 1 ;;
+esac

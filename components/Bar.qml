@@ -87,7 +87,11 @@ PanelWindow {
                         anchors.verticalCenter: parent.verticalCenter
                     }
 
-                    VolumeWidget {
+                    BrightnessWidget {
+                        anchors.verticalCenter: parent.verticalCenter
+                    }
+
+                    AudioWidget {
                         anchors.verticalCenter: parent.verticalCenter
                     }
                 }

@@ -3,4 +3,6 @@ singleton VolumeService VolumeService.qml
 singleton WiFiService WiFiService.qml
 singleton AppService AppService.qml
 singleton MediaService MediaService.qml
+singleton BrightnessService BrightnessService.qml
+singleton AudioService AudioService.qml
 DebugService DebugService.qml

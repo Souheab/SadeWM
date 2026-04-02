@@ -90,6 +90,9 @@ Singleton {
     readonly property color buttonBg: "#323851"
     readonly property color buttonHoverBg: menuHover
 
+    // ── Volume / Audio ──
+    readonly property color mutedColor: "#f7768e"
+
     // ── Animation ──
     readonly property int popupAnimDuration: 500
     readonly property int popupAnimEasing: Easing.OutQuart

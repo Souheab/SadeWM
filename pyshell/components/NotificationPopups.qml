@@ -10,7 +10,17 @@ Item {
     readonly property int toastTopMargin: Theme.barHeight + 8
     readonly property int toastRightMargin: Theme.edgeMargin
 
+    // Bounding rect of the visible toast column — used by Shell.qml to update the
+    // X11 input shape so only the toast area captures pointer events.
+    readonly property rect toastAreaRect: Qt.rect(
+        parent ? parent.width - toastWidth - toastRightMargin : 0,
+        toastTopMargin,
+        toastWidth,
+        toastColumn.height
+    )
+
     Column {
+        id: toastColumn
         anchors.top: parent.top
         anchors.topMargin: root.toastTopMargin
         anchors.right: parent.right

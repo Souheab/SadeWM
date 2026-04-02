@@ -83,6 +83,9 @@ Rectangle {
         border.width: 1
         clip: true
 
+        onHeightChanged: if (audioWidget.popupOpen && audioWidget.popupLayer)
+            Qt.callLater(audioWidget.popupLayer.updateInputRegion)
+
         property real slideOffset: audioWidget.popupOpen ? 0 : -12
         transform: Translate { y: sidebar.slideOffset }
         Behavior on slideOffset { NumberAnimation { duration: Theme.popupAnimDuration; easing.type: Theme.popupAnimEasing } }

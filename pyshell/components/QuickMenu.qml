@@ -32,6 +32,9 @@ Rectangle {
     border.color: Theme.menuBorder
     border.width: 1
 
+    onHeightChanged: if (configMenu.menuOpen && configMenu.popupLayer)
+        Qt.callLater(configMenu.popupLayer.updateInputRegion)
+
     property real slideOffset: configMenu.menuOpen ? 0 : -12
     transform: Translate { y: configMenu.slideOffset }
     Behavior on slideOffset { NumberAnimation { duration: Theme.popupAnimDuration; easing.type: Theme.popupAnimEasing } }

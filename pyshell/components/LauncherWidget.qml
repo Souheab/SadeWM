@@ -26,6 +26,9 @@ Rectangle {
     border.width: 1
     clip: true
 
+    onHeightChanged: if (launcher.launcherOpen && launcher.popupLayer)
+        Qt.callLater(launcher.popupLayer.updateInputRegion)
+
     property real slideOffset: launcher.launcherOpen ? 0 : -12
     transform: Translate { y: launcher.slideOffset }
     Behavior on slideOffset { NumberAnimation { duration: Theme.popupAnimDuration; easing.type: Theme.popupAnimEasing } }

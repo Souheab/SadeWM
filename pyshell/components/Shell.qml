@@ -108,6 +108,39 @@ Window {
         property bool maskActive: false
         anchors.fill: parent
 
+        // Build the X11 input-shape rect list and push it to WindowHelper.
+        // Only areas where real UI is rendered will capture pointer events;
+        // everything else passes through to windows below so the WM's
+        // focus-follows-mouse keeps working.
+        function updateInputRegion() {
+            var rects = [{x: 0, y: 0, width: Screen.width, height: Theme.barHeight}]
+
+            // Panel popups are reparented into popupLayer at runtime.
+            // Iterate children and collect every visible, non-full-screen item.
+            for (var i = 0; i < children.length; i++) {
+                var c = children[i]
+                if (c === notifPopups) continue   // handled separately below
+                if (!c.visible || c.opacity < 0.01) continue
+                if (c.width <= 0 || c.height <= 0) continue
+                rects.push({
+                    x: Math.round(c.x), y: Math.round(c.y),
+                    width: Math.round(c.width), height: Math.round(c.height)
+                })
+            }
+
+            // Toast notifications: the overlay Item is full-screen, so we
+            // derive the actual column bounding rect from notifPopups.
+            if (toastsActive && notifPopups.toastAreaRect.height > 0) {
+                var tr = notifPopups.toastAreaRect
+                rects.push({
+                    x: Math.round(tr.x), y: Math.round(tr.y),
+                    width: Math.round(tr.width), height: Math.round(tr.height)
+                })
+            }
+
+            WindowHelper.setInputRegion(rects)
+        }
+
         onPopupVisibleChanged: {
             if (popupVisible || mediaVisible) {
                 maskCollapseTimer.stop();
@@ -115,6 +148,7 @@ Window {
             } else {
                 maskCollapseTimer.restart();
             }
+            Qt.callLater(updateInputRegion)
         }
 
         onMediaVisibleChanged: {
@@ -124,6 +158,20 @@ Window {
             } else {
                 maskCollapseTimer.restart();
             }
+            Qt.callLater(updateInputRegion)
+        }
+
+        onToastsActiveChanged: Qt.callLater(updateInputRegion)
+        onMaskActiveChanged:   Qt.callLater(updateInputRegion)
+
+        // Keep input region in sync when the media card or toast column resizes.
+        Connections {
+            target: mediaPopup
+            function onHeightChanged() { Qt.callLater(popupLayer.updateInputRegion) }
+        }
+        Connections {
+            target: notifPopups
+            function onToastAreaRectChanged() { Qt.callLater(popupLayer.updateInputRegion) }
         }
 
         MediaDetails {
@@ -135,7 +183,7 @@ Window {
             onCloseRequested: popupLayer.mediaVisible = false
         }
 
-        NotificationPopups {}
+        NotificationPopups { id: notifPopups }
 
         Timer {
             id: maskCollapseTimer
@@ -144,8 +192,19 @@ Window {
         }
     }
 
-    // Set X11 window properties after the window is shown
+    // Set X11 window properties after the window is shown.
+    // onActiveChanged / onVisibleChanged fire once Qt assigns a native wid.
     Component.onCompleted: {
         WindowHelper.setupX11(root);
+        Qt.callLater(popupLayer.updateInputRegion);
+    }
+
+    // Safety net: if winId wasn't ready at onCompleted, re-run once the
+    // window becomes truly visible (native surface created).
+    onVisibleChanged: {
+        if (visible) {
+            WindowHelper.setupX11(root);
+            Qt.callLater(popupLayer.updateInputRegion);
+        }
     }
 }

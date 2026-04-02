@@ -80,6 +80,9 @@ Rectangle {
         border.color: Theme.menuBorder
         border.width: 1
 
+        onHeightChanged: if (brightnessWidget.popupOpen && brightnessWidget.popupLayer)
+            Qt.callLater(brightnessWidget.popupLayer.updateInputRegion)
+
         property real slideOffset: brightnessWidget.popupOpen ? 0 : -12
         transform: Translate { y: popup.slideOffset }
         Behavior on slideOffset { NumberAnimation { duration: Theme.popupAnimDuration; easing.type: Theme.popupAnimEasing } }

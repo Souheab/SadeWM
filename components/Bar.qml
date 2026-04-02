@@ -19,13 +19,22 @@ PanelWindow {
     exclusionMode: ExclusionMode.Ignore
     color: "transparent"
 
-    // Input mask: only the bar is interactive when no popup is open.
-    // When a popup is open, the full window accepts input (for click-outside-to-close).
+    // Input mask: bar strip always, full screen when a popup is open,
+    // plus the toast column when notifications are present.
     mask: Region {
         x: 0
         y: 0
         width: root.width
         height: popupLayer.maskActive ? root.height : Theme.barHeight
+
+        // Toast column: adds the right-side region only while popups are queued.
+        Region {
+            intersection: Intersection.Combine
+            x: root.width - 340 - Theme.edgeMargin
+            y: Theme.barHeight
+            width: popupLayer.toastsActive ? (340 + Theme.edgeMargin) : 0
+            height: popupLayer.toastsActive ? (root.height - Theme.barHeight) : 0
+        }
     }
 
     // Bar background at the top
@@ -78,6 +87,14 @@ PanelWindow {
                         anchors.verticalCenter: parent.verticalCenter
                     }
 
+                    BrightnessWidget {
+                        anchors.verticalCenter: parent.verticalCenter
+                    }
+
+                    AudioWidget {
+                        anchors.verticalCenter: parent.verticalCenter
+                    }
+
                     SystemTrayWidget {
                         anchors.verticalCenter: parent.verticalCenter
                         shellWindow: root
@@ -107,6 +124,7 @@ PanelWindow {
         objectName: "popupLayer"
         property bool popupVisible: false
         property bool mediaVisible: false
+        property bool toastsActive: NotificationService.popupQueue.length > 0
         // maskActive leads popupVisible on open (expands immediately)
         // and trails it on close (collapses after the animation finishes)
         property bool maskActive: false

@@ -3,7 +3,7 @@ import Quickshell
 import ".."
 import "../services"
 
-// Settings cog button — opens the full-height SettingsPanel on click.
+// Notification bell button — opens the notification panel on click.
 Rectangle {
     id: settingsBtn
     width: Theme.containerHeight
@@ -60,7 +60,7 @@ Rectangle {
 
     Text {
         anchors.centerIn: parent
-        text: "\uf013"
+        text: "\uf0f3"
         color: btnArea.containsMouse ? Theme.textColor : Qt.alpha(Theme.textColor, 0.8)
         font.family: Theme.iconFont
         font.pixelSize: Theme.iconFontSize
@@ -74,10 +74,6 @@ Rectangle {
             if (settingsBtn.panelOpen) {
                 settingsBtn.panelOpen = false
             } else {
-                if (settingsBtn.popupLayer) {
-                    // Trigger wifi scan when opening
-                    WiFiService.scan()
-                }
                 settingsBtn.panelOpen = true
             }
         }

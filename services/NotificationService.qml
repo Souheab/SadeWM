@@ -31,10 +31,11 @@ Singleton {
                 n.notification.dismiss()
         }
         notifications = []
+        popupQueue = []
     }
 
     function removeFromQueue(entry) {
-        const idx = popupQueue.indexOf(entry)
+        const idx = popupQueue.findIndex(e => e.id === entry.id)
         if (idx !== -1) {
             const updated = [...popupQueue]
             updated.splice(idx, 1)

@@ -358,6 +358,32 @@ applyrules(Client *c)
 	c->tags = c->tags & TAGMASK ? c->tags & TAGMASK : c->mon->tagset[c->mon->seltags];
 }
 
+static bool
+honorsizehints(Client *c)
+{
+	XClassHint ch = { NULL, NULL };
+	bool result = false;
+
+	if (!sizehints_whitelist || !sizehints_whitelist[0])
+		return false;
+
+	if (XGetClassHint(dpy, c->win, &ch)) {
+		for (const char **p = sizehints_whitelist; p && *p; p++) {
+			if ((ch.res_class && strcmp(ch.res_class, *p) == 0)
+			|| (ch.res_name && strcmp(ch.res_name, *p) == 0)) {
+				result = true;
+				break;
+			}
+		}
+	}
+	if (ch.res_class)
+		XFree(ch.res_class);
+	if (ch.res_name)
+		XFree(ch.res_name);
+
+	return result;
+}
+
 int
 applysizehints(Client *c, int *x, int *y, int *w, int *h, int interact)
 {
@@ -390,7 +416,7 @@ applysizehints(Client *c, int *x, int *y, int *w, int *h, int interact)
 		*h = 3;
 	if (*w < 3)
 		*w = 3;
-	if (resizehints || c->isfloating || !c->mon->lt->arrange) {
+	if (honorsizehints(c) && (resizehints || c->isfloating || !c->mon->lt->arrange)) {
 		if (!c->hintsvalid)
 			updatesizehints(c);
 		/* see last two sentences in ICCCM 4.1.2.3 */

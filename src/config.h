@@ -26,6 +26,11 @@ static const Rule rules[] = {
 static float mfact     = 0.5; /* factor of master area size [0.05..0.95] */
 static int nmaster     = 1;    /* number of clients in master area */
 static int resizehints = 1;    /* 1 means respect size hints in tiled resizals */
+                               /* With custom behavior, only programs in the whitelist
+ 	 * will obey ICCCM size hints; others are free-resizable. Edit this
+ 	 * list to add/remove entries (match against WM_CLASS instance or class).
+ 	 */
+static const char *sizehints_whitelist[] = { "mpv", NULL };
 static int lockfullscreen = 1; /* 1 will force focus on the fullscreen window */
 static unsigned int topoffset = 10;
 static unsigned int bottomoffset = 10;

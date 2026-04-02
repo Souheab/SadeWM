@@ -1,0 +1,9 @@
+.github/
+pulse_monitor
+*.md
+*.pyc
+__pycache__/
+.venv
+pyshell/.qt_path_cache.env
+debug_artifacts/
+result

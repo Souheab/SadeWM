@@ -166,10 +166,15 @@ class WindowHelper(QObject):
             return
 
         libx11 = self._libx11
-        display = libx11.XOpenDisplay(None)
-        if not display:
+        # XOpenDisplay returns a Display* (64-bit pointer).  restype=c_void_p gives
+        # us a Python int with the full address.  We must re-wrap it in c_void_p
+        # before passing it to any further X11 call; without the wrap ctypes would
+        # coerce the plain Python int to c_int (32-bit), corrupting the pointer.
+        _raw = libx11.XOpenDisplay(None)
+        if not _raw:
             print("WindowHelper: XOpenDisplay returned NULL")
             return
+        display = ctypes.c_void_p(_raw)
 
         try:
             def intern_atom(name):
@@ -264,9 +269,12 @@ class WindowHelper(QObject):
                     xrects[i].width  = max(0,      min(65535,  int(r.get('width',  0))))
                     xrects[i].height = max(0,      min(65535,  int(r.get('height', 0))))
 
-            display = libx11.XOpenDisplay(None)
-            if not display:
+            _raw = libx11.XOpenDisplay(None)
+            if not _raw:
                 return
+            # Same pointer-width fix as in _set_x11_properties — must keep as
+            # c_void_p so ctypes passes the full 64-bit address, not a truncated int.
+            display = ctypes.c_void_p(_raw)
             try:
                 ShapeInput = 2
                 ShapeSet   = 0

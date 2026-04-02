@@ -101,13 +101,27 @@ Rectangle {
                 width: parent.width
                 height: Theme.sectionHeaderHeight
 
-                Text {
-                    text: "\uf185  Brightness"
-                    font.family: Theme.iconFont
-                    font.pixelSize: Theme.textFontSize
-                    font.bold: true
-                    color: Theme.textColor
+                Row {
                     anchors.verticalCenter: parent.verticalCenter
+                    spacing: 6
+
+                    Text {
+                        text: "\uf185"
+                        font.family: Theme.iconFont
+                        font.pixelSize: Theme.iconFontSize
+                        color: Theme.dotSelected
+                        anchors.verticalCenter: parent.verticalCenter
+                        visible: true
+                    }
+
+                    Text {
+                        text: "Brightness"
+                        color: Theme.textColor
+                        font.family: Theme.clockFont
+                        font.pixelSize: Theme.textFontSize
+                        font.bold: true
+                        anchors.verticalCenter: parent.verticalCenter
+                    }
                 }
             }
 

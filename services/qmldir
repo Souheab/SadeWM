@@ -1,9 +1,0 @@
-singleton TagService TagService.qml
-singleton VolumeService VolumeService.qml
-singleton WiFiService WiFiService.qml
-singleton AppService AppService.qml
-singleton MediaService MediaService.qml
-singleton BrightnessService BrightnessService.qml
-singleton AudioService AudioService.qml
-singleton NotificationService NotificationService.qml
-DebugService DebugService.qml

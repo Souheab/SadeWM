@@ -79,6 +79,8 @@ Rectangle {
 
         onHeightChanged: if (networkWidget.sidebarOpen && networkWidget.popupLayer)
             Qt.callLater(networkWidget.popupLayer.updateInputRegion)
+        onVisibleChanged: if (networkWidget.popupLayer)
+            Qt.callLater(networkWidget.popupLayer.updateInputRegion)
 
         property real slideOffset: networkWidget.sidebarOpen ? 0 : -12
         transform: Translate { y: sidebar.slideOffset }

@@ -236,6 +236,11 @@ Rectangle {
         border.color: Theme.menuBorder
         border.width: 1
 
+        onHeightChanged: if (dateTimeWidget.dateOpen && dateTimeWidget.popupLayer)
+            Qt.callLater(dateTimeWidget.popupLayer.updateInputRegion)
+        onVisibleChanged: if (dateTimeWidget.popupLayer)
+            Qt.callLater(dateTimeWidget.popupLayer.updateInputRegion)
+
         property real slideOffset: dateTimeWidget.dateOpen ? 0 : -12
         transform: Translate { y: datePopup.slideOffset }
         Behavior on slideOffset { NumberAnimation { duration: Theme.popupAnimDuration; easing.type: Theme.popupAnimEasing } }

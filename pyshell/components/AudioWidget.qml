@@ -85,6 +85,8 @@ Rectangle {
 
         onHeightChanged: if (audioWidget.popupOpen && audioWidget.popupLayer)
             Qt.callLater(audioWidget.popupLayer.updateInputRegion)
+        onVisibleChanged: if (audioWidget.popupLayer)
+            Qt.callLater(audioWidget.popupLayer.updateInputRegion)
 
         property real slideOffset: audioWidget.popupOpen ? 0 : -12
         transform: Translate { y: sidebar.slideOffset }

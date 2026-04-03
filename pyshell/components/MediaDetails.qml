@@ -26,6 +26,9 @@ Rectangle {
     border.color: Theme.menuBorder
     border.width: 1
 
+    onVisibleChanged: if (mediaDetails.popupLayer)
+        Qt.callLater(mediaDetails.popupLayer.updateInputRegion)
+
     property real slideOffset: mediaDetails.menuOpen ? 0 : -12
     transform: Translate { y: mediaDetails.slideOffset }
     Behavior on slideOffset { NumberAnimation { duration: Theme.popupAnimDuration; easing.type: Theme.popupAnimEasing } }

@@ -82,6 +82,8 @@ Rectangle {
 
         onHeightChanged: if (brightnessWidget.popupOpen && brightnessWidget.popupLayer)
             Qt.callLater(brightnessWidget.popupLayer.updateInputRegion)
+        onVisibleChanged: if (brightnessWidget.popupLayer)
+            Qt.callLater(brightnessWidget.popupLayer.updateInputRegion)
 
         property real slideOffset: brightnessWidget.popupOpen ? 0 : -12
         transform: Translate { y: popup.slideOffset }

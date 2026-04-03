@@ -26,6 +26,8 @@ Rectangle {
 
     onHeightChanged: if (panel.panelOpen && panel.popupLayer)
         Qt.callLater(panel.popupLayer.updateInputRegion)
+    onVisibleChanged: if (panel.popupLayer)
+        Qt.callLater(panel.popupLayer.updateInputRegion)
 
     property real slideOffset: panel.panelOpen ? 0 : -16
     transform: Translate { y: panel.slideOffset }

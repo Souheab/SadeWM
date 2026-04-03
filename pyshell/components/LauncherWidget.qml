@@ -28,6 +28,8 @@ Rectangle {
 
     onHeightChanged: if (launcher.launcherOpen && launcher.popupLayer)
         Qt.callLater(launcher.popupLayer.updateInputRegion)
+    onVisibleChanged: if (launcher.popupLayer)
+        Qt.callLater(launcher.popupLayer.updateInputRegion)
 
     property real slideOffset: launcher.launcherOpen ? 0 : -12
     transform: Translate { y: launcher.slideOffset }

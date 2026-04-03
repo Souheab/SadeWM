@@ -11,7 +11,7 @@
       "configureZshAsDefaultShell": true
     }
   },
-  "postCreateCommand": "nix-env -iA nixpkgs.shellcheck nixpkgs.qt6Packages.qtdeclarative nixpkgs.qtcreator",
+  "postCreateCommand": "sudo apt-get update -q && sudo apt-get install -y -q xvfb gdb scrot mesa-utils libgl1-mesa-dri libglx-mesa0 xserver-xorg-video-dummy && nix-env -iA nixpkgs.shellcheck nixpkgs.qt6Packages.qtdeclarative nixpkgs.qtcreator",
   "customizations": {
     "vscode": {
       "extensions": [

@@ -34,6 +34,8 @@ Rectangle {
 
     onHeightChanged: if (configMenu.menuOpen && configMenu.popupLayer)
         Qt.callLater(configMenu.popupLayer.updateInputRegion)
+    onVisibleChanged: if (configMenu.popupLayer)
+        Qt.callLater(configMenu.popupLayer.updateInputRegion)
 
     property real slideOffset: configMenu.menuOpen ? 0 : -12
     transform: Translate { y: configMenu.slideOffset }

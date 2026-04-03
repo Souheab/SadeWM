@@ -120,7 +120,7 @@ Window {
             for (var i = 0; i < children.length; i++) {
                 var c = children[i]
                 if (c === notifPopups) continue   // handled separately below
-                if (!c.visible || c.opacity < 0.01) continue
+                if (!c.visible) continue
                 if (c.width <= 0 || c.height <= 0) continue
                 rects.push({
                     x: Math.round(c.x), y: Math.round(c.y),

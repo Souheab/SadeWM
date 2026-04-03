@@ -68,6 +68,7 @@ Rectangle {
             id: rightSlot
             anchors.right: parent.right
             anchors.verticalCenter: parent.verticalCenter
+            width: childrenRect.width
         }
     }
 

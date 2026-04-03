@@ -2,7 +2,7 @@ import QtQuick
 import PyShell.Services 1.0
 
 Rectangle {
-    id: settingsBtn
+    id: notificationBtn
     width: Theme.containerHeight
     height: Theme.containerHeight
     radius: Theme.containerRadius
@@ -25,10 +25,10 @@ Rectangle {
     onPanelOpenChanged: if (popupLayer) popupLayer.popupVisible = panelOpen
 
     Connections {
-        target: settingsBtn.popupLayer
+        target: notificationBtn.popupLayer
         function onPopupVisibleChanged() {
-            if (settingsBtn.popupLayer && !settingsBtn.popupLayer.popupVisible)
-                settingsBtn.panelOpen = false
+            if (notificationBtn.popupLayer && !notificationBtn.popupLayer.popupVisible)
+                notificationBtn.panelOpen = false
         }
     }
 
@@ -45,12 +45,12 @@ Rectangle {
         anchors.fill: parent
         hoverEnabled: true
         cursorShape: Qt.PointingHandCursor
-        onClicked: settingsBtn.panelOpen = !settingsBtn.panelOpen
+        onClicked: notificationBtn.panelOpen = !notificationBtn.panelOpen
     }
 
-    SettingsPanel {
-        popupLayer: settingsBtn.popupLayer
-        panelOpen: settingsBtn.panelOpen
-        onCloseRequested: settingsBtn.panelOpen = false
+    NotificationPanel {
+        popupLayer: notificationBtn.popupLayer
+        panelOpen: notificationBtn.panelOpen
+        onCloseRequested: notificationBtn.panelOpen = false
     }
 }

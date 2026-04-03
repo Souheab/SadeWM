@@ -62,7 +62,7 @@ Window {
                     spacing: Theme.spacingSM
                     layoutDirection: Qt.RightToLeft
 
-                    SettingsButton {
+                    NotificationButton {
                         anchors.verticalCenter: parent.verticalCenter
                     }
 

@@ -63,6 +63,7 @@ Rectangle {
         id: pillArea
         anchors.fill: parent
         hoverEnabled: true
+        cursorShape: Qt.PointingHandCursor
         onClicked: brightnessWidget.popupOpen = !brightnessWidget.popupOpen
     }
 

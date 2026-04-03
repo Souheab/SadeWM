@@ -66,6 +66,7 @@ Rectangle {
         id: btnArea
         anchors.fill: parent
         hoverEnabled: true
+        cursorShape: Qt.PointingHandCursor
         onClicked: settingsBtn.panelOpen = !settingsBtn.panelOpen
     }
 

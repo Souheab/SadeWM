@@ -65,6 +65,7 @@ Rectangle {
         id: pillArea
         anchors.fill: parent
         hoverEnabled: true
+        cursorShape: Qt.PointingHandCursor
         onClicked: audioWidget.popupOpen = !audioWidget.popupOpen
     }
 

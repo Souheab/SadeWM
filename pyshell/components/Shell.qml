@@ -66,6 +66,10 @@ Window {
                         anchors.verticalCenter: parent.verticalCenter
                     }
 
+                    SystrayWidget {
+                        anchors.verticalCenter: parent.verticalCenter
+                    }
+
                     NetworkWidget {
                         anchors.verticalCenter: parent.verticalCenter
                     }

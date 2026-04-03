@@ -111,6 +111,8 @@ from pyshell.services.notification_service import NotificationService
 from pyshell.services.app_service import AppService
 from pyshell.services.power_service import PowerService
 from pyshell.services.window_helper import WindowHelper
+from pyshell.services.bluetooth_service import BluetoothService
+from pyshell.services.systray_service import SystrayService
 
 
 def main():
@@ -129,6 +131,8 @@ def main():
     app_service = AppService()
     power_service = PowerService()
     window_helper = WindowHelper()
+    bluetooth_service = BluetoothService()
+    systray_service = SystrayService()
 
     # Register singletons for QML access
     qmlRegisterSingletonInstance(TagService, "PyShell.Services", 1, 0, "TagService", tag_service)
@@ -140,6 +144,8 @@ def main():
     qmlRegisterSingletonInstance(AppService, "PyShell.Services", 1, 0, "AppService", app_service)
     qmlRegisterSingletonInstance(PowerService, "PyShell.Services", 1, 0, "PowerService", power_service)
     qmlRegisterSingletonInstance(WindowHelper, "PyShell.Services", 1, 0, "WindowHelper", window_helper)
+    qmlRegisterSingletonInstance(BluetoothService, "PyShell.Services", 1, 0, "BluetoothService", bluetooth_service)
+    qmlRegisterSingletonInstance(SystrayService, "PyShell.Services", 1, 0, "SystrayService", systray_service)
 
     engine = QQmlApplicationEngine()
 

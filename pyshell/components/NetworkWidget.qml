@@ -106,210 +106,7 @@ Rectangle {
             anchors.margins: 8
             spacing: 0
 
-            // ── Bluetooth section ─────────────────────────────────────────────
-
-            // Bluetooth header
-            Item {
-                width: parent.width
-                height: Theme.sectionHeaderHeight
-
-                Row {
-                    anchors.left: parent.left
-                    anchors.verticalCenter: parent.verticalCenter
-                    spacing: 6
-
-                    Text {
-                        text: "\uf294"
-                        font.family: Theme.iconFont
-                        font.pixelSize: Theme.iconFontSize
-                        color: BluetoothService.enabled ? Theme.dotSelected : Theme.dotEmpty
-                        anchors.verticalCenter: parent.verticalCenter
-                    }
-
-                    Text {
-                        text: "Bluetooth"
-                        color: Theme.textColor
-                        font.family: Theme.clockFont
-                        font.pixelSize: Theme.textFontSize
-                        font.bold: true
-                        anchors.verticalCenter: parent.verticalCenter
-                    }
-                }
-
-                Row {
-                    anchors.right: parent.right
-                    anchors.verticalCenter: parent.verticalCenter
-                    spacing: 6
-
-                    // Scan button
-                    Rectangle {
-                        visible: BluetoothService.enabled
-                        width: Theme.wifiTogglePillWidth
-                        height: Theme.containerHeight
-                        radius: Theme.containerHeight / 2
-                        color: btScanArea.containsMouse ? Theme.menuHover : Theme.containerBg
-
-                        Text {
-                            anchors.centerIn: parent
-                            text: BluetoothService.scanning ? "\uf110" : "\uf021"
-                            font.family: Theme.iconFont
-                            font.pixelSize: Theme.textFontSize
-                            color: Theme.textColor
-                        }
-
-                        MouseArea {
-                            id: btScanArea
-                            anchors.fill: parent
-                            hoverEnabled: true
-                            cursorShape: Qt.PointingHandCursor
-                            onClicked: BluetoothService.startScan()
-                        }
-                    }
-
-                    // Power toggle pill
-                    Rectangle {
-                        width: Theme.wifiTogglePillWidth
-                        height: Theme.containerHeight
-                        radius: Theme.containerHeight / 2
-                        color: BluetoothService.enabled ? Theme.dotSelected : Theme.dotOccupied
-
-                        Text {
-                            anchors.centerIn: parent
-                            text: BluetoothService.enabled ? "ON" : "OFF"
-                            color: Theme.textColor
-                            font.family: Theme.monoFont
-                            font.pixelSize: Theme.textFontSize - 2
-                            font.bold: true
-                        }
-
-                        MouseArea {
-                            anchors.fill: parent
-                            cursorShape: Qt.PointingHandCursor
-                            onClicked: BluetoothService.toggleBluetooth()
-                        }
-                    }
-                }
-            }
-
-            // Connected Bluetooth device
-            Item {
-                width: parent.width
-                height: BluetoothService.connectedDevice !== "" ? 28 : 0
-                visible: BluetoothService.connectedDevice !== ""
-
-                Row {
-                    anchors.left: parent.left
-                    anchors.verticalCenter: parent.verticalCenter
-                    spacing: 6
-
-                    Text {
-                        text: "\uf025"
-                        font.family: Theme.iconFont
-                        font.pixelSize: Theme.textFontSize
-                        color: Theme.dotSelected
-                        anchors.verticalCenter: parent.verticalCenter
-                    }
-
-                    Text {
-                        text: BluetoothService.connectedDevice
-                        color: Theme.dotSelected
-                        font.family: Theme.clockFont
-                        font.pixelSize: Theme.textFontSize
-                        font.bold: true
-                        anchors.verticalCenter: parent.verticalCenter
-                        elide: Text.ElideRight
-                        width: 200
-                    }
-                }
-            }
-
-            // Bluetooth device list
-            Repeater {
-                model: BluetoothService.enabled ? BluetoothService.devices : []
-
-                delegate: Item {
-                    required property int index
-                    property var dev: BluetoothService.devices[index]
-
-                    width: parent.width
-                    height: 30
-
-                    Rectangle {
-                        anchors.fill: parent
-                        radius: Theme.containerRadius
-                        color: btDevArea.containsMouse ? Theme.menuHover : "transparent"
-                    }
-
-                    Row {
-                        anchors.left: parent.left
-                        anchors.leftMargin: 4
-                        anchors.verticalCenter: parent.verticalCenter
-                        spacing: 6
-
-                        Text {
-                            text: {
-                                var ic = dev ? (dev.icon || "") : "";
-                                if (ic.indexOf("audio") >= 0) return "\uf025";
-                                if (ic.indexOf("input-keyboard") >= 0) return "\uf11c";
-                                if (ic.indexOf("input-mouse") >= 0) return "\uf245";
-                                if (ic.indexOf("phone") >= 0) return "\uf10b";
-                                return "\uf294";
-                            }
-                            font.family: Theme.iconFont
-                            font.pixelSize: Theme.textFontSize
-                            color: (dev && dev.connected) ? Theme.dotSelected : Theme.dotEmpty
-                            anchors.verticalCenter: parent.verticalCenter
-                        }
-
-                        Text {
-                            text: dev ? (dev.name || dev.address || "") : ""
-                            color: (dev && dev.connected) ? Theme.dotSelected : Theme.textColor
-                            font.family: Theme.clockFont
-                            font.pixelSize: Theme.textFontSize
-                            font.bold: dev ? dev.connected : false
-                            anchors.verticalCenter: parent.verticalCenter
-                            elide: Text.ElideRight
-                            width: 180
-                        }
-                    }
-
-                    Text {
-                        anchors.right: parent.right
-                        anchors.rightMargin: 8
-                        anchors.verticalCenter: parent.verticalCenter
-                        text: (dev && dev.connected) ? "\uf127" : "\uf293"
-                        font.family: Theme.iconFont
-                        font.pixelSize: Theme.textFontSize - 2
-                        color: Qt.alpha(Theme.textColor, 0.5)
-                    }
-
-                    MouseArea {
-                        id: btDevArea
-                        anchors.fill: parent
-                        hoverEnabled: true
-                        cursorShape: Qt.PointingHandCursor
-                        onClicked: {
-                            if (dev && dev.connected)
-                                BluetoothService.disconnectDevice(dev.address);
-                            else if (dev)
-                                BluetoothService.connectDevice(dev.address);
-                        }
-                    }
-                }
-            }
-
-            // BT / WiFi divider
-            Item {
-                width: parent.width
-                height: 9
-
-                Rectangle {
-                    anchors.centerIn: parent
-                    width: parent.width
-                    height: 1
-                    color: Qt.alpha(Theme.menuBorder, 0.8)
-                }
-            }
+            
 
             // ── WiFi section ──────────────────────────────────────────────────
 
@@ -512,6 +309,211 @@ Rectangle {
                     }
                 }
             }
+
+                // BT / WiFi divider
+                Item {
+                    width: parent.width
+                    height: 9
+
+                    Rectangle {
+                        anchors.centerIn: parent
+                        width: parent.width
+                        height: 1
+                        color: Qt.alpha(Theme.menuBorder, 0.8)
+                    }
+                }
+
+                // ── Bluetooth section ─────────────────────────────────────────────
+
+                // Bluetooth header
+                Item {
+                    width: parent.width
+                    height: Theme.sectionHeaderHeight
+
+                    Row {
+                        anchors.left: parent.left
+                        anchors.verticalCenter: parent.verticalCenter
+                        spacing: 6
+
+                        Text {
+                            text: "\uf294"
+                            font.family: Theme.iconFont
+                            font.pixelSize: Theme.iconFontSize
+                            color: BluetoothService.enabled ? Theme.dotSelected : Theme.dotEmpty
+                            anchors.verticalCenter: parent.verticalCenter
+                        }
+
+                        Text {
+                            text: "Bluetooth"
+                            color: Theme.textColor
+                            font.family: Theme.clockFont
+                            font.pixelSize: Theme.textFontSize
+                            font.bold: true
+                            anchors.verticalCenter: parent.verticalCenter
+                        }
+                    }
+
+                    Row {
+                        anchors.right: parent.right
+                        anchors.verticalCenter: parent.verticalCenter
+                        spacing: 6
+
+                        // Scan button
+                        Rectangle {
+                            visible: BluetoothService.enabled
+                            width: Theme.wifiTogglePillWidth
+                            height: Theme.containerHeight
+                            radius: Theme.containerHeight / 2
+                            color: btScanArea.containsMouse ? Theme.menuHover : Theme.containerBg
+
+                            Text {
+                                anchors.centerIn: parent
+                                text: BluetoothService.scanning ? "\uf110" : "\uf021"
+                                font.family: Theme.iconFont
+                                font.pixelSize: Theme.textFontSize
+                                color: Theme.textColor
+                            }
+
+                            MouseArea {
+                                id: btScanArea
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: BluetoothService.startScan()
+                            }
+                        }
+
+                        // Power toggle pill
+                        Rectangle {
+                            width: Theme.wifiTogglePillWidth
+                            height: Theme.containerHeight
+                            radius: Theme.containerHeight / 2
+                            color: BluetoothService.enabled ? Theme.dotSelected : Theme.dotOccupied
+
+                            Text {
+                                anchors.centerIn: parent
+                                text: BluetoothService.enabled ? "ON" : "OFF"
+                                color: Theme.textColor
+                                font.family: Theme.monoFont
+                                font.pixelSize: Theme.textFontSize - 2
+                                font.bold: true
+                            }
+
+                            MouseArea {
+                                anchors.fill: parent
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: BluetoothService.toggleBluetooth()
+                            }
+                        }
+                    }
+                }
+
+                // Connected Bluetooth device
+                Item {
+                    width: parent.width
+                    height: BluetoothService.connectedDevice !== "" ? 28 : 0
+                    visible: BluetoothService.connectedDevice !== ""
+
+                    Row {
+                        anchors.left: parent.left
+                        anchors.verticalCenter: parent.verticalCenter
+                        spacing: 6
+
+                        Text {
+                            text: "\uf025"
+                            font.family: Theme.iconFont
+                            font.pixelSize: Theme.textFontSize
+                            color: Theme.dotSelected
+                            anchors.verticalCenter: parent.verticalCenter
+                        }
+
+                        Text {
+                            text: BluetoothService.connectedDevice
+                            color: Theme.dotSelected
+                            font.family: Theme.clockFont
+                            font.pixelSize: Theme.textFontSize
+                            font.bold: true
+                            anchors.verticalCenter: parent.verticalCenter
+                            elide: Text.ElideRight
+                            width: 200
+                        }
+                    }
+                }
+
+                // Bluetooth device list
+                Repeater {
+                    model: BluetoothService.enabled ? BluetoothService.devices : []
+
+                    delegate: Item {
+                        required property int index
+                        property var dev: BluetoothService.devices[index]
+
+                        width: parent.width
+                        height: 30
+
+                        Rectangle {
+                            anchors.fill: parent
+                            radius: Theme.containerRadius
+                            color: btDevArea.containsMouse ? Theme.menuHover : "transparent"
+                        }
+
+                        Row {
+                            anchors.left: parent.left
+                            anchors.leftMargin: 4
+                            anchors.verticalCenter: parent.verticalCenter
+                            spacing: 6
+
+                            Text {
+                                text: {
+                                    var ic = dev ? (dev.icon || "") : "";
+                                    if (ic.indexOf("audio") >= 0) return "\uf025";
+                                    if (ic.indexOf("input-keyboard") >= 0) return "\uf11c";
+                                    if (ic.indexOf("input-mouse") >= 0) return "\uf245";
+                                    if (ic.indexOf("phone") >= 0) return "\uf10b";
+                                    return "\uf294";
+                                }
+                                font.family: Theme.iconFont
+                                font.pixelSize: Theme.textFontSize
+                                color: (dev && dev.connected) ? Theme.dotSelected : Theme.dotEmpty
+                                anchors.verticalCenter: parent.verticalCenter
+                            }
+
+                            Text {
+                                text: dev ? (dev.name || dev.address || "") : ""
+                                color: (dev && dev.connected) ? Theme.dotSelected : Theme.textColor
+                                font.family: Theme.clockFont
+                                font.pixelSize: Theme.textFontSize
+                                font.bold: dev ? dev.connected : false
+                                anchors.verticalCenter: parent.verticalCenter
+                                elide: Text.ElideRight
+                                width: 180
+                            }
+                        }
+
+                        Text {
+                            anchors.right: parent.right
+                            anchors.rightMargin: 8
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: (dev && dev.connected) ? "\uf127" : "\uf293"
+                            font.family: Theme.iconFont
+                            font.pixelSize: Theme.textFontSize - 2
+                            color: Qt.alpha(Theme.textColor, 0.5)
+                        }
+
+                        MouseArea {
+                            id: btDevArea
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: {
+                                if (dev && dev.connected)
+                                    BluetoothService.disconnectDevice(dev.address);
+                                else if (dev)
+                                    BluetoothService.connectDevice(dev.address);
+                            }
+                        }
+                    }
+                }
         }
     }
 }

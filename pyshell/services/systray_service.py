@@ -249,12 +249,16 @@ class SystrayService(QObject):
         return False
 
     # Called from our own Watcher interface when WE are the watcher.
+    # Must use ensure_future since we are already inside the asyncio loop.
     def _on_item_registered(self, service: str):
-        if self._loop:
-            asyncio.run_coroutine_threadsafe(self._register_item(service), self._loop)
+        asyncio.ensure_future(self._register_item(service))
 
     async def _register_item(self, service_id: str):
-        """Fetch properties from a newly registered StatusNotifierItem."""
+        """Fetch properties from a newly registered StatusNotifierItem.
+
+        Uses direct DBus.Properties calls to avoid relying on introspection,
+        which many tray apps don't fully support.
+        """
         # service_id may be "org.kde.foo-1234" or "org.kde.foo-1234/CustomPath"
         if "/" in service_id:
             service_name, obj_path = service_id.split("/", 1)
@@ -264,35 +268,52 @@ class SystrayService(QObject):
             obj_path = "/StatusNotifierItem"
 
         try:
-            intr = await self._bus.introspect(service_name, obj_path)
-            proxy = self._bus.get_proxy_object(service_name, obj_path, intr)
+            # Read a property via org.freedesktop.DBus.Properties, trying both
+            # known SNI interface namespaces.
+            async def _get(prop, default=""):
+                for iface in ("org.kde.StatusNotifierItem",
+                              "org.freedesktop.StatusNotifierItem"):
+                    try:
+                        reply = await self._bus.call(Message(
+                            destination=service_name,
+                            path=obj_path,
+                            interface="org.freedesktop.DBus.Properties",
+                            member="Get",
+                            signature="ss",
+                            body=[iface, prop],
+                        ))
+                        if (reply.message_type == MessageType.METHOD_RETURN
+                                and reply.body):
+                            v = reply.body[0]
+                            return v.value if hasattr(v, "value") else v
+                    except Exception:
+                        pass
+                return default
 
-            # Try both known SNI interface namespaces.
-            sni_iface = None
-            for iface_name in ("org.kde.StatusNotifierItem", "org.freedesktop.StatusNotifierItem"):
+            title  = str(await _get("Title") or "")
+            status = str(await _get("Status") or "Active")
+            icon_name  = str(await _get("IconName") or "")
+
+            # Fetch icon pixmap directly via DBus.Properties
+            icon_pixmap = []
+            for sni_iface_name in ("org.kde.StatusNotifierItem",
+                                   "org.freedesktop.StatusNotifierItem"):
                 try:
-                    sni_iface = proxy.get_interface(iface_name)
-                    break
+                    reply = await self._bus.call(Message(
+                        destination=service_name,
+                        path=obj_path,
+                        interface="org.freedesktop.DBus.Properties",
+                        member="Get",
+                        signature="ss",
+                        body=[sni_iface_name, "IconPixmap"],
+                    ))
+                    if (reply.message_type == MessageType.METHOD_RETURN
+                            and reply.body):
+                        v = reply.body[0]
+                        icon_pixmap = v.value if hasattr(v, "value") else v
+                        break
                 except Exception:
                     pass
-
-            if sni_iface is None:
-                return
-
-            # Read properties individually, tolerating missing ones.
-            async def _get(attr, default=""):
-                try:
-                    return await getattr(sni_iface, "get_" + attr.lower())()
-                except Exception:
-                    return default
-
-            title      = await _get("Title") or ""
-            status     = await _get("Status") or "Active"
-            icon_name  = await _get("IconName") or ""
-            try:
-                icon_pixmap = await sni_iface.get_icon_pixmap()
-            except Exception:
-                icon_pixmap = []
 
             # Build base64 icon
             icon_b64 = ""

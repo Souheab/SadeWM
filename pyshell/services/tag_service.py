@@ -4,7 +4,7 @@ import json
 import socket
 import os
 
-from PySide6.QtCore import QObject, Property, Signal, QTimer
+from PySide6.QtCore import QObject, Property, Signal, Slot, QTimer
 
 
 SOCKET_PATH = os.environ.get("SADEWM_SOCKET", "/tmp/sadewm.sock")
@@ -49,10 +49,12 @@ class TagService(QObject):
     def tags(self):
         return self._tags
 
+    @Slot(int)
     def viewTag(self, tag_num: int):
         mask = 1 << (tag_num - 1)
         _sadewm_request({"cmd": "view", "mask": mask})
 
+    @Slot(int)
     def toggleViewTag(self, tag_num: int):
         mask = 1 << (tag_num - 1)
         _sadewm_request({"cmd": "toggleview", "mask": mask})

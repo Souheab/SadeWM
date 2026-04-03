@@ -99,6 +99,7 @@ Rectangle {
                 id: dateArea
                 anchors.fill: parent
                 hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
                 onClicked: {
                     if (dateTimeWidget.dateOpen) {
                         dateTimeWidget.dateOpen = false;
@@ -149,6 +150,7 @@ Rectangle {
                 id: mediaArea
                 anchors.fill: parent
                 hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
 
                 onClicked: {
                     if (dateTimeWidget.mediaOpen) {
@@ -283,6 +285,7 @@ Rectangle {
                         id: prevArea
                         anchors.fill: parent
                         hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
                         onClicked: {
                             if (dateTimeWidget.viewMonth === 0) {
                                 dateTimeWidget.viewMonth = 11;
@@ -325,6 +328,7 @@ Rectangle {
                         id: nextArea
                         anchors.fill: parent
                         hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
                         onClicked: {
                             if (dateTimeWidget.viewMonth === 11) {
                                 dateTimeWidget.viewMonth = 0;

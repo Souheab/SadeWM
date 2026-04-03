@@ -32,28 +32,6 @@ Rectangle {
         }
     }
 
-    Rectangle {
-        visible: NotificationService.unreadCount > 0
-        width: 14
-        height: 14
-        radius: 7
-        color: Theme.dotUrgent
-        anchors.top: parent.top
-        anchors.right: parent.right
-        anchors.topMargin: 1
-        anchors.rightMargin: 1
-        z: 1
-
-        Text {
-            anchors.centerIn: parent
-            text: NotificationService.unreadCount > 9 ? "9+" : NotificationService.unreadCount.toString()
-            color: "#1a1b26"
-            font.family: Theme.monoFont
-            font.pixelSize: 7
-            font.bold: true
-        }
-    }
-
     Text {
         anchors.centerIn: parent
         text: "\uf0f3"

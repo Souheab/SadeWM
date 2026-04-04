@@ -5,9 +5,9 @@ import PyShell.Services 1.0
 Window {
     id: root
 
-    visible: true
+    visible: false  // Don't show until after we set position
     color: "transparent"
-    flags: Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint
+    flags: Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.X11BypassWindowManagerHint
 
     x: 0
     y: 0
@@ -196,10 +196,15 @@ Window {
         }
     }
 
-    // Set X11 window properties after the window is shown.
-    // onActiveChanged / onVisibleChanged fire once Qt assigns a native wid.
+    // Set X11 window properties and show after window is ready.
     Component.onCompleted: {
+        // Ensure position is set before showing
+        root.x = 0;
+        root.y = 0;
+        // Set up X11 properties (EWMH dock hints, positioning, etc.)
         WindowHelper.setupX11(root);
+        // Now show the window
+        root.visible = true;
         Qt.callLater(popupLayer.updateInputRegion);
     }
 

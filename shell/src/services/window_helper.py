@@ -5,7 +5,7 @@ import ctypes.util
 import os
 import subprocess
 
-from PySide6.QtCore import QObject, Slot
+from PySide6.QtCore import QObject, QTimer, Slot
 
 
 def _load_lib(*candidates):
@@ -100,6 +100,8 @@ class WindowHelper(QObject):
         self._libx11 = None
         self._libxext = None
         self._libs_ready = False
+        self._display = None
+        self._raise_timer = None
 
     def _ensure_libs(self):
         if self._libs_ready:
@@ -166,17 +168,18 @@ class WindowHelper(QObject):
             return
 
         libx11 = self._libx11
-        # XOpenDisplay returns a Display* (64-bit pointer).  restype=c_void_p gives
-        # us a Python int with the full address.  We must re-wrap it in c_void_p
-        # before passing it to any further X11 call; without the wrap ctypes would
-        # coerce the plain Python int to c_int (32-bit), corrupting the pointer.
-        _raw = libx11.XOpenDisplay(None)
-        if not _raw:
-            print("WindowHelper: XOpenDisplay returned NULL")
-            return
-        display = ctypes.c_void_p(_raw)
+        
+        # Keep display open for persistent raising
+        if not self._display:
+            _raw = libx11.XOpenDisplay(None)
+            if not _raw:
+                print("WindowHelper: XOpenDisplay returned NULL")
+                return
+            self._display = ctypes.c_void_p(_raw)
 
         try:
+            display = self._display
+            
             def intern_atom(name):
                 return libx11.XInternAtom(display, name.encode(), False)
 
@@ -227,15 +230,68 @@ class WindowHelper(QObject):
             )
 
             # Ensure the window is placed at the top-left of the screen (0,0)
+            # Declare proper return types for X11 functions
+            libx11.XMoveWindow.restype = ctypes.c_int
+            libx11.XMoveWindow.argtypes = [ctypes.c_void_p, ctypes.c_ulong, ctypes.c_int, ctypes.c_int]
+            libx11.XRaiseWindow.restype = ctypes.c_int
+            libx11.XRaiseWindow.argtypes = [ctypes.c_void_p, ctypes.c_ulong]
+            
             try:
-                libx11.XMoveWindow(display, wid, 0, 0)
-            except Exception:
-                # best-effort: ignore failures — the WM may still reposition
-                pass
+                # Move window to (0,0) - Window is already created by Qt
+                result = libx11.XMoveWindow(display, wid, 0, 0)
+                if result == 0:
+                    print(f"WindowHelper: XMoveWindow returned error")
+                else:
+                    print(f"WindowHelper: window positioned at (0,0)")
+                
+                # Raise to ensure it's on top
+                libx11.XRaiseWindow(display, wid)
+                
+                # Sync to ensure moves are processed
+                libx11.XSync(display, False)
+                
+            except Exception as e:
+                print(f"WindowHelper: XMoveWindow/XRaiseWindow failed: {e}")
+                # Try to get errno for more details
+                try:
+                    err = ctypes.get_errno()
+                    if err:
+                        print(f"  X11 errno: {err}")
+                except Exception:
+                    pass
 
             libx11.XFlush(display)
-        finally:
-            libx11.XCloseDisplay(display)
+        except Exception as e:
+            print(f"WindowHelper._set_x11_properties error: {e}")
+
+        # Start persistent raising timer
+        self._start_raise_timer()
+
+    def _start_raise_timer(self):
+        """Start a timer to repeatedly raise the window to keep it on top."""
+        if not self._wid or not self._ensure_libs() or not self._libx11:
+            return
+        
+        if self._raise_timer is None:
+            self._raise_timer = QTimer(self)
+            self._raise_timer.timeout.connect(self._raise_window)
+            self._raise_timer.start(100)  # Raise every 100ms
+            print("WindowHelper: started persistent raising timer")
+
+    def _raise_window(self):
+        """Raise the window to ensure it stays on top persistently."""
+        if not self._wid or not self._display or not self._libx11:
+            return
+        
+        try:
+            libx11 = self._libx11
+            libx11.XRaiseWindow.restype = ctypes.c_int
+            libx11.XRaiseWindow.argtypes = [ctypes.c_void_p, ctypes.c_ulong]
+            
+            libx11.XRaiseWindow(self._display, self._wid)
+            libx11.XSync(self._display, False)
+        except Exception as e:
+            print(f"WindowHelper: error raising window: {e}")
 
     @Slot("QVariant")
     def setInputRegion(self, rects_variant):
@@ -297,4 +353,3 @@ class WindowHelper(QObject):
                 libx11.XCloseDisplay(display)
         except Exception as e:
             print(f"WindowHelper.setInputRegion error: {e}")
-

@@ -115,8 +115,13 @@
           };
         };
 
+        combined = pkgs.symlinkJoin {
+          name  = "sadewm-with-sadeshell";
+          paths = [ sadewm sadeshell ];
+        };
+
       in {
-        packages.default   = sadewm;
+        packages.default   = combined;
         packages.sadewm    = sadewm;
         packages.sadeshell = sadeshell;
 

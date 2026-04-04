@@ -2,18 +2,27 @@
   "name": "sadewm",
   "image": "mcr.microsoft.com/devcontainers/base:ubuntu",
   "features": {
+    "ghcr.io/devcontainers/features/nix:1": {
+      "multiUser": true,
+      "extraNixConfig": "experimental-features = nix-command flakes"
+    },
     "ghcr.io/devcontainers/features/common-utils:2": {
       "installZsh": true,
       "configureZshAsDefaultShell": true
     }
   },
-  "postCreateCommand": "sudo apt-get update && sudo apt-get install -y gcc make libx11-dev libxft-dev libxinerama-dev libfontconfig1-dev libfreetype6-dev xserver-xephyr gdb",
+  "postCreateCommand": "sudo apt-get update && sudo apt-get install -y gcc make libx11-dev libxft-dev libxinerama-dev libfontconfig1-dev libfreetype6-dev xserver-xephyr gdb xvfb scrot mesa-utils libgl1-mesa-dri libglx-mesa0 xserver-xorg-video-dummy dbus dbus-x11 bluez python3-dbus libdbus-1-dev && nix-env -iA nixpkgs.shellcheck nixpkgs.qt6Packages.qtdeclarative nixpkgs.qtcreator",
   "customizations": {
     "vscode": {
       "extensions": [
         "jnoortheen.nix-ide",
         "ms-vscode.cpptools",
-        "ms-vscode.makefile-tools"
+        "ms-vscode.makefile-tools",
+        "mads-hartmann.bash-ide-vscode",
+        "timonwong.shellcheck",
+        "nickmillerdev.qml-tools",
+        "theqtcompany.qt-qml",
+        "ms-python.python"
       ],
       "settings": {
         "C_Cpp.default.cStandard": "c99",
@@ -28,7 +37,10 @@
           "_BSD_SOURCE",
           "_XOPEN_SOURCE=700L",
           "XINERAMA"
-        ]
+        ],
+        "files.associations": {
+          "*.qml": "qml"
+        }
       }
     }
   },

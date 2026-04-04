@@ -187,6 +187,7 @@ static void incnmaster(const Arg *arg);
 static bool istagselected(int tagnum);
 static void keypress(XEvent *e);
 static void killclient(const Arg *arg);
+static void crash_handler(int sig);
 static void logdebug(char* str);
 static void logdebugf(char* str, ...);
 static void logselclientinfo(void);
@@ -1288,6 +1289,30 @@ restore(const Arg *arg)
 	arrange(c->mon);
 	focus(c);
 	restack(c->mon);
+}
+
+void
+crash_handler(int sig)
+{
+	int fd = get_logfd();
+	if (fd >= 0) {
+		char buf[256];
+		int len;
+		const char *signame;
+
+		switch (sig) {
+		case SIGSEGV: signame = "SIGSEGV (segmentation fault)"; break;
+		case SIGABRT: signame = "SIGABRT (abort)";              break;
+		case SIGFPE:  signame = "SIGFPE (arithmetic error)";    break;
+		case SIGILL:  signame = "SIGILL (illegal instruction)"; break;
+		case SIGBUS:  signame = "SIGBUS (bus error)";           break;
+		default:      signame = "unknown";                      break;
+		}
+		len = snprintf(buf, sizeof buf, "sadewm: crash: signal %s\n", signame);
+		if (write(fd, buf, len) == -1) {}
+	}
+	signal(sig, SIG_DFL);
+	raise(sig);
 }
 
 void
@@ -2815,6 +2840,16 @@ xerror(Display *dpy, XErrorEvent *ee)
 		return 0;
 	fprintf(stderr, "sadewm: fatal error: request code=%d, error code=%d\n",
 		ee->request_code, ee->error_code);
+	{
+		int fd = get_logfd();
+		if (fd >= 0) {
+			char buf[256];
+			int len = snprintf(buf, sizeof buf,
+				"sadewm: fatal X error: request code=%d, error code=%d\n",
+				ee->request_code, ee->error_code);
+			if (write(fd, buf, len) == -1) {}
+		}
+	}
 	return xerrorxlib(dpy, ee); /* may call exit */
 }
 
@@ -2865,6 +2900,16 @@ main(int argc, char *argv[])
   }
 
   homepath = getenv("HOME");
+  if (homepath) {
+    char logpath[512];
+    snprintf(logpath, sizeof logpath, "%s/.local/share/sadewm/crash.log", homepath);
+    log_init(logpath);
+  }
+  signal(SIGSEGV, crash_handler);
+  signal(SIGABRT, crash_handler);
+  signal(SIGFPE,  crash_handler);
+  signal(SIGILL,  crash_handler);
+  signal(SIGBUS,  crash_handler);
   active_rules   = rules;
   n_active_rules = LENGTH(rules);
   active_keys    = keys;

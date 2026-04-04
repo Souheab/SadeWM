@@ -200,6 +200,7 @@
             services.xserver.windowManager.session = lib.singleton {
               name = "sadewm";
               start = ''
+                dbus-update-activation-environment --systemd DISPLAY XAUTHORITY DBUS_SESSION_BUS_ADDRESS PATH XDG_RUNTIME_DIR XDG_DATA_DIRS
                 ${sadewm}/bin/sadewm &
                 waitPID=$!
               '';

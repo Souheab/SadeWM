@@ -659,6 +659,9 @@ configurerequest(XEvent *e)
 	XWindowChanges wc;
 
 	if ((c = wintoclient(ev->window))) {
+		/* Do not allow configured position/size changes for dock windows */
+		if (c->isdock)
+			return;
 		if (ev->value_mask & CWBorderWidth)
 			c->bw = ev->border_width;
 		else if (c->isfloating || !selmon->lt->arrange) {
@@ -1464,6 +1467,8 @@ movemouse(const Arg *arg)
 
 	if (!(c = selmon->sel))
 		return;
+	if (c->isdock)
+		return;
 	if (c->isfullscreen) /* no support moving fullscreen windows by mouse */
 		return;
 	restack(selmon);
@@ -1669,6 +1674,8 @@ resizemouse(const Arg *arg)
 
 	if (!(c = selmon->sel))
 		return;
+	if (c->isdock)
+		return;
 	if (c->isfullscreen) /* no support resizing fullscreen windows by mouse */
 		return;
 	restack(selmon);
@@ -1810,6 +1817,8 @@ void
 sendmon(Client *c, Monitor *m)
 {
 	if (c->mon == m)
+		return;
+	if (c->isdock)
 		return;
 	unfocus(c, 1);
 	detach(c);
@@ -2304,6 +2313,8 @@ void
 togglefloating(const Arg *arg)
 {
 	if (!selmon->sel)
+		return;
+	if (selmon->sel->isdock)
 		return;
 	if (selmon->sel->isfullscreen) /* no support for fullscreen windows */
 		return;

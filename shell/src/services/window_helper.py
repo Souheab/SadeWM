@@ -226,6 +226,13 @@ class WindowHelper(QObject):
                 strut_partial, 12
             )
 
+            # Ensure the window is placed at the top-left of the screen (0,0)
+            try:
+                libx11.XMoveWindow(display, wid, 0, 0)
+            except Exception:
+                # best-effort: ignore failures — the WM may still reposition
+                pass
+
             libx11.XFlush(display)
         finally:
             libx11.XCloseDisplay(display)

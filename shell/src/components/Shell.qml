@@ -7,7 +7,7 @@ Window {
 
     visible: true
     color: "transparent"
-    flags: Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.BypassWindowManagerHint
+    flags: Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint
 
     x: 0
     y: 0

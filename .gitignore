@@ -1,0 +1,22 @@
+# wm build artifacts
+wm/*.o
+wm/sadewm
+wm/*.tar.gz
+wm/compile_commands.json
+wm/.cache/
+
+# shell artifacts
+shell/pulse_monitor
+shell/*.pyc
+shell/__pycache__/
+shell/.venv
+shell/src/.qt_path_cache.env
+shell/debug_artifacts/
+shell/result
+shell/*.env
+
+# general
+*.pyc
+__pycache__/
+result
+.cache/

@@ -114,7 +114,7 @@ if HAS_DBUS:
 
         @method()
         def GetServerInformation(self) -> 'ssss':
-            return ["pyshell", "pyshell", "0.1", "1.2"]
+            return ["sadeshell", "sadeshell", "0.1", "1.2"]
 
         @method()
         def Notify(self, app_name: 's', replaces_id: 'u', app_icon: 's',

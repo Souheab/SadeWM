@@ -72,7 +72,7 @@ class AudioService(QObject):
         if not HAS_PULSECTL:
             return
         try:
-            with pulsectl.Pulse("pyshell-poll") as pulse:
+            with pulsectl.Pulse("sadeshell-poll") as pulse:
                 sinks = [self._format_sink(s) for s in pulse.sink_list()]
                 sources = [self._format_source(s) for s in pulse.source_list()
                            if ".monitor" not in (s.name or "")]
@@ -167,7 +167,7 @@ class AudioService(QObject):
         """Run a pulsectl command in a thread to avoid blocking the UI."""
         def _run():
             try:
-                with pulsectl.Pulse("pyshell-cmd") as pulse:
+                with pulsectl.Pulse("sadeshell-cmd") as pulse:
                     func(pulse)
             except Exception:
                 pass

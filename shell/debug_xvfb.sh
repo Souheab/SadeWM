@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# debug_xvfb.sh — run pyshell in Xvfb, capture gdb backtrace and screenshot
+# debug_xvfb.sh — run sadeshell in Xvfb, capture gdb backtrace and screenshot
 # Usage: ./debug_xvfb.sh [--screenshot]
 set -euo pipefail
 
@@ -7,9 +7,9 @@ REPO_ROOT="$(cd "$(dirname "$0")" && pwd)"
 ARTIFACT_DIR="$REPO_ROOT/debug_artifacts"
 DISPLAY_NUM=97
 DISPLAY_ENV=":$DISPLAY_NUM"
-SCREENSHOT="$ARTIFACT_DIR/pyshell_xvfb.png"
+SCREENSHOT="$ARTIFACT_DIR/sadeshell_xvfb.png"
 BACKTRACE_FILE="$ARTIFACT_DIR/backtrace.txt"
-LOG_FILE="$ARTIFACT_DIR/pyshell_run.log"
+LOG_FILE="$ARTIFACT_DIR/sadeshell_run.log"
 
 mkdir -p "$ARTIFACT_DIR"
 
@@ -47,15 +47,15 @@ trap 'kill "$XVFB_PID" 2>/dev/null; true' EXIT
 sleep 1
 
 # ── build if needed ───────────────────────────────────────────────────────
-if [[ ! -x "$REPO_ROOT/result/bin/pyshell" ]]; then
-    echo "Building pyshell flake..."
+if [[ ! -x "$REPO_ROOT/result/bin/sadeshell" ]]; then
+    echo "Building sadeshell flake..."
     nix build "$REPO_ROOT" --no-link 2>&1 | tee "$ARTIFACT_DIR/nix_build.log" || \
         die "nix build failed — see $ARTIFACT_DIR/nix_build.log"
     # symlink result
     nix build "$REPO_ROOT" 2>&1 | tail -3
 fi
 
-PYSHELL="$REPO_ROOT/result/bin/pyshell"
+PYSHELL="$REPO_ROOT/result/bin/sadeshell"
 PYTHON_BIN="$(grep '^exec ' "$PYSHELL" | awk '{print $2}' | tr -d '"')"
 [[ -z "$PYTHON_BIN" ]] && PYTHON_BIN="$(head -5 "$PYSHELL" | grep python | awk '{print $NF}')"
 
@@ -68,7 +68,7 @@ echo "export DISPLAY=$DISPLAY_ENV" >> "$ENV_SCRIPT"
 chmod +x "$ENV_SCRIPT"
 
 # ── run with gdb backtrace ────────────────────────────────────────────────
-echo "Running pyshell under gdb in Xvfb $DISPLAY_ENV ..."
+echo "Running sadeshell under gdb in Xvfb $DISPLAY_ENV ..."
 echo "Backtrace will be written to: $BACKTRACE_FILE"
 
 (
@@ -98,12 +98,12 @@ echo "Backtrace will be written to: $BACKTRACE_FILE"
             -ex "thread apply all bt full" \
             -ex "info registers" \
             -ex "quit" \
-            --args "$PYTHON_BIN" -m pyshell.main \
+            --args "$PYTHON_BIN" -m sadeshell.main \
             > "$BACKTRACE_FILE" 2>&1 &
         GDB_PID=$!
     else
         echo "gdb not found — running without debugger" >&2
-        "$PYTHON_BIN" -m pyshell.main > "$LOG_FILE" 2>&1 &
+        "$PYTHON_BIN" -m sadeshell.main > "$LOG_FILE" 2>&1 &
         GDB_PID=$!
     fi
 

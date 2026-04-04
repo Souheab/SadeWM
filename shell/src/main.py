@@ -1,4 +1,4 @@
-"""PyShell main entry point — launches the PySide6/QML bar."""
+"""sadeshell main entry point — launches the PySide6/QML bar."""
 
 import sys
 import os
@@ -9,7 +9,7 @@ from PySide6.QtQml import QQmlApplicationEngine, qmlRegisterSingletonInstance
 from PySide6.QtCore import QUrl, QLibraryInfo
 
 # TODO(nix-packaging): This entire QML path resolution block is a workaround for
-# running pyshell outside of a proper Nix derivation.  When the app is packaged
+# running sadeshell outside of a proper Nix derivation.  When the app is packaged
 # with wrapQtAppsHook (or equivalent), Qt sets up QML2_IMPORT_PATH automatically
 # and none of this is needed.  Remove _qt_qml_import_paths(), _QML_PATH_CACHE,
 # and the cache load/save calls in main() at that point.
@@ -102,24 +102,24 @@ def _qt_qml_import_paths() -> list[str]:
         _save_qml_path_cache(paths)
     return paths
 
-from pyshell.services.tag_service import TagService
-from pyshell.services.audio_service import AudioService
-from pyshell.services.brightness_service import BrightnessService
-from pyshell.services.media_service import MediaService
-from pyshell.services.wifi_service import WiFiService
-from pyshell.services.notification_service import NotificationService
-from pyshell.services.app_service import AppService
-from pyshell.services.power_service import PowerService
-from pyshell.services.window_helper import WindowHelper
-from pyshell.services.bluetooth_service import BluetoothService
-from pyshell.services.systray_service import SystrayService
+from sadeshell.services.tag_service import TagService
+from sadeshell.services.audio_service import AudioService
+from sadeshell.services.brightness_service import BrightnessService
+from sadeshell.services.media_service import MediaService
+from sadeshell.services.wifi_service import WiFiService
+from sadeshell.services.notification_service import NotificationService
+from sadeshell.services.app_service import AppService
+from sadeshell.services.power_service import PowerService
+from sadeshell.services.window_helper import WindowHelper
+from sadeshell.services.bluetooth_service import BluetoothService
+from sadeshell.services.systray_service import SystrayService
 
 
 def main():
     signal.signal(signal.SIGINT, signal.SIG_DFL)
 
     app = QApplication(sys.argv)
-    app.setApplicationName("pyshell")
+    app.setApplicationName("sadeshell")
 
     # Create service singletons
     tag_service = TagService()

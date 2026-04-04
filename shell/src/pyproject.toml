@@ -1,5 +1,5 @@
 [project]
-name = "pyshell"
+name = "sadeshell"
 version = "0.1.0"
 description = "PySide6 desktop status bar for X11 (dwm/sadewm)"
 requires-python = ">=3.11"
@@ -10,7 +10,7 @@ dependencies = [
 ]
 
 [project.scripts]
-pyshell = "pyshell.main:main"
+sadeshell = "sadeshell.main:main"
 
 [build-system]
 requires = ["setuptools>=68"]

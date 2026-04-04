@@ -1,6 +1,0 @@
-.github
-*.o
-sadewm
-*.tar.gz
-compile_commands.json
-.cache/

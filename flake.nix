@@ -238,13 +238,15 @@
             services.xserver.windowManager.session = [
               {
                 name = "sadewm";
+                managed = "desktop";
                 start = ''
                   ${wmPkg}/bin/sadewm &
                   waitPID=$!
                 '';
               }
               {
-                name = "sadewm go";
+                name = "sadewm (Go)";
+                managed = "desktop";
                 start = ''
                   ${wmGoPkg}/bin/sadewm &
                   waitPID=$!

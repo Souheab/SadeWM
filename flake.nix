@@ -100,6 +100,9 @@
               --unset        PYTHONPATH                                    \
               --unset        PYTHONHOME                                    \
               --set          PYTHONPATH "$out/lib"                        \
+              --prefix PATH : "${pkgs.xorg.xrandr}/bin"                   \
+              --prefix PATH : "${pkgs.networkmanager}/bin"                 \
+              --prefix PATH : "${pkgs.bluez}/bin"                         \
               --prefix LD_LIBRARY_PATH : "${pkgs.libx11}/lib"             \
               --prefix LD_LIBRARY_PATH : "${pkgs.libxext}/lib"            \
               --prefix LD_LIBRARY_PATH : "${pkgs.libpulseaudio}/lib"      \

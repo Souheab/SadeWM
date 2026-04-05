@@ -168,7 +168,6 @@ func (wm *WM) resizeClient(c *Client, x, y, w, h int) {
 			xproto.ConfigWindowBorderWidth,
 		[]uint32{uint32(x), uint32(y), uint32(w), uint32(h), uint32(c.BW)})
 	wm.configure(c)
-	wm.Conn.Sync()
 }
 
 func (wm *WM) configure(c *Client) {

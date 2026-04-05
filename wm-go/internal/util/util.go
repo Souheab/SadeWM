@@ -40,15 +40,19 @@ func Die(format string, args ...any) {
 }
 
 func LogDebug(format string, args ...any) {
-	if Debug {
-		fmt.Printf("DEBUG LOG: "+format+"\n", args...)
+	if !Debug {
+		return
+	}
+	msg := fmt.Sprintf(format, args...)
+	if Logger != nil {
+		Logger.Debug(msg)
+	} else {
+		fmt.Fprintln(os.Stderr, "DEBUG: "+msg)
 	}
 }
 
 func LogDebugf(format string, args ...any) {
-	if Debug {
-		fmt.Printf("DEBUG LOG: "+format+"\n", args...)
-	}
+	LogDebug(format, args...)
 }
 
 func CrashHandler() {

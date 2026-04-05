@@ -31,6 +31,13 @@ func main() {
 		util.EnableDebug()
 	}
 
+	// Initialize logging
+	if home := util.HomePath(); home != "" {
+		util.LogInit(home + "/.local/share/sadewm/sadewm.log")
+	} else {
+		util.LogInit("")
+	}
+
 	// Load TOML config
 	if *configPath != "" {
 		config.LoadTOML(*configPath)

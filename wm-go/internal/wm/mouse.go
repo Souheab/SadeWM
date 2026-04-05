@@ -43,6 +43,8 @@ func (wm *WM) MoveMouse(arg *config.Arg) {
 				}
 				if me, ok := extra.(xproto.MotionNotifyEvent); ok {
 					e = me
+				} else if _, ok := extra.(xproto.ButtonReleaseEvent); ok {
+					goto done
 				} else {
 					wm.handleEvent(extra)
 					break
@@ -134,6 +136,8 @@ func (wm *WM) ResizeMouse(arg *config.Arg) {
 				}
 				if me, ok := extra.(xproto.MotionNotifyEvent); ok {
 					e = me
+				} else if _, ok := extra.(xproto.ButtonReleaseEvent); ok {
+					goto done
 				} else {
 					wm.handleEvent(extra)
 					break

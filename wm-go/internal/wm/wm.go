@@ -208,6 +208,29 @@ func parseColor(hex string) [3]uint16 {
 	return [3]uint16{r, g, b}
 }
 
+// xgbEvent bundles an X event with its accompanying protocol error.
+type xgbEvent struct {
+	ev  xgb.Event
+	err xgb.Error
+}
+
+// startEventPump starts a goroutine that reads X events from the connection
+// and delivers them to wm.XEvCh so the main loop can select between X events
+// and IPC requests without ever blocking indefinitely.
+func (wm *WM) startEventPump() {
+	wm.XEvCh = make(chan xgbEvent, 64)
+	go func() {
+		for {
+			ev, err := wm.Conn.WaitForEvent()
+			wm.XEvCh <- xgbEvent{ev, err}
+			// A nil ev and nil err signals connection closed.
+			if ev == nil && err == nil {
+				return
+			}
+		}
+	}()
+}
+
 // Run is the main event loop.
 func (wm *WM) Run(ipcServer *ipc.Server) {
 	var ipcCh <-chan *ipc.IPCRequest
@@ -217,47 +240,56 @@ func (wm *WM) Run(ipcServer *ipc.Server) {
 		ipcCh = ipcServer.RequestChan()
 	}
 
+	wm.startEventPump()
+
 	for wm.Running {
-		// Process any pending X events
-		wm.processXEvents()
-
-		// Block waiting for the next X event
-		ev, xerr := wm.Conn.WaitForEvent()
-		if ev != nil {
-			wm.handleEvent(ev)
+		// Drain all immediately-available X events before blocking.
+	drainX:
+		for {
+			select {
+			case xev := <-wm.XEvCh:
+				wm.dispatchXEv(xev)
+			default:
+				break drainX
+			}
 		}
-		if xerr != nil {
-			wm.handleXError(xerr)
-		}
 
-		// Drain IPC requests (non-blocking)
+		// Block until either an X event or an IPC request arrives.
 		if ipcCh != nil {
+			select {
+			case xev := <-wm.XEvCh:
+				wm.dispatchXEv(xev)
+			case req := <-ipcCh:
+				resp := wm.handleIPCRequest(req)
+				req.ResponseCh <- resp
+			}
+		} else {
+			xev := <-wm.XEvCh
+			wm.dispatchXEv(xev)
+		}
+
+		// After each event, drain any remaining IPC requests (non-blocking).
+		if ipcCh != nil {
+		drainIPC:
 			for {
 				select {
 				case req := <-ipcCh:
 					resp := wm.handleIPCRequest(req)
 					req.ResponseCh <- resp
 				default:
-					goto doneIPC
+					break drainIPC
 				}
 			}
-		doneIPC:
 		}
 	}
 }
 
-func (wm *WM) processXEvents() {
-	for {
-		ev, xerr := wm.Conn.PollForEvent()
-		if ev == nil && xerr == nil {
-			return
-		}
-		if ev != nil {
-			wm.handleEvent(ev)
-		}
-		if xerr != nil {
-			wm.handleXError(xerr)
-		}
+func (wm *WM) dispatchXEv(xev xgbEvent) {
+	if xev.ev != nil {
+		wm.handleEvent(xev.ev)
+	}
+	if xev.err != nil {
+		wm.handleXError(xev.err)
 	}
 }
 

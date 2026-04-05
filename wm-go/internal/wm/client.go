@@ -117,6 +117,14 @@ type WM struct {
 	// Minimize stack
 	MinimizeStack []*Client
 
+	// Event delivery: all X events are fed through this channel by a
+	// background goroutine so the main loop can select between X events
+	// and IPC requests without blocking indefinitely.
+	XEvCh chan xgbEvent
+
+	// Events buffered during a drag that should be re-processed after.
+	pendingEvts []xgb.Event
+
 	// Action dispatch table
 	Actions map[string]config.ActionFunc
 }

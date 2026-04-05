@@ -1,13 +1,15 @@
 package wm
 
 import (
+	"github.com/BurntSushi/xgb"
 	"github.com/BurntSushi/xgb/xproto"
 	"github.com/sadewm/sadewm/wm-go/internal/config"
 	"github.com/sadewm/sadewm/wm-go/internal/util"
 )
 
-// isMouseDragEvent returns true for events that should be processed during
-// a mouse drag (matching the C WM's XMaskEvent filter).
+// isMouseDragEvent returns true for events that should be handled inline
+// during a mouse drag (ConfigureRequest / MapRequest need live processing;
+// ButtonRelease / MotionNotify drive the drag itself).
 func isMouseDragEvent(ev interface{}) bool {
 	switch ev.(type) {
 	case xproto.MotionNotifyEvent,
@@ -20,7 +22,105 @@ func isMouseDragEvent(ev interface{}) bool {
 	return false
 }
 
-// movemouse implements Mod+Button1 window dragging.
+// nextDragEvent returns the next X event, reading from the shared event
+// channel.  Events that are not drag-relevant are appended to wm.pendingEvts
+// so they can be re-dispatched after the drag completes; this mirrors the
+// C WM's XMaskEvent behaviour where unrelated events stay queued.
+func (wm *WM) nextDragEvent() xgb.Event {
+	for {
+		xev := <-wm.XEvCh
+		if xev.ev == nil {
+			return nil
+		}
+		if xev.err != nil {
+			wm.handleXError(xev.err)
+			continue
+		}
+		if isMouseDragEvent(xev.ev) {
+			return xev.ev
+		}
+		// Not drag-relevant: buffer for post-drag dispatch.
+		wm.pendingEvts = append(wm.pendingEvts, xev.ev)
+	}
+}
+
+// pollDragEvent does a non-blocking drain of the shared event channel.
+// Drag-relevant events are returned; everything else is buffered.
+// Returns nil if no drag-relevant event is immediately available.
+func (wm *WM) pollDragEvent() xgb.Event {
+	for {
+		select {
+		case xev := <-wm.XEvCh:
+			if xev.ev == nil {
+				return nil
+			}
+			if xev.err != nil {
+				wm.handleXError(xev.err)
+				continue
+			}
+			if isMouseDragEvent(xev.ev) {
+				return xev.ev
+			}
+			wm.pendingEvts = append(wm.pendingEvts, xev.ev)
+		default:
+			return nil
+		}
+	}
+}
+
+// replayPendingEvts dispatches all events that were buffered during a drag.
+func (wm *WM) replayPendingEvts() {
+	for _, ev := range wm.pendingEvts {
+		wm.handleEvent(ev)
+	}
+	wm.pendingEvts = wm.pendingEvts[:0]
+}
+
+// snapX applies horizontal snap-to-edge for a drag operation.
+// It prevents the window from leaving the left/right work area edges and
+// provides a magnetic snap when approaching from the outside.
+func (wm *WM) snapX(nx, ocx, w int) int {
+	snap := int(config.Snap)
+	wx := wm.SelMon.WX
+	ww := wm.SelMon.WW
+	if nx < wx {
+		return wx
+	}
+	if nx+w > wx+ww {
+		return wx + ww - w
+	}
+	if abs(wx-nx) < snap && nx < ocx {
+		return wx
+	}
+	if abs((wx+ww)-(nx+w)) < snap && nx > ocx {
+		return wx + ww - w
+	}
+	return nx
+}
+
+// snapY applies vertical snap-to-edge for a drag operation.
+// It prevents the window from leaving the top/bottom work area edges and
+// provides a magnetic snap when approaching from the outside.
+func (wm *WM) snapY(ny, ocy, h int) int {
+	snap := int(config.Snap)
+	wy := wm.SelMon.WY
+	wh := wm.SelMon.WH
+	if ny < wy {
+		return wy
+	}
+	if ny+h > wy+wh {
+		return wy + wh - h
+	}
+	if abs(wy-ny) < snap && ny < ocy {
+		return wy
+	}
+	if abs((wy+wh)-(ny+h)) < snap && ny > ocy {
+		return wy + wh - h
+	}
+	return ny
+}
+
+// MoveMouse implements Mod+Button1 window dragging.
 func (wm *WM) MoveMouse(arg *config.Arg) {
 	c := wm.SelMon.Sel
 	if c == nil || c.IsDock || c.IsFullscreen {
@@ -36,20 +136,16 @@ func (wm *WM) MoveMouse(arg *config.Arg) {
 		xproto.GrabModeAsync, xproto.GrabModeAsync,
 		xproto.WindowNone, wm.Cursors[CurMove], xproto.TimeCurrentTime).Reply()
 	if err != nil || reply.Status != xproto.GrabStatusSuccess {
+		util.LogDebugf("MoveMouse: GrabPointer failed (status=%d err=%v)", reply.Status, err)
 		return
 	}
 
 	ptrX, ptrY := wm.getRootPtr()
 
 	for {
-		ev, _ := wm.Conn.WaitForEvent()
+		ev := wm.nextDragEvent()
 		if ev == nil {
 			break
-		}
-
-		// Only process drag-relevant events; queue others for later
-		if !isMouseDragEvent(ev) {
-			continue
 		}
 
 		switch e := ev.(type) {
@@ -58,9 +154,9 @@ func (wm *WM) MoveMouse(arg *config.Arg) {
 		case xproto.MapRequestEvent:
 			wm.handleMapRequest(e)
 		case xproto.MotionNotifyEvent:
-			// Drain excess motion events
+			// Coalesce: discard intermediate motion events, keep the latest.
 			for {
-				extra, _ := wm.Conn.PollForEvent()
+				extra := wm.pollDragEvent()
 				if extra == nil {
 					break
 				}
@@ -68,27 +164,20 @@ func (wm *WM) MoveMouse(arg *config.Arg) {
 					e = me
 				} else if _, ok := extra.(xproto.ButtonReleaseEvent); ok {
 					goto done
+				} else {
+					// Re-buffer ConfigureRequest / MapRequest / ButtonPress
+					wm.pendingEvts = append(wm.pendingEvts, extra)
 				}
-				// Drop other events during drain — they'll be redelivered
 			}
 
 			nx := ocx + (int(e.RootX) - ptrX)
 			ny := ocy + (int(e.RootY) - ptrY)
 
-			snap := int(config.Snap)
-			if abs(wm.SelMon.WX-nx) < snap {
-				nx = wm.SelMon.WX
-			} else if abs((wm.SelMon.WX+wm.SelMon.WW)-(nx+c.Width())) < snap {
-				nx = wm.SelMon.WX + wm.SelMon.WW - c.Width()
-			}
-			if abs(wm.SelMon.WY-ny) < snap {
-				ny = wm.SelMon.WY
-			} else if abs((wm.SelMon.WY+wm.SelMon.WH)-(ny+c.Height())) < snap {
-				ny = wm.SelMon.WY + wm.SelMon.WH - c.Height()
-			}
+			nx = wm.snapX(nx, ocx, c.Width())
+			ny = wm.snapY(ny, ocy, c.Height())
 
 			if !c.IsFloating && wm.SelMon.Lt.Arrange != nil {
-				// Swap with client under cursor
+				// Tiled mode: swap with the client under the cursor.
 				m := wm.winToMon(c.Win)
 				for t := m.Clients; t != nil; t = t.Next {
 					if t != c && !t.IsFloating && t.IsVisible() &&
@@ -114,6 +203,7 @@ done:
 		wm.SelMon = m
 		wm.Focus(nil)
 	}
+	wm.replayPendingEvts()
 }
 
 // ResizeMouse implements Mod+Button3 window resizing.
@@ -132,22 +222,18 @@ func (wm *WM) ResizeMouse(arg *config.Arg) {
 		xproto.GrabModeAsync, xproto.GrabModeAsync,
 		xproto.WindowNone, wm.Cursors[CurResize], xproto.TimeCurrentTime).Reply()
 	if err != nil || reply.Status != xproto.GrabStatusSuccess {
+		util.LogDebugf("ResizeMouse: GrabPointer failed (status=%d err=%v)", reply.Status, err)
 		return
 	}
 
-	// Warp pointer to bottom-right corner
+	// Warp pointer to bottom-right corner of the window.
 	xproto.WarpPointer(wm.Conn, xproto.WindowNone, c.Win,
 		0, 0, 0, 0, int16(c.W+c.BW-1), int16(c.H+c.BW-1))
 
 	for {
-		ev, _ := wm.Conn.WaitForEvent()
+		ev := wm.nextDragEvent()
 		if ev == nil {
 			break
-		}
-
-		// Only process drag-relevant events
-		if !isMouseDragEvent(ev) {
-			continue
 		}
 
 		switch e := ev.(type) {
@@ -156,8 +242,9 @@ func (wm *WM) ResizeMouse(arg *config.Arg) {
 		case xproto.MapRequestEvent:
 			wm.handleMapRequest(e)
 		case xproto.MotionNotifyEvent:
+			// Coalesce intermediate motion events.
 			for {
-				extra, _ := wm.Conn.PollForEvent()
+				extra := wm.pollDragEvent()
 				if extra == nil {
 					break
 				}
@@ -165,11 +252,13 @@ func (wm *WM) ResizeMouse(arg *config.Arg) {
 					e = me
 				} else if _, ok := extra.(xproto.ButtonReleaseEvent); ok {
 					goto done
+				} else {
+					wm.pendingEvts = append(wm.pendingEvts, extra)
 				}
 			}
 
 			if !c.IsFloating && wm.SelMon.Lt.Arrange != nil {
-				// Adjust mfact for tiled resize
+				// Tiled resize adjusts mfact.
 				f := float32(int(e.RootX)-wm.SelMon.WX) / float32(wm.SelMon.WW)
 				if wm.SelMon.IsRightTiled {
 					f = 1.0 - f
@@ -208,8 +297,5 @@ done:
 		wm.SelMon = m
 		wm.Focus(nil)
 	}
-}
-
-func init() {
-	_ = util.LogDebug // unused import guard
+	wm.replayPendingEvts()
 }

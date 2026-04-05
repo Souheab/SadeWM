@@ -29,12 +29,14 @@ func isMouseDragEvent(ev interface{}) bool {
 func (wm *WM) nextDragEvent() xgb.Event {
 	for {
 		xev := <-wm.XEvCh
-		if xev.ev == nil {
-			return nil
-		}
+		// Handle errors first — an error with ev==nil is NOT a connection
+		// close (which has ev==nil AND err==nil), just an async X error.
 		if xev.err != nil {
 			wm.handleXError(xev.err)
 			continue
+		}
+		if xev.ev == nil {
+			return nil
 		}
 		if isMouseDragEvent(xev.ev) {
 			return xev.ev
@@ -51,12 +53,12 @@ func (wm *WM) pollDragEvent() xgb.Event {
 	for {
 		select {
 		case xev := <-wm.XEvCh:
-			if xev.ev == nil {
-				return nil
-			}
 			if xev.err != nil {
 				wm.handleXError(xev.err)
 				continue
+			}
+			if xev.ev == nil {
+				return nil
 			}
 			if isMouseDragEvent(xev.ev) {
 				return xev.ev
@@ -123,34 +125,29 @@ func (wm *WM) snapY(ny, ocy, h int) int {
 // MoveMouse implements Mod+Button1 window dragging.
 func (wm *WM) MoveMouse(arg *config.Arg) {
 	c := wm.SelMon.Sel
-	util.LogInfo("MoveMouse: sel=%v", c != nil)
 	if c == nil || c.IsDock || c.IsFullscreen {
-		util.LogInfo("MoveMouse: early exit (nil=%v dock=%v fs=%v)",
-			c == nil,
-			c != nil && c.IsDock,
-			c != nil && c.IsFullscreen)
 		return
 	}
-	util.LogInfo("MoveMouse: client=%q floating=%v win=0x%x", c.Name, c.IsFloating, c.Win)
+	util.LogDebug("MoveMouse: client=%q floating=%v win=0x%x", c.Name, c.IsFloating, c.Win)
 
 	wm.Restack(wm.SelMon)
 	ocx := c.X
 	ocy := c.Y
 
-	// AllowEvents(ReplayPointer) in handleButtonPress aborts the passive grab
-	// before we get here, so the pointer is either ungrabbed (sync-pointer
-	// grab) or still under the active async grab (async-pointer focused grab).
-	// Either way GrabPointer from the same client always succeeds without a
-	// Sync round-trip.  Omitting Conn.Sync() removes the race window that
-	// allowed the freed ButtonRelease to land in XEvCh before GrabPointer.
+	// handleButtonPress already called AllowEvents(ReplayPointer) to release
+	// the sync-pointer passive grab and AllowEvents(AsyncKeyboard) to thaw
+	// the keyboard that was frozen by the passive grab's SyncKeyboard mode.
+	// A Sync() round-trip ensures both are processed by the server before we
+	// establish our own active grab.
+	wm.Conn.Sync()
 
-	util.LogInfo("MoveMouse: calling GrabPointer")
+	util.LogDebug("MoveMouse: calling GrabPointer")
 	reply, err := xproto.GrabPointer(wm.Conn, false, wm.Root,
 		xproto.EventMaskButtonPress|xproto.EventMaskButtonRelease|xproto.EventMaskPointerMotion,
 		xproto.GrabModeAsync, xproto.GrabModeAsync,
 		xproto.WindowNone, wm.Cursors[CurMove], xproto.TimeCurrentTime).Reply()
-	util.LogInfo("MoveMouse: GrabPointer status=%d err=%v", reply.Status, err)
 	if err != nil || reply.Status != xproto.GrabStatusSuccess {
+		util.LogDebug("MoveMouse: GrabPointer failed status=%d err=%v", reply.Status, err)
 		return
 	}
 
@@ -168,7 +165,7 @@ func (wm *WM) MoveMouse(arg *config.Arg) {
 		case xproto.MapRequestEvent:
 			wm.handleMapRequest(e)
 		case xproto.MotionNotifyEvent:
-			util.LogInfo("MoveMouse: MotionNotify root=%d,%d", e.RootX, e.RootY)
+			util.LogDebug("MoveMouse: MotionNotify root=%d,%d", e.RootX, e.RootY)
 			// Coalesce: discard intermediate motion events, keep the latest.
 			for {
 				extra := wm.pollDragEvent()
@@ -207,7 +204,6 @@ func (wm *WM) MoveMouse(arg *config.Arg) {
 			}
 
 		case xproto.ButtonReleaseEvent:
-			util.LogInfo("MoveMouse: ButtonRelease event=0x%x", e.Event)
 			goto done
 		}
 	}
@@ -233,13 +229,16 @@ func (wm *WM) ResizeMouse(arg *config.Arg) {
 	ocx := c.X
 	ocy := c.Y
 
-	util.LogInfo("ResizeMouse: calling GrabPointer")
+	// Ensure AllowEvents from handleButtonPress is processed by the server.
+	wm.Conn.Sync()
+
+	util.LogDebug("ResizeMouse: calling GrabPointer")
 	reply, err := xproto.GrabPointer(wm.Conn, false, wm.Root,
 		xproto.EventMaskButtonPress|xproto.EventMaskButtonRelease|xproto.EventMaskPointerMotion,
 		xproto.GrabModeAsync, xproto.GrabModeAsync,
 		xproto.WindowNone, wm.Cursors[CurResize], xproto.TimeCurrentTime).Reply()
-	util.LogInfo("ResizeMouse: GrabPointer status=%d err=%v", reply.Status, err)
 	if err != nil || reply.Status != xproto.GrabStatusSuccess {
+		util.LogDebug("ResizeMouse: GrabPointer failed status=%d err=%v", reply.Status, err)
 		return
 	}
 
@@ -259,7 +258,7 @@ func (wm *WM) ResizeMouse(arg *config.Arg) {
 		case xproto.MapRequestEvent:
 			wm.handleMapRequest(e)
 		case xproto.MotionNotifyEvent:
-			util.LogInfo("ResizeMouse: MotionNotify root=%d,%d", e.RootX, e.RootY)
+			util.LogDebug("ResizeMouse: MotionNotify root=%d,%d", e.RootX, e.RootY)
 			// Coalesce intermediate motion events.
 			for {
 				extra := wm.pollDragEvent()

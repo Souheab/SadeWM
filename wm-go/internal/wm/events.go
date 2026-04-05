@@ -43,7 +43,7 @@ func (wm *WM) handleEvent(ev xgb.Event) {
 func (wm *WM) handleButtonPress(e xproto.ButtonPressEvent) {
 	click := config.ClkRootWin
 
-	util.LogInfo("buttonpress: win=0x%x button=%d state=0x%04x",
+	util.LogDebug("buttonpress: win=0x%x button=%d state=0x%04x",
 		e.Event, e.Detail, e.State)
 
 	if m := wm.winToMon(e.Event); m != nil && m != wm.SelMon {
@@ -53,21 +53,23 @@ func (wm *WM) handleButtonPress(e xproto.ButtonPressEvent) {
 	}
 
 	if c := wm.winToClient(e.Event); c != nil {
-		util.LogInfo("buttonpress: found client %q floating=%v focused=%v",
+		util.LogDebug("buttonpress: found client %q floating=%v focused=%v",
 			c.Name, c.IsFloating, c == wm.SelMon.Sel)
 		wm.Focus(c)
 		wm.Restack(wm.SelMon)
-		// Mirror C WM exactly: AllowEvents(ReplayPointer) BEFORE the action
-		// loop, so the server aborts the catch-all sync-pointer passive grab
-		// and drops the frozen ButtonRelease (routes to root which has no
-		// ButtonReleaseMask) before GrabPointer is called inside MoveMouse /
-		// ResizeMouse.  If called after the action, GrabPointer itself thaws
-		// the frozen pointer and delivers the stale ButtonRelease under the
-		// new active grab, which immediately ends the drag.
+		// The passive grab (GrabButton) uses GrabModeSync for the keyboard,
+		// which freezes the keyboard when the grab activates.  We must thaw
+		// both the pointer (ReplayPointer releases the sync-pointer passive
+		// grab) and the keyboard (AsyncKeyboard unfreezes keyboard events)
+		// before any action runs.  Without AsyncKeyboard the keyboard stays
+		// frozen for the duration of the drag, preventing the X server from
+		// delivering ButtonRelease events (the server withholds ALL device
+		// events when the frozen device's queue is full).
 		xproto.AllowEvents(wm.Conn, xproto.AllowReplayPointer, xproto.TimeCurrentTime)
+		xproto.AllowEvents(wm.Conn, xproto.AllowAsyncKeyboard, xproto.TimeCurrentTime)
 		click = config.ClkClientWin
 	} else {
-		util.LogInfo("buttonpress: no client found for win=0x%x (root=0x%x)",
+		util.LogDebug("buttonpress: no client found for win=0x%x (root=0x%x)",
 			e.Event, wm.Root)
 	}
 
@@ -76,7 +78,7 @@ func (wm *WM) handleButtonPress(e xproto.ButtonPressEvent) {
 	for _, btn := range buttons {
 		if click == btn.Click && btn.Button == xproto.Button(e.Detail) &&
 			wm.cleanMask(btn.Mask) == wm.cleanMask(e.State) {
-			util.LogInfo("buttonpress: matched action=%q", btn.Action)
+			util.LogDebug("buttonpress: matched action=%q", btn.Action)
 			consumed = true
 			if action, ok := wm.Actions[btn.Action]; ok {
 				action(&btn.Arg)

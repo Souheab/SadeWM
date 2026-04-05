@@ -102,11 +102,23 @@ func (wm *WM) Restack(m *Monitor) {
 	}
 
 	if m.Lt.Arrange != nil {
+		// Stack tiled windows below each other.  Dwm uses the bar
+		// window as the initial sibling, but sadewm has no bar window
+		// (sadeshell is a separate process), so we simply lower each
+		// tiled window and chain siblings.
+		var sibling xproto.Window
 		for c := m.Stack; c != nil; c = c.SNext {
 			if !c.IsFloating && !c.IsAbove && c.IsVisible() {
-				xproto.ConfigureWindow(wm.Conn, c.Win,
-					xproto.ConfigWindowSibling|xproto.ConfigWindowStackMode,
-					[]uint32{uint32(wm.Root), uint32(xproto.StackModeBelow)})
+				if sibling != 0 {
+					xproto.ConfigureWindow(wm.Conn, c.Win,
+						xproto.ConfigWindowSibling|xproto.ConfigWindowStackMode,
+						[]uint32{uint32(sibling), uint32(xproto.StackModeBelow)})
+				} else {
+					xproto.ConfigureWindow(wm.Conn, c.Win,
+						xproto.ConfigWindowStackMode,
+						[]uint32{uint32(xproto.StackModeBelow)})
+				}
+				sibling = c.Win
 			}
 		}
 	}

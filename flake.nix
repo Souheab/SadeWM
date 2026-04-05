@@ -236,7 +236,7 @@
 
             useGoWm = lib.mkOption {
               type    = lib.types.bool;
-              default = true;
+              default = false;
               description = "Use the Go rewrite of sadewm instead of the C version.";
             };
           };

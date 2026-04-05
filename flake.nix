@@ -170,6 +170,7 @@
             gnumake
             pkg-config
             gdb
+            go
             # Shell Qt wrapping
             qt6.wrapQtAppsHook
           ];

@@ -10,11 +10,11 @@ import (
 
 // GrabKeys grabs all active key bindings on the root window.
 func (wm *WM) GrabKeys() {
+	keybind.Initialize(wm.X)
+
 	wm.updateNumlockMask()
 
 	xproto.UngrabKey(wm.Conn, xproto.GrabAny, wm.Root, xproto.ModMaskAny)
-
-	keybind.Initialize(wm.X)
 
 	modifiers := []uint16{0, xproto.ModMaskLock, wm.NumlockMask, wm.NumlockMask | xproto.ModMaskLock}
 

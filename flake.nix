@@ -245,7 +245,7 @@
                 '';
               }
               {
-                name = "sadewm (Go)";
+                name = "sadewm-go";
                 managed = "desktop";
                 start = ''
                   ${wmGoPkg}/bin/sadewm &

@@ -123,26 +123,32 @@ func (wm *WM) snapY(ny, ocy, h int) int {
 // MoveMouse implements Mod+Button1 window dragging.
 func (wm *WM) MoveMouse(arg *config.Arg) {
 	c := wm.SelMon.Sel
+	util.LogInfo("MoveMouse: sel=%v", c != nil)
 	if c == nil || c.IsDock || c.IsFullscreen {
+		util.LogInfo("MoveMouse: early exit (nil=%v dock=%v fs=%v)",
+			c == nil,
+			c != nil && c.IsDock,
+			c != nil && c.IsFullscreen)
 		return
 	}
+	util.LogInfo("MoveMouse: client=%q floating=%v win=0x%x", c.Name, c.IsFloating, c.Win)
 
 	wm.Restack(wm.SelMon)
 	ocx := c.X
 	ocy := c.Y
 
-	// Sync ensures all preceding requests from handleButtonPress (AllowEvents,
-	// UngrabButton, GrabButton) have been processed by the server before we
-	// attempt to grab the pointer.  Without this, GrabPointer can race against
-	// those pending requests and return GrabAlreadyGrabbed or GrabFrozen.
+	// Sync ensures AllowEvents(AsyncBoth) and the GrabButton regrab from
+	// handleButtonPress have been processed by the server before we attempt to
+	// take over the active passive grab with GrabPointer.
 	wm.Conn.Sync()
 
+	util.LogInfo("MoveMouse: calling GrabPointer")
 	reply, err := xproto.GrabPointer(wm.Conn, false, wm.Root,
 		xproto.EventMaskButtonPress|xproto.EventMaskButtonRelease|xproto.EventMaskPointerMotion,
 		xproto.GrabModeAsync, xproto.GrabModeAsync,
 		xproto.WindowNone, wm.Cursors[CurMove], xproto.TimeCurrentTime).Reply()
+	util.LogInfo("MoveMouse: GrabPointer status=%d err=%v", reply.Status, err)
 	if err != nil || reply.Status != xproto.GrabStatusSuccess {
-		util.LogDebugf("MoveMouse: GrabPointer failed (status=%d err=%v)", reply.Status, err)
 		return
 	}
 
@@ -225,12 +231,13 @@ func (wm *WM) ResizeMouse(arg *config.Arg) {
 
 	wm.Conn.Sync()
 
+	util.LogInfo("ResizeMouse: calling GrabPointer")
 	reply, err := xproto.GrabPointer(wm.Conn, false, wm.Root,
 		xproto.EventMaskButtonPress|xproto.EventMaskButtonRelease|xproto.EventMaskPointerMotion,
 		xproto.GrabModeAsync, xproto.GrabModeAsync,
 		xproto.WindowNone, wm.Cursors[CurResize], xproto.TimeCurrentTime).Reply()
+	util.LogInfo("ResizeMouse: GrabPointer status=%d err=%v", reply.Status, err)
 	if err != nil || reply.Status != xproto.GrabStatusSuccess {
-		util.LogDebugf("ResizeMouse: GrabPointer failed (status=%d err=%v)", reply.Status, err)
 		return
 	}
 

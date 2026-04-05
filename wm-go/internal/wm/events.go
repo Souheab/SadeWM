@@ -6,6 +6,7 @@ import (
 	"github.com/BurntSushi/xgbutil/keybind"
 
 	"github.com/sadewm/sadewm/wm-go/internal/config"
+	"github.com/sadewm/sadewm/wm-go/internal/util"
 )
 
 func (wm *WM) handleEvent(ev xgb.Event) {
@@ -42,6 +43,9 @@ func (wm *WM) handleEvent(ev xgb.Event) {
 func (wm *WM) handleButtonPress(e xproto.ButtonPressEvent) {
 	click := config.ClkRootWin
 
+	util.LogInfo("buttonpress: win=0x%x button=%d state=0x%04x",
+		e.Event, e.Detail, e.State)
+
 	if m := wm.winToMon(e.Event); m != nil && m != wm.SelMon {
 		wm.Unfocus(wm.SelMon.Sel, true)
 		wm.SelMon = m
@@ -49,9 +53,14 @@ func (wm *WM) handleButtonPress(e xproto.ButtonPressEvent) {
 	}
 
 	if c := wm.winToClient(e.Event); c != nil {
+		util.LogInfo("buttonpress: found client %q floating=%v focused=%v",
+			c.Name, c.IsFloating, c == wm.SelMon.Sel)
 		wm.Focus(c)
 		wm.Restack(wm.SelMon)
 		click = config.ClkClientWin
+	} else {
+		util.LogInfo("buttonpress: no client found for win=0x%x (root=0x%x)",
+			e.Event, wm.Root)
 	}
 
 	buttons := config.DefaultButtons()
@@ -59,6 +68,7 @@ func (wm *WM) handleButtonPress(e xproto.ButtonPressEvent) {
 	for _, btn := range buttons {
 		if click == btn.Click && btn.Button == xproto.Button(e.Detail) &&
 			wm.cleanMask(btn.Mask) == wm.cleanMask(e.State) {
+			util.LogInfo("buttonpress: matched action=%q", btn.Action)
 			consumed = true
 			if action, ok := wm.Actions[btn.Action]; ok {
 				action(&btn.Arg)
@@ -66,16 +76,20 @@ func (wm *WM) handleButtonPress(e xproto.ButtonPressEvent) {
 		}
 	}
 
-	// Only replay the event to the client when no WM binding consumed it.
-	// For modifier+button grabs (movemouse, resizemouse, etc.) we must NOT
-	// replay — doing so would disturb the active passive grab before
-	// GrabPointer can take it over, causing the drag to silently fail.
-	// However if a sync keyboard grab is active (from the unfocused catch-all),
-	// we must still unfreeze the keyboard so events flow during the drag.
+	if !consumed {
+		util.LogInfo("buttonpress: no binding matched, replaying pointer")
+	}
+
+	// When a WM action consumed the click (e.g. movemouse) we must NOT call
+	// AllowEvents(ReplayPointer): that would replay the button press bypassing
+	// passive grabs and release the active grab before GrabPointer can take it
+	// over.  Instead use AsyncBoth to unfreeze both the pointer and keyboard
+	// (the unfocused catch-all passive grab freezes both with GrabModeSync)
+	// while leaving the active grab alive for GrabPointer to inherit.
 	if !consumed {
 		xproto.AllowEvents(wm.Conn, xproto.AllowReplayPointer, xproto.TimeCurrentTime)
 	} else {
-		xproto.AllowEvents(wm.Conn, xproto.AllowAsyncKeyboard, xproto.TimeCurrentTime)
+		xproto.AllowEvents(wm.Conn, xproto.AllowAsyncBoth, xproto.TimeCurrentTime)
 	}
 }
 

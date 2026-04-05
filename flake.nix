@@ -118,6 +118,30 @@
           };
         };
 
+        # ── sadewm-go (Go / X11 window manager) ────────────────────────────
+        sadewm-go = pkgs.buildGoModule {
+          pname   = "sadewm-go";
+          version = "0.1";
+          src     = ./wm-go;
+
+          vendorHash = null;  # uses go mod vendor or set to actual hash
+
+          buildInputs = with pkgs; [
+            libX11
+            libXinerama
+            xorg.libXcursor
+          ];
+
+          subPackages = [ "cmd/sadewm" ];
+
+          meta = with pkgs.lib; {
+            description = "sadewm window manager (Go rewrite)";
+            license     = licenses.mit;
+            platforms   = [ "x86_64-linux" "aarch64-linux" ];
+            mainProgram = "sadewm";
+          };
+        };
+
         combined = pkgs.symlinkJoin {
           name  = "sadewm-with-sadeshell";
           paths = [ sadewm sadeshell ];
@@ -126,6 +150,7 @@
       in {
         packages.default   = combined;
         packages.sadewm    = sadewm;
+        packages.sadewm-go = sadewm-go;
         packages.sadeshell = sadeshell;
 
         apps.default = {

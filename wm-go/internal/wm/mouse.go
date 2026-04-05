@@ -137,10 +137,12 @@ func (wm *WM) MoveMouse(arg *config.Arg) {
 	ocx := c.X
 	ocy := c.Y
 
-	// Sync ensures AllowEvents(AsyncBoth) and the GrabButton regrab from
-	// handleButtonPress have been processed by the server before we attempt to
-	// take over the active passive grab with GrabPointer.
-	wm.Conn.Sync()
+	// AllowEvents(ReplayPointer) in handleButtonPress aborts the passive grab
+	// before we get here, so the pointer is either ungrabbed (sync-pointer
+	// grab) or still under the active async grab (async-pointer focused grab).
+	// Either way GrabPointer from the same client always succeeds without a
+	// Sync round-trip.  Omitting Conn.Sync() removes the race window that
+	// allowed the freed ButtonRelease to land in XEvCh before GrabPointer.
 
 	util.LogInfo("MoveMouse: calling GrabPointer")
 	reply, err := xproto.GrabPointer(wm.Conn, false, wm.Root,
@@ -166,6 +168,7 @@ func (wm *WM) MoveMouse(arg *config.Arg) {
 		case xproto.MapRequestEvent:
 			wm.handleMapRequest(e)
 		case xproto.MotionNotifyEvent:
+			util.LogInfo("MoveMouse: MotionNotify root=%d,%d", e.RootX, e.RootY)
 			// Coalesce: discard intermediate motion events, keep the latest.
 			for {
 				extra := wm.pollDragEvent()
@@ -204,6 +207,7 @@ func (wm *WM) MoveMouse(arg *config.Arg) {
 			}
 
 		case xproto.ButtonReleaseEvent:
+			util.LogInfo("MoveMouse: ButtonRelease event=0x%x", e.Event)
 			goto done
 		}
 	}
@@ -228,8 +232,6 @@ func (wm *WM) ResizeMouse(arg *config.Arg) {
 	wm.Restack(wm.SelMon)
 	ocx := c.X
 	ocy := c.Y
-
-	wm.Conn.Sync()
 
 	util.LogInfo("ResizeMouse: calling GrabPointer")
 	reply, err := xproto.GrabPointer(wm.Conn, false, wm.Root,
@@ -257,6 +259,7 @@ func (wm *WM) ResizeMouse(arg *config.Arg) {
 		case xproto.MapRequestEvent:
 			wm.handleMapRequest(e)
 		case xproto.MotionNotifyEvent:
+			util.LogInfo("ResizeMouse: MotionNotify root=%d,%d", e.RootX, e.RootY)
 			// Coalesce intermediate motion events.
 			for {
 				extra := wm.pollDragEvent()

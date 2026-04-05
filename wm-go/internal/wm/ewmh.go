@@ -127,8 +127,8 @@ func (wm *WM) updateSizeHints(c *Client) {
 	)
 
 	if flags&pBaseSize != 0 {
-		c.BaseW = int(getUint32(v[40:]))
-		c.BaseH = int(getUint32(v[44:]))
+		c.BaseW = int(getUint32(v[60:]))
+		c.BaseH = int(getUint32(v[64:]))
 	} else if flags&pMinSize != 0 {
 		c.BaseW = int(getUint32(v[20:]))
 		c.BaseH = int(getUint32(v[24:]))
@@ -138,16 +138,16 @@ func (wm *WM) updateSizeHints(c *Client) {
 	}
 
 	if flags&pResizeInc != 0 {
-		c.IncW = int(getUint32(v[28:]))
-		c.IncH = int(getUint32(v[32:]))
+		c.IncW = int(getUint32(v[36:]))
+		c.IncH = int(getUint32(v[40:]))
 	} else {
 		c.IncW = 0
 		c.IncH = 0
 	}
 
 	if flags&pMaxSize != 0 {
-		c.MaxW = int(getUint32(v[36:]))
-		c.MaxH = int(getUint32(v[40:]))
+		c.MaxW = int(getUint32(v[28:]))
+		c.MaxH = int(getUint32(v[32:]))
 	} else {
 		c.MaxW = 0
 		c.MaxH = 0
@@ -157,18 +157,18 @@ func (wm *WM) updateSizeHints(c *Client) {
 		c.MinW = int(getUint32(v[20:]))
 		c.MinH = int(getUint32(v[24:]))
 	} else if flags&pBaseSize != 0 {
-		c.MinW = int(getUint32(v[40:]))
-		c.MinH = int(getUint32(v[44:]))
+		c.MinW = int(getUint32(v[60:]))
+		c.MinH = int(getUint32(v[64:]))
 	} else {
 		c.MinW = 0
 		c.MinH = 0
 	}
 
 	if flags&pAspect != 0 {
-		minAspX := int(getUint32(v[48:]))
-		minAspY := int(getUint32(v[52:]))
-		maxAspX := int(getUint32(v[56:]))
-		maxAspY := int(getUint32(v[60:]))
+		minAspX := int(getUint32(v[44:]))
+		minAspY := int(getUint32(v[48:]))
+		maxAspX := int(getUint32(v[52:]))
+		maxAspY := int(getUint32(v[56:]))
 		if minAspX > 0 {
 			c.MinA = float32(minAspY) / float32(minAspX)
 		}

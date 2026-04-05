@@ -131,6 +131,12 @@ func (wm *WM) MoveMouse(arg *config.Arg) {
 	ocx := c.X
 	ocy := c.Y
 
+	// Sync ensures all preceding requests from handleButtonPress (AllowEvents,
+	// UngrabButton, GrabButton) have been processed by the server before we
+	// attempt to grab the pointer.  Without this, GrabPointer can race against
+	// those pending requests and return GrabAlreadyGrabbed or GrabFrozen.
+	wm.Conn.Sync()
+
 	reply, err := xproto.GrabPointer(wm.Conn, false, wm.Root,
 		xproto.EventMaskButtonPress|xproto.EventMaskButtonRelease|xproto.EventMaskPointerMotion,
 		xproto.GrabModeAsync, xproto.GrabModeAsync,
@@ -216,6 +222,8 @@ func (wm *WM) ResizeMouse(arg *config.Arg) {
 	wm.Restack(wm.SelMon)
 	ocx := c.X
 	ocy := c.Y
+
+	wm.Conn.Sync()
 
 	reply, err := xproto.GrabPointer(wm.Conn, false, wm.Root,
 		xproto.EventMaskButtonPress|xproto.EventMaskButtonRelease|xproto.EventMaskPointerMotion,

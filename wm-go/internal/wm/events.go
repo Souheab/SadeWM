@@ -51,18 +51,31 @@ func (wm *WM) handleButtonPress(e xproto.ButtonPressEvent) {
 	if c := wm.winToClient(e.Event); c != nil {
 		wm.Focus(c)
 		wm.Restack(wm.SelMon)
-		xproto.AllowEvents(wm.Conn, xproto.AllowReplayPointer, xproto.TimeCurrentTime)
 		click = config.ClkClientWin
 	}
 
 	buttons := config.DefaultButtons()
+	consumed := false
 	for _, btn := range buttons {
 		if click == btn.Click && btn.Button == xproto.Button(e.Detail) &&
 			wm.cleanMask(btn.Mask) == wm.cleanMask(e.State) {
+			consumed = true
 			if action, ok := wm.Actions[btn.Action]; ok {
 				action(&btn.Arg)
 			}
 		}
+	}
+
+	// Only replay the event to the client when no WM binding consumed it.
+	// For modifier+button grabs (movemouse, resizemouse, etc.) we must NOT
+	// replay — doing so would disturb the active passive grab before
+	// GrabPointer can take it over, causing the drag to silently fail.
+	// However if a sync keyboard grab is active (from the unfocused catch-all),
+	// we must still unfreeze the keyboard so events flow during the drag.
+	if !consumed {
+		xproto.AllowEvents(wm.Conn, xproto.AllowReplayPointer, xproto.TimeCurrentTime)
+	} else {
+		xproto.AllowEvents(wm.Conn, xproto.AllowAsyncKeyboard, xproto.TimeCurrentTime)
 	}
 }
 
@@ -347,15 +360,15 @@ func (wm *WM) manage(w xproto.Window, wa *xproto.GetWindowAttributesReply) {
 	}
 
 	c := &Client{
-		Win:  w,
-		X:    int(geom.X),
-		Y:    int(geom.Y),
-		W:    int(geom.Width),
-		H:    int(geom.Height),
-		OldX: int(geom.X),
-		OldY: int(geom.Y),
-		OldW: int(geom.Width),
-		OldH: int(geom.Height),
+		Win:   w,
+		X:     int(geom.X),
+		Y:     int(geom.Y),
+		W:     int(geom.Width),
+		H:     int(geom.Height),
+		OldX:  int(geom.X),
+		OldY:  int(geom.Y),
+		OldW:  int(geom.Width),
+		OldH:  int(geom.Height),
 		OldBW: int(geom.BorderWidth),
 	}
 
@@ -537,5 +550,3 @@ func contains(s, substr string) bool {
 	}
 	return false
 }
-
-

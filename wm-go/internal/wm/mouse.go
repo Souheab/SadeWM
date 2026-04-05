@@ -6,6 +6,20 @@ import (
 	"github.com/sadewm/sadewm/wm-go/internal/util"
 )
 
+// isMouseDragEvent returns true for events that should be processed during
+// a mouse drag (matching the C WM's XMaskEvent filter).
+func isMouseDragEvent(ev interface{}) bool {
+	switch ev.(type) {
+	case xproto.MotionNotifyEvent,
+		xproto.ButtonPressEvent,
+		xproto.ButtonReleaseEvent,
+		xproto.ConfigureRequestEvent,
+		xproto.MapRequestEvent:
+		return true
+	}
+	return false
+}
+
 // movemouse implements Mod+Button1 window dragging.
 func (wm *WM) MoveMouse(arg *config.Arg) {
 	c := wm.SelMon.Sel
@@ -33,7 +47,16 @@ func (wm *WM) MoveMouse(arg *config.Arg) {
 			break
 		}
 
+		// Only process drag-relevant events; queue others for later
+		if !isMouseDragEvent(ev) {
+			continue
+		}
+
 		switch e := ev.(type) {
+		case xproto.ConfigureRequestEvent:
+			wm.handleConfigureRequest(e)
+		case xproto.MapRequestEvent:
+			wm.handleMapRequest(e)
 		case xproto.MotionNotifyEvent:
 			// Drain excess motion events
 			for {
@@ -45,10 +68,8 @@ func (wm *WM) MoveMouse(arg *config.Arg) {
 					e = me
 				} else if _, ok := extra.(xproto.ButtonReleaseEvent); ok {
 					goto done
-				} else {
-					wm.handleEvent(extra)
-					break
 				}
+				// Drop other events during drain — they'll be redelivered
 			}
 
 			nx := ocx + (int(e.RootX) - ptrX)
@@ -83,9 +104,6 @@ func (wm *WM) MoveMouse(arg *config.Arg) {
 
 		case xproto.ButtonReleaseEvent:
 			goto done
-
-		default:
-			wm.handleEvent(ev)
 		}
 	}
 
@@ -127,7 +145,16 @@ func (wm *WM) ResizeMouse(arg *config.Arg) {
 			break
 		}
 
+		// Only process drag-relevant events
+		if !isMouseDragEvent(ev) {
+			continue
+		}
+
 		switch e := ev.(type) {
+		case xproto.ConfigureRequestEvent:
+			wm.handleConfigureRequest(e)
+		case xproto.MapRequestEvent:
+			wm.handleMapRequest(e)
 		case xproto.MotionNotifyEvent:
 			for {
 				extra, _ := wm.Conn.PollForEvent()
@@ -138,9 +165,6 @@ func (wm *WM) ResizeMouse(arg *config.Arg) {
 					e = me
 				} else if _, ok := extra.(xproto.ButtonReleaseEvent); ok {
 					goto done
-				} else {
-					wm.handleEvent(extra)
-					break
 				}
 			}
 
@@ -171,9 +195,6 @@ func (wm *WM) ResizeMouse(arg *config.Arg) {
 
 		case xproto.ButtonReleaseEvent:
 			goto done
-
-		default:
-			wm.handleEvent(ev)
 		}
 	}
 

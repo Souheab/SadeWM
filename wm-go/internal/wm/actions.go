@@ -1,7 +1,6 @@
 package wm
 
 import (
-	"os"
 	"os/exec"
 	"strings"
 	"syscall"
@@ -75,8 +74,8 @@ func (wm *WM) spawnCmd(argv []string) {
 	cmd := exec.Command(argv[0], argv[1:]...)
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
 	cmd.Stdin = nil
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
+	cmd.Stdout = nil
+	cmd.Stderr = nil
 	if err := cmd.Start(); err != nil {
 		util.LogDebugf("spawn failed: %v", err)
 	}

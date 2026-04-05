@@ -87,9 +87,24 @@ func (wm *WM) updateWindowType(c *Client) {
 	if state == wm.NetAtom[NetWMStateAbove] || state == wm.NetAtom[NetWMStateStaysOnTop] {
 		wm.SetAbove(c, true)
 	}
-	if wtype == wm.NetAtom[NetWMWindowTypeDialog] {
+	if wm.isFloatingWindowType(wtype) {
 		c.IsFloating = true
 	}
+}
+
+// isFloatingWindowType returns true for window types that should be floating.
+func (wm *WM) isFloatingWindowType(wtype xproto.Atom) bool {
+	if wtype == xproto.AtomNone {
+		return false
+	}
+	return wtype == wm.NetAtom[NetWMWindowTypeDialog] ||
+		wtype == wm.NetAtom[NetWMWindowTypeUtility] ||
+		wtype == wm.NetAtom[NetWMWindowTypeSplash] ||
+		wtype == wm.NetAtom[NetWMWindowTypeToolbar] ||
+		wtype == wm.NetAtom[NetWMWindowTypePopupMenu] ||
+		wtype == wm.NetAtom[NetWMWindowTypeDropdownMenu] ||
+		wtype == wm.NetAtom[NetWMWindowTypeTooltip] ||
+		wtype == wm.NetAtom[NetWMWindowTypeNotification]
 }
 
 // updateSizeHints reads ICCCM size hints.
@@ -104,11 +119,11 @@ func (wm *WM) updateSizeHints(c *Client) {
 	flags := getUint32(v[0:])
 
 	const (
-		pMinSize    = 1 << 4
-		pMaxSize    = 1 << 5
-		pResizeInc  = 1 << 6
-		pBaseSize   = 1 << 8
-		pAspect     = 1 << 7
+		pMinSize   = 1 << 4
+		pMaxSize   = 1 << 5
+		pResizeInc = 1 << 6
+		pBaseSize  = 1 << 8
+		pAspect    = 1 << 7
 	)
 
 	if flags&pBaseSize != 0 {

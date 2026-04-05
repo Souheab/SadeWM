@@ -19,7 +19,7 @@ type Client struct {
 	OldX, OldY, OldW, OldH int
 	// Size hints
 	BaseW, BaseH, IncW, IncH, MaxW, MaxH, MinW, MinH int
-	HintsValid                                         bool
+	HintsValid                                       bool
 	// Border width
 	BW, OldBW int
 	// Tags bitmask
@@ -59,7 +59,7 @@ type Monitor struct {
 	MX, MY, MW, MH int
 	// Working area (excluding offsets)
 	WX, WY, WW, WH int
-	GapPx           int
+	GapPx          int
 
 	SelTags uint32
 	TagSet  [2]uint32
@@ -135,6 +135,13 @@ const (
 	NetWMWindowTypeDialog
 	NetWMWindowTypeDock
 	NetClientList
+	NetWMWindowTypeUtility
+	NetWMWindowTypeSplash
+	NetWMWindowTypeToolbar
+	NetWMWindowTypePopupMenu
+	NetWMWindowTypeDropdownMenu
+	NetWMWindowTypeTooltip
+	NetWMWindowTypeNotification
 	NetLast
 )
 

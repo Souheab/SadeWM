@@ -113,18 +113,25 @@ func (wm *WM) checkOtherWM() {
 
 func (wm *WM) internAtoms() {
 	atomNames := map[int]string{
-		NetSupported:          "_NET_SUPPORTED",
-		NetWMName:             "_NET_WM_NAME",
-		NetWMState:            "_NET_WM_STATE",
-		NetWMCheck:            "_NET_SUPPORTING_WM_CHECK",
-		NetWMFullscreen:       "_NET_WM_STATE_FULLSCREEN",
-		NetActiveWindow:       "_NET_ACTIVE_WINDOW",
-		NetWMWindowType:       "_NET_WM_WINDOW_TYPE",
-		NetWMStateAbove:       "_NET_WM_STATE_ABOVE",
-		NetWMStateStaysOnTop:  "_NET_WM_STATE_STAYS_ON_TOP",
-		NetWMWindowTypeDialog: "_NET_WM_WINDOW_TYPE_DIALOG",
-		NetWMWindowTypeDock:   "_NET_WM_WINDOW_TYPE_DOCK",
-		NetClientList:         "_NET_CLIENT_LIST",
+		NetSupported:                "_NET_SUPPORTED",
+		NetWMName:                   "_NET_WM_NAME",
+		NetWMState:                  "_NET_WM_STATE",
+		NetWMCheck:                  "_NET_SUPPORTING_WM_CHECK",
+		NetWMFullscreen:             "_NET_WM_STATE_FULLSCREEN",
+		NetActiveWindow:             "_NET_ACTIVE_WINDOW",
+		NetWMWindowType:             "_NET_WM_WINDOW_TYPE",
+		NetWMStateAbove:             "_NET_WM_STATE_ABOVE",
+		NetWMStateStaysOnTop:        "_NET_WM_STATE_STAYS_ON_TOP",
+		NetWMWindowTypeDialog:       "_NET_WM_WINDOW_TYPE_DIALOG",
+		NetWMWindowTypeDock:         "_NET_WM_WINDOW_TYPE_DOCK",
+		NetClientList:               "_NET_CLIENT_LIST",
+		NetWMWindowTypeUtility:      "_NET_WM_WINDOW_TYPE_UTILITY",
+		NetWMWindowTypeSplash:       "_NET_WM_WINDOW_TYPE_SPLASH",
+		NetWMWindowTypeToolbar:      "_NET_WM_WINDOW_TYPE_TOOLBAR",
+		NetWMWindowTypePopupMenu:    "_NET_WM_WINDOW_TYPE_POPUP_MENU",
+		NetWMWindowTypeDropdownMenu: "_NET_WM_WINDOW_TYPE_DROPDOWN_MENU",
+		NetWMWindowTypeTooltip:      "_NET_WM_WINDOW_TYPE_TOOLTIP",
+		NetWMWindowTypeNotification: "_NET_WM_WINDOW_TYPE_NOTIFICATION",
 	}
 	for idx, name := range atomNames {
 		reply, err := xproto.InternAtom(wm.Conn, false, uint16(len(name)), name).Reply()
@@ -305,8 +312,8 @@ func (wm *WM) Scan() {
 }
 
 const (
-	icccmNormalState  = 1
-	icccmIconicState  = 3
+	icccmNormalState    = 1
+	icccmIconicState    = 3
 	icccmWithdrawnState = 0
 )
 
@@ -360,17 +367,21 @@ func (wm *WM) Cleanup() {
 	xproto.DeleteProperty(wm.Conn, wm.Root, wm.NetAtom[NetActiveWindow])
 }
 
-// SetTopOffset adjusts the working area of the selected monitor.
+// SetTopOffset adjusts the working area of all monitors.
 func (wm *WM) SetTopOffset(offset uint) {
-	wm.SelMon.WH -= int(offset)
-	wm.SelMon.WY += int(offset)
-	wm.Arrange(wm.SelMon)
+	for m := wm.Mons; m != nil; m = m.Next {
+		m.WH -= int(offset)
+		m.WY += int(offset)
+	}
+	wm.Arrange(nil)
 }
 
-// SetBottomOffset adjusts the working area of the selected monitor.
+// SetBottomOffset adjusts the working area of all monitors.
 func (wm *WM) SetBottomOffset(offset uint) {
-	wm.SelMon.WH -= int(offset)
-	wm.Arrange(wm.SelMon)
+	for m := wm.Mons; m != nil; m = m.Next {
+		m.WH -= int(offset)
+	}
+	wm.Arrange(nil)
 }
 
 // Helper: uint32 to little-endian bytes

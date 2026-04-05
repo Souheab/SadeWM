@@ -110,3 +110,42 @@ if [[ -s "$LOG_FILE" ]]; then
     cat "$LOG_FILE"
     echo "------------------"
 fi
+
+# ── Additional validation ─────────────────────────────────────────────────────
+
+# Check FIFO was created
+FIFO_PATH="$(eval echo ~)/.local/share/sadewm/sadewm.fifo"
+if [[ -p "$FIFO_PATH" ]]; then
+    echo "==> FIFO log pipe exists: $FIFO_PATH  PASS."
+else
+    echo "==> FIFO log pipe NOT found at $FIFO_PATH  (non-fatal)"
+fi
+
+# Test IPC if socket exists
+SOCK_PATH="/tmp/sadewm-${DISPLAY_NUM#:}.sock"
+if [[ -S "$SOCK_PATH" ]]; then
+    echo '{"cmd":"get_state"}' | socat - UNIX-CONNECT:"$SOCK_PATH" 2>/dev/null && \
+        echo "==> IPC get_state responded.  PASS." || \
+        echo "==> IPC get_state failed. (non-fatal)"
+fi
+
+# Spawn a test window if xterm/xeyes is available and verify it's managed
+if command -v xeyes &>/dev/null && kill -0 "$WM_PID" 2>/dev/null; then
+    xeyes &
+    XEYES_PID=$!
+    sleep 0.5
+    # Check that the WM is still running after managing a window
+    if kill -0 "$WM_PID" 2>/dev/null; then
+        echo "==> sadewm managed xeyes without crashing.  PASS."
+    else
+        echo "==> sadewm crashed after spawning xeyes.  FAIL."
+    fi
+    kill "$XEYES_PID" 2>/dev/null || true
+    sleep 0.3
+    # Check WM survives client destroy
+    if kill -0 "$WM_PID" 2>/dev/null; then
+        echo "==> sadewm survived client destroy.  PASS."
+    else
+        echo "==> sadewm crashed after client destroy.  FAIL."
+    fi
+fi

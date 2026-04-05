@@ -34,6 +34,21 @@ ipc_setup(void)
 {
   struct sockaddr_un addr;
   int flags;
+  char *sockpath = IPC_SOCKET_PATH;
+  char env_sockpath[108];
+  const char *display = getenv("DISPLAY");
+
+  if (getenv("SADEWM_SOCKET")) {
+    sockpath = getenv("SADEWM_SOCKET");
+  } else if (display && display[0] == ':') {
+    char safe[64];
+    strncpy(safe, display + 1, sizeof(safe) - 1);
+    safe[sizeof(safe) - 1] = '\0';
+    for (char *p = safe; *p; p++)
+      if (*p == '.') *p = '-';
+    snprintf(env_sockpath, sizeof(env_sockpath), "/tmp/sadewm-%s.sock", safe);
+    sockpath = env_sockpath;
+  }
 
   ipc_server_fd = socket(AF_UNIX, SOCK_STREAM, 0);
   if (ipc_server_fd < 0)
@@ -41,9 +56,9 @@ ipc_setup(void)
 
   memset(&addr, 0, sizeof(addr));
   addr.sun_family = AF_UNIX;
-  strncpy(addr.sun_path, IPC_SOCKET_PATH, sizeof(addr.sun_path) - 1);
+  strncpy(addr.sun_path, sockpath, sizeof(addr.sun_path) - 1);
 
-  unlink(IPC_SOCKET_PATH); /* remove stale socket from a previous run */
+  unlink(sockpath); /* remove stale socket from a previous run */
 
   if (bind(ipc_server_fd, (struct sockaddr *)&addr, sizeof(addr)) < 0)
     die("ipc: bind failed");
@@ -58,10 +73,25 @@ void
 ipc_teardown(void)
 {
   if (ipc_server_fd >= 0) {
+    char *sockpath = IPC_SOCKET_PATH;
+    char env_sockpath[108];
+    const char *display = getenv("DISPLAY");
+
+    if (getenv("SADEWM_SOCKET")) {
+      sockpath = getenv("SADEWM_SOCKET");
+    } else if (display && display[0] == ':') {
+      char safe[64];
+      strncpy(safe, display + 1, sizeof(safe) - 1);
+      safe[sizeof(safe) - 1] = '\0';
+      for (char *p = safe; *p; p++)
+        if (*p == '.') *p = '-';
+      snprintf(env_sockpath, sizeof(env_sockpath), "/tmp/sadewm-%s.sock", safe);
+      sockpath = env_sockpath;
+    }
     close(ipc_server_fd);
     ipc_server_fd = -1;
+    unlink(sockpath);
   }
-  unlink(IPC_SOCKET_PATH);
 }
 
 /* Best-effort write; errors are ignored (client may have disconnected). */
@@ -176,6 +206,76 @@ ipc_handle_tag_cmd(int fd, const char *cmd, unsigned int mask)
   ipc_write(fd, ok, strlen(ok));
 }
 
+static void
+ipc_handle_command(int fd, const char *cmd, const char *buf)
+{
+  const char *ok = "{\"ok\":true}\n";
+  const char *p;
+  Arg a = {0};
+
+  if (strcmp(cmd, "setmfact") == 0) {
+    p = strstr(buf, "\"mfact\"");
+    if (p) {
+      p = strpbrk(p + 7, "0123456789.-");
+      if (p) {
+        a.f = (float)atof(p);
+        setmfact(&a);
+      }
+    }
+  } else if (strcmp(cmd, "setgaps") == 0) {
+    p = strstr(buf, "\"gaps\"");
+    if (p) {
+      p = strpbrk(p + 6, "0123456789-");
+      if (p) {
+        a.i = atoi(p);
+        setgaps(&a);
+      }
+    }
+  } else if (strcmp(cmd, "incnmaster") == 0) {
+    p = strstr(buf, "\"nmaster\"");
+    if (p) {
+      p = strpbrk(p + 9, "0123456789-");
+      if (p) {
+        a.i = atoi(p);
+        incnmaster(&a);
+      }
+    }
+  } else if (strcmp(cmd, "setlayout") == 0) {
+    p = strstr(buf, "\"layout\"");
+    if (p) {
+      char layout_name[16] = {0};
+      p = strchr(p + 8, '"');
+      if (p) {
+        p++;
+        const char *e = strchr(p, '"');
+        if (e && (size_t)(e - p) < sizeof(layout_name)) {
+          memcpy(layout_name, p, e - p);
+          int i;
+          for (i = 0; i < LENGTH(layouts); i++) {
+            if (strcmp(layout_name, layouts[i].symbol) == 0) {
+              a.v = &layouts[i];
+              setlayout(&a);
+              break;
+            }
+          }
+        }
+      }
+    }
+  } else if (strcmp(cmd, "toggletiledir") == 0) {
+    toggletiledir(NULL);
+  } else if (strcmp(cmd, "layoutnext") == 0) {
+    layoutnext(NULL);
+  } else if (strcmp(cmd, "layoutprev") == 0) {
+    layoutprev(NULL);
+  } else {
+    const char *err = "{\"ok\":false,\"error\":\"unsupported command\"}\n";
+    ipc_write(fd, err, strlen(err));
+    return;
+  }
+
+  ipc_write(fd, ok, strlen(ok));
+}
+
 void
 ipc_poll(void)
 {
@@ -226,11 +326,19 @@ ipc_poll(void)
     unsigned int mask = 0;
     p = strstr(buf, "\"mask\"");
     if (p) {
-      p = strchr(p + 6, ':');
+      p = strpbrk(p + 6, "0123456789");
       if (p)
-        mask = (unsigned int)atoi(p + 1);
+        mask = (unsigned int)atoi(p);
     }
     ipc_handle_tag_cmd(cfd, cmd, mask);
+  } else if (strcmp(cmd, "setmfact") == 0
+          || strcmp(cmd, "setgaps") == 0
+          || strcmp(cmd, "incnmaster") == 0
+          || strcmp(cmd, "setlayout") == 0
+          || strcmp(cmd, "toggletiledir") == 0
+          || strcmp(cmd, "layoutnext") == 0
+          || strcmp(cmd, "layoutprev") == 0) {
+    ipc_handle_command(cfd, cmd, buf);
   } else {
     const char *err = "{\"ok\":false,\"error\":\"unknown command\"}\n";
     ipc_write(cfd, err, strlen(err));

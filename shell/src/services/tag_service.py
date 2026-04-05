@@ -7,7 +7,25 @@ import os
 from PySide6.QtCore import QObject, Property, Signal, Slot, QTimer
 
 
-SOCKET_PATH = os.environ.get("SADEWM_SOCKET", "/tmp/sadewm.sock")
+def _get_socket_path() -> str:
+    """Return the sadewm IPC socket path for the current DISPLAY.
+
+    Priority:
+    1. SADEWM_SOCKET env var (explicit override)
+    2. Derived from DISPLAY: DISPLAY=:0  → /tmp/sadewm-0.sock
+                             DISPLAY=:1  → /tmp/sadewm-1.sock
+    3. Fallback: /tmp/sadewm.sock
+    """
+    if p := os.environ.get("SADEWM_SOCKET"):
+        return p
+    display = os.environ.get("DISPLAY", "")
+    if display:
+        safe = display.lstrip(":").replace(".", "-")
+        return f"/tmp/sadewm-{safe}.sock"
+    return "/tmp/sadewm.sock"
+
+
+SOCKET_PATH = _get_socket_path()
 
 
 def _sadewm_request(request: dict) -> dict:

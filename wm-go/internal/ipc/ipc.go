@@ -5,12 +5,34 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"strings"
 	"sync"
 
 	"github.com/sadewm/sadewm/wm-go/internal/util"
 )
 
-const SocketPath = "/tmp/sadewm.sock"
+// GetSocketPath returns the Unix socket path for the current DISPLAY.
+// If SADEWM_SOCKET is set it is used as-is.
+// Otherwise the path is derived from the DISPLAY env var so that nested
+// (test) instances on different displays each get their own socket and
+// don't clobber each other.
+// Examples: DISPLAY=:0  → /tmp/sadewm-0.sock
+//
+//	DISPLAY=:1  → /tmp/sadewm-1.sock
+//	unset       → /tmp/sadewm.sock
+func GetSocketPath() string {
+	if p := os.Getenv("SADEWM_SOCKET"); p != "" {
+		return p
+	}
+	display := os.Getenv("DISPLAY")
+	if display == "" {
+		return "/tmp/sadewm.sock"
+	}
+	// Strip leading ':' and replace any '.' with '-' to build a safe filename.
+	safe := strings.TrimPrefix(display, ":")
+	safe = strings.ReplaceAll(safe, ".", "-")
+	return fmt.Sprintf("/tmp/sadewm-%s.sock", safe)
+}
 
 // IPCRequest is a single IPC request parsed from JSON, bundled with
 // a response channel so the main event loop can reply.
@@ -45,25 +67,29 @@ type ClientDTO struct {
 
 // Server is the Unix-socket IPC listener.
 type Server struct {
-	listener net.Listener
-	reqCh    chan *IPCRequest
-	mu       sync.Mutex
-	closed   bool
+	listener   net.Listener
+	socketPath string
+	reqCh      chan *IPCRequest
+	mu         sync.Mutex
+	closed     bool
 }
 
 // Setup creates the Unix socket and starts listening.
 func Setup() (*Server, error) {
-	// Remove stale socket from a previous run
-	os.Remove(SocketPath)
+	sockPath := GetSocketPath()
 
-	ln, err := net.Listen("unix", SocketPath)
+	// Remove stale socket from a previous run
+	os.Remove(sockPath)
+
+	ln, err := net.Listen("unix", sockPath)
 	if err != nil {
 		return nil, fmt.Errorf("ipc: listen: %w", err)
 	}
 
 	return &Server{
-		listener: ln,
-		reqCh:    make(chan *IPCRequest, 8),
+		listener:   ln,
+		socketPath: sockPath,
+		reqCh:      make(chan *IPCRequest, 8),
 	}, nil
 }
 
@@ -131,5 +157,5 @@ func (s *Server) Teardown() {
 	s.mu.Unlock()
 
 	s.listener.Close()
-	os.Remove(SocketPath)
+	os.Remove(s.socketPath)
 }

@@ -5,9 +5,8 @@ import (
 )
 
 const (
-	IPCSocketPath = "/tmp/sadewm.sock"
-	Version       = "0.9"
-	HomeSubStr    = "$HOME_PATH"
+	Version    = "0.9"
+	HomeSubStr = "$HOME_PATH"
 )
 
 // Layout indices
@@ -185,8 +184,6 @@ func StartupCmds() [][]string {
 		{"sh", HomeSubStr + "/.config/sadewm/startup.sh"},
 	}
 }
-
-
 
 // ModNameToMask maps modifier string names to X modifier masks.
 var ModNameToMask = map[string]uint16{

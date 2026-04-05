@@ -244,7 +244,7 @@
                 '';
               }
               {
-                name = "sadewm (Go)";
+                name = "sadewm go";
                 start = ''
                   ${wmGoPkg}/bin/sadewm &
                   waitPID=$!

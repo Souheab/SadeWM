@@ -57,6 +57,14 @@ func (wm *WM) handleButtonPress(e xproto.ButtonPressEvent) {
 			c.Name, c.IsFloating, c == wm.SelMon.Sel)
 		wm.Focus(c)
 		wm.Restack(wm.SelMon)
+		// Mirror C WM exactly: AllowEvents(ReplayPointer) BEFORE the action
+		// loop, so the server aborts the catch-all sync-pointer passive grab
+		// and drops the frozen ButtonRelease (routes to root which has no
+		// ButtonReleaseMask) before GrabPointer is called inside MoveMouse /
+		// ResizeMouse.  If called after the action, GrabPointer itself thaws
+		// the frozen pointer and delivers the stale ButtonRelease under the
+		// new active grab, which immediately ends the drag.
+		xproto.AllowEvents(wm.Conn, xproto.AllowReplayPointer, xproto.TimeCurrentTime)
 		click = config.ClkClientWin
 	} else {
 		util.LogInfo("buttonpress: no client found for win=0x%x (root=0x%x)",
@@ -77,30 +85,11 @@ func (wm *WM) handleButtonPress(e xproto.ButtonPressEvent) {
 	}
 
 	if !consumed {
+		// No client action matched; replay so the click reaches the window.
 		util.LogInfo("buttonpress: no binding matched, replaying pointer")
+		xproto.AllowEvents(wm.Conn, xproto.AllowReplayPointer, xproto.TimeCurrentTime)
 	}
-
-	// AllowEvents(ReplayPointer) matches C WM behaviour exactly:
-	//
-	// • Sync-pointer passive grab (unfocused catch-all, GrabModeSync both):
-	//   The pointer IS frozen → ReplayPointer aborts the active grab and
-	//   replays the event without grab routing.  The queued ButtonRelease is
-	//   then routed to root; root does not select ButtonReleaseMask → the
-	//   event is silently dropped and never enters our eventChan / XEvCh.
-	//   GrabPointer then runs against a fully ungrabbed pointer (→ Success).
-	//
-	// • Async-pointer passive grab (focused window, GrabModeAsync pointer +
-	//   GrabModeSync keyboard): The pointer is NOT frozen → ReplayPointer is a
-	//   no-op for the pointer device.  The active grab stays alive; GrabPointer
-	//   from the same client always succeeds.
-	//
-	// In both cases ReplayPointer does NOT unfreeze the keyboard (it only
-	// thaws the pointer device), so we send a separate AsyncKeyboard call.
-	// Without it the keyboard would remain frozen for sync-keyboard grabs.
-	xproto.AllowEvents(wm.Conn, xproto.AllowReplayPointer, xproto.TimeCurrentTime)
-	if consumed {
-		xproto.AllowEvents(wm.Conn, xproto.AllowAsyncKeyboard, xproto.TimeCurrentTime)
-	}
+	// For consumed clicks AllowEvents was already sent before the action loop.
 }
 
 func (wm *WM) handleClientMessage(e xproto.ClientMessageEvent) {

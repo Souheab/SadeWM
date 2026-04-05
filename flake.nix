@@ -100,7 +100,7 @@
               --unset        PYTHONPATH                                    \
               --unset        PYTHONHOME                                    \
               --set          PYTHONPATH "$out/lib"                        \
-              --prefix PATH : "${pkgs.xorg.xrandr}/bin"                   \
+              --prefix PATH : "${pkgs.xrandr}/bin"                   \
               --prefix PATH : "${pkgs.networkmanager}/bin"                 \
               --prefix PATH : "${pkgs.bluez}/bin"                         \
               --prefix LD_LIBRARY_PATH : "${pkgs.libx11}/lib"             \
@@ -129,7 +129,7 @@
           buildInputs = with pkgs; [
             libX11
             libXinerama
-            xorg.libXcursor
+            libxcursor
           ];
 
           subPackages = [ "cmd/sadewm" ];
@@ -224,33 +224,35 @@
       # ── NixOS module: sadewm window manager ─────────────────────────────────
       nixosModules.default = { config, lib, pkgs, ... }:
         let
-          cfg     = config.services.xserver.windowManager.sadewm;
-          wmPkg   = if cfg.useGoWm
-                    then self.packages.${pkgs.system}.sadewm-go
-                    else self.packages.${pkgs.system}.sadewm;
+          cfg      = config.services.xserver.windowManager.sadewm;
+          wmPkg    = self.packages.${pkgs.system}.sadewm;
+          wmGoPkg  = self.packages.${pkgs.system}.sadewm-go;
         in {
           imports = [ self.nixosModules.sadeshell ];
 
           options.services.xserver.windowManager.sadewm = {
             enable = lib.mkEnableOption "sadewm window manager";
-
-            useGoWm = lib.mkOption {
-              type    = lib.types.bool;
-              default = false;
-              description = "Use the Go rewrite of sadewm instead of the C version.";
-            };
           };
 
           config = lib.mkIf cfg.enable {
-            services.xserver.windowManager.session = lib.singleton {
-              name = "sadewm";
-              start = ''
-                ${wmPkg}/bin/sadewm &
-                waitPID=$!
-              '';
-            };
+            services.xserver.windowManager.session = [
+              {
+                name = "sadewm";
+                start = ''
+                  ${wmPkg}/bin/sadewm &
+                  waitPID=$!
+                '';
+              }
+              {
+                name = "sadewm (Go)";
+                start = ''
+                  ${wmGoPkg}/bin/sadewm &
+                  waitPID=$!
+                '';
+              }
+            ];
 
-            environment.systemPackages = [ wmPkg ];
+            environment.systemPackages = [ wmPkg wmGoPkg ];
 
             services.sadeshell.enable = lib.mkDefault true;
           };

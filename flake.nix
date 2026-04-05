@@ -147,11 +147,18 @@
           paths = [ sadewm sadeshell ];
         };
 
+        combined-go = pkgs.symlinkJoin {
+          name  = "sadewm-go-with-sadeshell";
+          paths = [ sadewm-go sadeshell ];
+        };
+
       in {
-        packages.default   = combined;
-        packages.sadewm    = sadewm;
-        packages.sadewm-go = sadewm-go;
-        packages.sadeshell = sadeshell;
+        packages.default      = combined-go;
+        packages.sadewm       = sadewm;
+        packages.sadewm-go    = sadewm-go;
+        packages.sadeshell    = sadeshell;
+        packages.combined     = combined;
+        packages.combined-go  = combined-go;
 
         apps.default = {
           type    = "app";
@@ -217,25 +224,33 @@
       # ── NixOS module: sadewm window manager ─────────────────────────────────
       nixosModules.default = { config, lib, pkgs, ... }:
         let
-          cfg    = config.services.xserver.windowManager.sadewm;
-          sadewm = self.packages.${pkgs.system}.sadewm;
+          cfg     = config.services.xserver.windowManager.sadewm;
+          wmPkg   = if cfg.useGoWm
+                    then self.packages.${pkgs.system}.sadewm-go
+                    else self.packages.${pkgs.system}.sadewm;
         in {
           imports = [ self.nixosModules.sadeshell ];
 
-          options.services.xserver.windowManager.sadewm.enable =
-            lib.mkEnableOption "sadewm window manager";
+          options.services.xserver.windowManager.sadewm = {
+            enable = lib.mkEnableOption "sadewm window manager";
+
+            useGoWm = lib.mkOption {
+              type    = lib.types.bool;
+              default = true;
+              description = "Use the Go rewrite of sadewm instead of the C version.";
+            };
+          };
 
           config = lib.mkIf cfg.enable {
             services.xserver.windowManager.session = lib.singleton {
               name = "sadewm";
               start = ''
-                dbus-update-activation-environment --systemd DISPLAY XAUTHORITY DBUS_SESSION_BUS_ADDRESS PATH XDG_RUNTIME_DIR XDG_DATA_DIRS
-                ${sadewm}/bin/sadewm &
+                ${wmPkg}/bin/sadewm &
                 waitPID=$!
               '';
             };
 
-            environment.systemPackages = [ sadewm ];
+            environment.systemPackages = [ wmPkg ];
 
             services.sadeshell.enable = lib.mkDefault true;
           };

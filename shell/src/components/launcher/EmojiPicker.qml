@@ -4,7 +4,7 @@ import "../shared"
 import PyShell.Services 1.0
 
 Window {
-    id: launcher
+    id: picker
 
     visible: false
     color: "#80000000"
@@ -15,60 +15,59 @@ Window {
     width: Screen.width
     height: Screen.height
 
-    property var filteredApps: []
+    property var filteredEmoji: []
     property int selectedIndex: 0
 
     function open() {
-        filteredApps = AppService.search("")
+        filteredEmoji = EmojiService.search("")
         selectedIndex = 0
         searchBox.clear()
-        launcher.visible = true
-        launcher.raise()
-        launcher.requestActivate()
+        picker.visible = true
+        picker.raise()
+        picker.requestActivate()
         focusTimer.start()
     }
 
     function close() {
-        launcher.visible = false
+        picker.visible = false
         searchBox.clear()
-        filteredApps = []
+        filteredEmoji = []
         selectedIndex = 0
     }
 
-    function launchSelected() {
-        if (selectedIndex >= 0 && selectedIndex < filteredApps.length) {
-            AppService.launch(filteredApps[selectedIndex])
+    function pickSelected() {
+        if (selectedIndex >= 0 && selectedIndex < filteredEmoji.length) {
+            var emoji = filteredEmoji[selectedIndex]
+            EmojiService.copyToClipboard(emoji.char)
             close()
         }
     }
 
-    // Re-grab focus after the window is mapped — X11 may need a
-    // short delay before XSetInputFocus succeeds.
     Timer {
         id: focusTimer
         interval: 50
         repeat: false
         onTriggered: {
-            launcher.requestActivate()
+            picker.requestActivate()
             searchBox.forceActiveFocus()
-            WindowHelper.grabKeyboard(launcher)
+            WindowHelper.grabKeyboard(picker)
         }
     }
 
     Connections {
         target: IPCService
-        function onOpenLauncherRequested() {
-            if (launcher.visible)
-                launcher.close()
+        function onOpenEmojiPickerRequested() {
+            if (picker.visible)
+                picker.close()
             else
-                launcher.open()
+                picker.open()
         }
     }
 
     // Dismiss on click outside the card
     MouseArea {
         anchors.fill: parent
-        onClicked: launcher.close()
+        onClicked: picker.close()
     }
 
     // ── Centered card ──────────────────────────────────────────────
@@ -85,7 +84,7 @@ Window {
         border.width: 1
         clip: true
 
-        // Card absorbs clicks so they don't close the launcher
+        // Card absorbs clicks so they don't close the picker
         MouseArea { anchors.fill: parent }
 
         // ── Search bar ─────────────────────────────────────────────
@@ -97,23 +96,23 @@ Window {
             LauncherSearchBox {
                 id: searchBox
                 anchors.fill: parent
-                placeholderText: "Search applications\u2026"
+                placeholderText: "Search emoji\u2026"
+                iconGlyph: "\uf118"   // fa-smile
                 onQueryChanged: (text) => {
-                    launcher.filteredApps = AppService.search(text)
-                    launcher.selectedIndex = 0
+                    picker.filteredEmoji = EmojiService.search(text)
+                    picker.selectedIndex = 0
                 }
-                onAccepted: launcher.launchSelected()
+                onAccepted: picker.pickSelected()
                 onNextItem: {
-                    launcher.selectedIndex = Math.min(
-                        launcher.selectedIndex + 1,
-                        launcher.filteredApps.length - 1)
-                    resultList.positionViewAtIndex(launcher.selectedIndex, ListView.Contain)
+                    picker.selectedIndex = Math.min(
+                        picker.selectedIndex + 1, picker.filteredEmoji.length - 1)
+                    resultList.positionViewAtIndex(picker.selectedIndex, ListView.Contain)
                 }
                 onPrevItem: {
-                    launcher.selectedIndex = Math.max(launcher.selectedIndex - 1, 0)
-                    resultList.positionViewAtIndex(launcher.selectedIndex, ListView.Contain)
+                    picker.selectedIndex = Math.max(picker.selectedIndex - 1, 0)
+                    resultList.positionViewAtIndex(picker.selectedIndex, ListView.Contain)
                 }
-                onDismissed: launcher.close()
+                onDismissed: picker.close()
             }
         }
 
@@ -127,16 +126,16 @@ Window {
             visible: resultList.count > 0 || (searchBox.text.length > 0 && noResultsText.visible)
         }
 
-        // ── App list ───────────────────────────────────────────────
+        // ── Emoji list ─────────────────────────────────────────────
         ListView {
             id: resultList
             anchors.top: separator.bottom
             width: parent.width
             height: Math.min(contentHeight,
-                             launcher.height * 0.7 - searchBarItem.height - separator.height)
+                             picker.height * 0.7 - searchBarItem.height - separator.height)
             clip: true
-            model: launcher.filteredApps
-            currentIndex: launcher.selectedIndex
+            model: picker.filteredEmoji
+            currentIndex: picker.selectedIndex
             highlightMoveDuration: 80
             boundsBehavior: Flickable.StopAtBounds
             reuseItems: true
@@ -147,8 +146,8 @@ Window {
                 required property var modelData
                 required property int index
                 width: resultList.width
-                height: 56
-                color: index === launcher.selectedIndex
+                height: 52
+                color: index === picker.selectedIndex
                     ? Theme.menuHover
                     : delegateArea.containsMouse
                         ? Qt.rgba(Theme.menuHover.r, Theme.menuHover.g,
@@ -159,58 +158,26 @@ Window {
                     anchors.fill: parent
                     anchors.leftMargin: 20
                     anchors.rightMargin: 20
-                    spacing: 14
+                    spacing: 16
 
-                    Item {
-                        width: 36; height: 36
+                    // Emoji character display
+                    Text {
+                        text: delegateRoot.modelData.char ?? ""
+                        font.pixelSize: 26
                         anchors.verticalCenter: parent.verticalCenter
-
-                        Image {
-                            id: appIcon
-                            anchors.fill: parent
-                            source: (delegateRoot.modelData.iconPath
-                                     && delegateRoot.modelData.iconPath !== "")
-                                ? delegateRoot.modelData.iconPath : ""
-                            sourceSize: Qt.size(36, 36)
-                            asynchronous: true
-                            mipmap: true
-                            visible: status === Image.Ready
-                        }
-
-                        Text {
-                            anchors.centerIn: parent
-                            visible: appIcon.status !== Image.Ready
-                            text: "\uf2d2"
-                            font.family: Theme.iconFont
-                            font.pixelSize: 22
-                            color: Theme.dotOccupied
-                        }
+                        width: 36
+                        horizontalAlignment: Text.AlignHCenter
                     }
 
-                    Column {
+                    // Emoji name
+                    Text {
+                        text: delegateRoot.modelData.name ?? ""
+                        color: Theme.textColor
+                        font.family: Theme.monoFont
+                        font.pixelSize: 14
+                        elide: Text.ElideRight
+                        width: parent.width - 36 - 16
                         anchors.verticalCenter: parent.verticalCenter
-                        spacing: 2
-                        width: parent.width - 70
-
-                        Text {
-                            text: delegateRoot.modelData.name ?? ""
-                            color: Theme.textColor
-                            font.family: Theme.monoFont
-                            font.pixelSize: 14
-                            elide: Text.ElideRight
-                            width: parent.width
-                        }
-
-                        Text {
-                            text: delegateRoot.modelData.comment
-                                  || delegateRoot.modelData.genericName || ""
-                            color: Qt.alpha(Theme.textColor, 0.5)
-                            font.family: Theme.monoFont
-                            font.pixelSize: 12
-                            elide: Text.ElideRight
-                            width: parent.width
-                            visible: text.length > 0
-                        }
                     }
                 }
 
@@ -220,12 +187,13 @@ Window {
                     hoverEnabled: true
                     cursorShape: Qt.PointingHandCursor
                     onClicked: {
-                        AppService.launch(delegateRoot.modelData)
-                        launcher.close()
+                        EmojiService.copyToClipboard(delegateRoot.modelData.char)
+                        picker.close()
                     }
-                    onEntered: launcher.selectedIndex = delegateRoot.index
+                    onEntered: picker.selectedIndex = delegateRoot.index
                 }
             }
+        }
 
         Text {
             id: noResultsText
@@ -233,7 +201,7 @@ Window {
             anchors.horizontalCenter: parent.horizontalCenter
             anchors.topMargin: 20
             visible: resultList.count === 0 && searchBox.text.length > 0
-            text: "No applications found"
+            text: "No emoji found"
             color: Theme.dotOccupied
             font.family: Theme.monoFont
             font.pixelSize: 14

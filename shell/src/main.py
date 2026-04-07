@@ -18,7 +18,21 @@ def _handle_open_launcher():
         sys.exit(1)
 
 
+def _handle_open_emoji_picker():
+    """Handle --open-emoji-picker before loading PySide6."""
+    if "--open-emoji-picker" not in sys.argv:
+        return
+    from sadeshell.services.shared.ipc_client import send_ipc_command
+    result = send_ipc_command("open-emoji-picker")
+    if result == "ok":
+        sys.exit(0)
+    else:
+        print(result, file=sys.stderr)
+        sys.exit(1)
+
+
 _handle_open_launcher()
+_handle_open_emoji_picker()
 
 from PySide6.QtWidgets import QApplication
 from PySide6.QtQml import QQmlApplicationEngine, qmlRegisterSingletonInstance
@@ -128,6 +142,7 @@ from sadeshell.services.bar.power_service import PowerService
 from sadeshell.services.bar.bluetooth_service import BluetoothService
 from sadeshell.services.bar.systray_service import SystrayService
 from sadeshell.services.shared.app_service import AppService
+from sadeshell.services.shared.emoji_service import EmojiService
 from sadeshell.services.shared.window_helper import WindowHelper
 from sadeshell.services.shared.ipc_service import IPCService
 
@@ -146,6 +161,7 @@ def main():
     wifi_service = WiFiService()
     notification_service = NotificationService()
     app_service = AppService()
+    emoji_service = EmojiService()
     power_service = PowerService()
     window_helper = WindowHelper()
     bluetooth_service = BluetoothService()
@@ -160,6 +176,7 @@ def main():
     qmlRegisterSingletonInstance(WiFiService, "PyShell.Services", 1, 0, "WiFiService", wifi_service)
     qmlRegisterSingletonInstance(NotificationService, "PyShell.Services", 1, 0, "NotificationService", notification_service)
     qmlRegisterSingletonInstance(AppService, "PyShell.Services", 1, 0, "AppService", app_service)
+    qmlRegisterSingletonInstance(EmojiService, "PyShell.Services", 1, 0, "EmojiService", emoji_service)
     qmlRegisterSingletonInstance(PowerService, "PyShell.Services", 1, 0, "PowerService", power_service)
     qmlRegisterSingletonInstance(WindowHelper, "PyShell.Services", 1, 0, "WindowHelper", window_helper)
     qmlRegisterSingletonInstance(BluetoothService, "PyShell.Services", 1, 0, "BluetoothService", bluetooth_service)
@@ -189,6 +206,10 @@ def main():
     # Load the launcher overlay
     launcher_qml = os.path.join(qml_dir, "launcher", "AppLauncher.qml")
     engine.load(QUrl.fromLocalFile(launcher_qml))
+
+    # Load the emoji picker overlay
+    emoji_qml = os.path.join(qml_dir, "launcher", "EmojiPicker.qml")
+    engine.load(QUrl.fromLocalFile(emoji_qml))
 
     # Start the IPC server so sadeshell --open-launcher works
     ipc_service.start()

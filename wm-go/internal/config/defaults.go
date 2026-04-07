@@ -111,6 +111,7 @@ func DefaultKeys() []Key {
 
 	keys := []Key{
 		{Mod: mod, KeyStr: "p", Action: "spawn", Arg: Arg{V: []string{"sadeshell", "--open-launcher"}}},
+		{Mod: mod, KeyStr: "period", Action: "spawn", Arg: Arg{V: []string{"sadeshell", "--open-emoji-picker"}}},
 		{Mod: mod, KeyStr: "Return", Action: "spawn", Arg: Arg{V: []string{TerminalProgram}}},
 		{Mod: mod, KeyStr: "Tab", Action: "focusstack", Arg: Arg{I: +1}},
 		{Mod: mod | shift, KeyStr: "Tab", Action: "focusstack", Arg: Arg{I: -1}},
@@ -143,9 +144,9 @@ func DefaultKeys() []Key {
 		{Mod: mod, KeyStr: "Right", Action: "viewnext"},
 		{Mod: mod | shift, KeyStr: "0", Action: "tag", Arg: Arg{UI: ^uint32(0)}},
 		{Mod: mod, KeyStr: "comma", Action: "focusmon", Arg: Arg{I: -1}},
-		{Mod: mod, KeyStr: "period", Action: "focusmon", Arg: Arg{I: +1}},
+		{Mod: mod | alt, KeyStr: "period", Action: "focusmon", Arg: Arg{I: +1}},
 		{Mod: mod | shift, KeyStr: "comma", Action: "tagmon", Arg: Arg{I: -1}},
-		{Mod: mod | shift, KeyStr: "period", Action: "tagmon", Arg: Arg{I: +1}},
+		{Mod: mod | alt | shift, KeyStr: "period", Action: "tagmon", Arg: Arg{I: +1}},
 		{Mod: mod, KeyStr: "minus", Action: "setgaps", Arg: Arg{I: -1}},
 		{Mod: mod, KeyStr: "equal", Action: "setgaps", Arg: Arg{I: +1}},
 		{Mod: mod | shift, KeyStr: "equal", Action: "setgaps", Arg: Arg{I: 0}},

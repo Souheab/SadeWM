@@ -286,7 +286,7 @@
               };
               environment = {
                 PYTHONUNBUFFERED = "1";
-                PATH = lib.mkForce "/run/current-system/sw/bin:/etc/profiles/per-user/%u/bin:${lib.makeBinPath [ pkg ]}";
+                PATH = lib.mkForce "/run/current-system/sw/bin:/etc/profiles/per-user/%u/bin:${lib.makeBinPath [ pkg ]}"; # TODO lib.makeBinPath doesn't do anything, app works fine though
               };
             };
           };

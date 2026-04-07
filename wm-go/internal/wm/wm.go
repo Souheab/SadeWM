@@ -456,6 +456,12 @@ func (wm *WM) handleIPCRequest(req *ipc.IPCRequest) *ipc.Response {
 	case "reload":
 		wm.ReloadConfig(nil)
 		return &ipc.Response{OK: true}
+	case "open-launcher":
+		wm.spawnCmd([]string{"sadeshell", "--open-launcher"})
+		return &ipc.Response{OK: true}
+	case "open-emoji-picker":
+		wm.spawnCmd([]string{"sadeshell", "--open-emoji-picker"})
+		return &ipc.Response{OK: true}
 	default:
 		return &ipc.Response{OK: false, Error: "unknown command"}
 	}

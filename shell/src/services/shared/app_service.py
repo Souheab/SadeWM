@@ -1,11 +1,29 @@
 """AppService — .desktop entry discovery and launching."""
 
 import os
+import shutil
 import subprocess
 import configparser
 import glob
 
 from PySide6.QtCore import QObject, Property, Signal, Slot
+
+
+# True when sadeshell is running as a systemd user service unit.
+# INVOCATION_ID is set by systemd for every service it starts.
+_IS_SYSTEMD_UNIT = bool(os.environ.get("INVOCATION_ID"))
+# Check once at import time whether systemd-run is available.
+_SYSTEMD_RUN = shutil.which("systemd-run") if _IS_SYSTEMD_UNIT else None
+
+
+def _make_scoped_cmd(exec_cmd: str) -> list[str] | None:
+    """If running under systemd, wrap exec_cmd in a transient user scope so
+    the launched app is not a child of the sadeshell service and survives
+    sadeshell restarts/stops.  Returns None if systemd-run is unavailable."""
+    if not _SYSTEMD_RUN:
+        return None
+    # systemd-run --user --scope -- sh -c <exec_cmd>
+    return [_SYSTEMD_RUN, "--user", "--scope", "--", "sh", "-c", exec_cmd]
 
 
 _ICON_THEME_PATHS = []
@@ -200,12 +218,24 @@ class AppService(QObject):
         if not cmd:
             return
         try:
-            subprocess.Popen(
-                cmd,
-                start_new_session=True,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-            )
+            if _SYSTEMD_RUN:
+                # Wrap in a transient scope so the child outlives sadeshell
+                import shlex
+                exec_str = shlex.join(cmd)
+                launch = [_SYSTEMD_RUN, "--user", "--scope", "--", "sh", "-c", exec_str]
+                subprocess.Popen(
+                    launch,
+                    start_new_session=True,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                )
+            else:
+                subprocess.Popen(
+                    cmd,
+                    start_new_session=True,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                )
         except Exception:
             pass
 
@@ -215,12 +245,21 @@ class AppService(QObject):
         if not exec_cmd:
             return
         try:
-            subprocess.Popen(
-                exec_cmd,
-                shell=True,
-                start_new_session=True,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-            )
+            scoped = _make_scoped_cmd(exec_cmd)
+            if scoped:
+                subprocess.Popen(
+                    scoped,
+                    start_new_session=True,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                )
+            else:
+                subprocess.Popen(
+                    exec_cmd,
+                    shell=True,
+                    start_new_session=True,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                )
         except Exception:
             pass

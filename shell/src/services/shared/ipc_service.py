@@ -34,6 +34,7 @@ class IPCService(QObject):
     """
 
     openLauncherRequested = Signal()
+    openEmojiPickerRequested = Signal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -82,9 +83,13 @@ class IPCService(QObject):
 
     def _handle(self, conn, data):
         if data == "open-launcher":
-            # Emit signal on the main thread via queued invocation
             QMetaObject.invokeMethod(
                 self, "_emit_open_launcher", Qt.ConnectionType.QueuedConnection
+            )
+            conn.sendall(b"ok\n")
+        elif data == "open-emoji-picker":
+            QMetaObject.invokeMethod(
+                self, "_emit_open_emoji_picker", Qt.ConnectionType.QueuedConnection
             )
             conn.sendall(b"ok\n")
         else:
@@ -93,6 +98,10 @@ class IPCService(QObject):
     @Slot()
     def _emit_open_launcher(self):
         self.openLauncherRequested.emit()
+
+    @Slot()
+    def _emit_open_emoji_picker(self):
+        self.openEmojiPickerRequested.emit()
 
     def stop(self):
         self._running = False

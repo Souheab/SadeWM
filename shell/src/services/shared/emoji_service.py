@@ -45,9 +45,11 @@ def _build_emoji_list():
             "char": char,
             "name": name.title(),
             "keywords": keywords,
+            "rank": data.get("E", 99.0),
         })
 
-    result.sort(key=lambda e: e["name"].lower())
+    # Sort by 'E' rank (Unicode release version) which groups related emoji logically
+    result.sort(key=lambda e: e["rank"])
     return result
 
 

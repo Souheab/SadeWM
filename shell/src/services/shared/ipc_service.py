@@ -1,26 +1,43 @@
 """IPC service — Unix domain socket server for controlling sadeshell."""
 
 import os
+import re
 import socket
 import threading
 
 from PySide6.QtCore import QObject, Signal, Slot, QMetaObject, Qt
 
 
+def _ipc_socket_path() -> str:
+    """Compute the IPC socket path for the current session.
+
+    Uses XDG_RUNTIME_DIR (always set in systemd user sessions) as the primary
+    directory.  Falls back to /tmp if XDG_RUNTIME_DIR is not available.
+    DISPLAY is normalised so that ':0' and ':0.0' map to the same socket.
+    """
+    display = os.environ.get("DISPLAY", ":0")
+    # Normalise: strip screen number (:0.0 → :0)
+    display = re.sub(r"\.\d+$", "", display)
+    display_clean = display.lstrip(":").replace("/", "_") or "0"
+    filename = f"sadeshell-{display_clean}.sock"
+    runtime = os.environ.get("XDG_RUNTIME_DIR", "")
+    if runtime and os.path.isdir(runtime):
+        return os.path.join(runtime, filename)
+    return os.path.join("/tmp", filename)
+
+
 class IPCService(QObject):
     """Listens on a Unix domain socket for commands from external tools.
 
-    The socket path is derived from the current DISPLAY env variable so that
-    each sadeshell instance (one per X display) gets its own socket.
+    The socket path is derived from XDG_RUNTIME_DIR (preferred) or /tmp,
+    keyed on the normalised X11 DISPLAY value.
     """
 
     openLauncherRequested = Signal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        display = os.environ.get("DISPLAY", ":0")
-        display_clean = display.lstrip(":").replace(".", "_").replace("/", "_")
-        self._socket_path = f"/tmp/sadeshell-{display_clean}.sock"
+        self._socket_path = _ipc_socket_path()
         self._server = None
         self._thread = None
         self._running = False
@@ -45,6 +62,7 @@ class IPCService(QObject):
 
         self._thread = threading.Thread(target=self._run, daemon=True)
         self._thread.start()
+        print(f"sadeshell IPC: listening on {self._socket_path}", flush=True)
 
     def _run(self):
         while self._running:

@@ -14,17 +14,42 @@ def _init_icon_paths():
     """Build list of icon theme directories to search."""
     if _ICON_THEME_PATHS:
         return
+
+    candidates: list[str] = []
+
+    # XDG standard paths
     xdg_data = os.environ.get("XDG_DATA_DIRS", "/usr/share:/usr/local/share")
     for d in xdg_data.split(":"):
-        icons_dir = os.path.join(d, "icons")
-        if os.path.isdir(icons_dir):
-            _ICON_THEME_PATHS.append(icons_dir)
-    pixmaps = "/usr/share/pixmaps"
-    if os.path.isdir(pixmaps):
-        _ICON_THEME_PATHS.append(pixmaps)
-    home_icons = os.path.expanduser("~/.local/share/icons")
-    if os.path.isdir(home_icons):
-        _ICON_THEME_PATHS.insert(0, home_icons)
+        for sub in ("icons", "pixmaps"):
+            candidates.append(os.path.join(d, sub))
+
+    # NixOS-specific: nix profile and current system
+    for nix_base in (
+        os.path.expanduser("~/.nix-profile/share"),
+        "/run/current-system/sw/share",
+        "/var/run/current-system/sw/share",
+    ):
+        for sub in ("icons", "pixmaps"):
+            candidates.append(os.path.join(nix_base, sub))
+
+    # Common fallbacks
+    candidates += [
+        "/usr/share/pixmaps",
+        "/usr/local/share/pixmaps",
+        os.path.expanduser("~/.local/share/icons"),
+    ]
+
+    seen: set[str] = set()
+    for p in candidates:
+        if os.path.isdir(p) and p not in seen:
+            seen.add(p)
+            _ICON_THEME_PATHS.append(p)
+
+    # User icons take priority
+    user = os.path.expanduser("~/.local/share/icons")
+    if user in _ICON_THEME_PATHS and _ICON_THEME_PATHS[0] != user:
+        _ICON_THEME_PATHS.remove(user)
+        _ICON_THEME_PATHS.insert(0, user)
 
 
 def _resolve_icon(icon_name):
@@ -46,22 +71,43 @@ def _resolve_icon(icon_name):
 
     # Search common sizes in hicolor and other themes
     for base in _ICON_THEME_PATHS:
-        # Check pixmaps directory directly
+        # Check pixmaps/base directory directly
         for ext in exts:
             p = os.path.join(base, icon_name + ext)
             if os.path.isfile(p):
                 return "file://" + p
-        # Check theme subdirectories
-        for theme in ("hicolor", "Adwaita", "breeze"):
+        # Check theme subdirectories with extended size list
+        for theme in ("hicolor", "Adwaita", "breeze", "Papirus", "Papirus-Dark",
+                      "gnome", "oxygen", "elementary"):
             theme_dir = os.path.join(base, theme)
             if not os.path.isdir(theme_dir):
                 continue
-            for size in ("scalable", "48x48", "256x256", "128x128", "64x64", "32x32", "24x24", "22x22", "16x16"):
-                for cat in ("apps", "categories", "devices", "mimetypes", "status"):
+            for size in ("scalable", "512x512", "256x256", "1024x1024",
+                         "128x128", "96x96", "64x64", "48x48",
+                         "32x32", "24x24", "22x22", "16x16"):
+                for cat in ("apps", "categories", "devices", "mimetypes", "status", "."):
                     for ext in exts:
                         p = os.path.join(theme_dir, size, cat, icon_name + ext)
                         if os.path.isfile(p):
                             return "file://" + p
+
+    # Last resort: recursive glob across all icon directories.
+    # Slower but catches icons in nix store paths or unusual theme layouts.
+    for base in _ICON_THEME_PATHS:
+        for ext in exts:
+            try:
+                matches = glob.glob(
+                    os.path.join(base, "**", icon_name + ext), recursive=True
+                )
+            except Exception:
+                continue
+            if matches:
+                # Prefer SVG; among rasters prefer larger files (higher resolution)
+                matches.sort(
+                    key=lambda p: (not p.endswith(".svg"), -os.path.getsize(p))
+                )
+                return "file://" + matches[0]
+
     return ""
 
 

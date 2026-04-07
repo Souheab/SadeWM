@@ -226,6 +226,7 @@ Window {
                     onEntered: launcher.selectedIndex = delegateRoot.index
                 }
             }
+        }
 
         Text {
             id: noResultsText

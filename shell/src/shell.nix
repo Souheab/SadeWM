@@ -13,7 +13,7 @@ pkgs.mkShell {
       python3 -m venv .venv
       . .venv/bin/activate
       python -m pip install --upgrade pip
-      python -m pip install PySide6 dbus-next pulsectl
+      python -m pip install PySide6 dbus-next pulsectl emoji
     else
       . .venv/bin/activate
     fi

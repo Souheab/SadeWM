@@ -1,5 +1,5 @@
 import QtQuick
-import "../../shared"
+import "../shared"
 
 // LauncherSearchBox: a reusable search bar used by AppLauncher and EmojiPicker.
 // The parent window is expected to expose:

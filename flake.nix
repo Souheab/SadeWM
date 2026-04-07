@@ -50,6 +50,7 @@
           pyside6
           dbus-next
           pulsectl
+          emoji
         ]);
 
         shellSrc = pkgs.lib.cleanSourceWith {

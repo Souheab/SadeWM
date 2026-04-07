@@ -286,7 +286,7 @@
               };
               environment = {
                 PYTHONUNBUFFERED = "1";
-                PATH = "/run/current-system/sw/bin:/etc/profiles/per-user/%u/bin";
+                PATH = lib.mkForce "/run/current-system/sw/bin:/etc/profiles/per-user/%u/bin:${lib.makeBinPath [ pkg ]}";
               };
             };
           };

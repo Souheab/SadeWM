@@ -283,16 +283,10 @@
                 RestartSec      = "3s";
                 StandardOutput  = "journal";
                 StandardError   = "journal";
-                Environment     = "PYTHONUNBUFFERED=1";
-                PassEnvironment = [
-                "DISPLAY"
-                "XAUTHORITY"
-                "XDG_RUNTIME_DIR"
-                "DBUS_SESSION_BUS_ADDRESS"
-                "PATH"
-                "XDG_DATA_DIRS"
-                "XDG_DATA_HOME"
-              ];
+              };
+              environment = {
+                PYTHONUNBUFFERED = "1";
+                PATH = "/run/current-system/sw/bin:/etc/profiles/per-user/%u/bin";
               };
             };
           };

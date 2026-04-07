@@ -278,9 +278,13 @@
               partOf      = [ "graphical-session.target" ];
               after       = [ "graphical-session.target" ];
               serviceConfig = {
-                ExecStart  = lib.getExe pkg;
-                Restart    = "on-failure";
-                RestartSec = "3s";
+                ExecStart       = lib.getExe pkg;
+                Restart         = "on-failure";
+                RestartSec      = "3s";
+                StandardOutput  = "journal";
+                StandardError   = "journal";
+                Environment     = "PYTHONUNBUFFERED=1";
+                PassEnvironment = [ "DISPLAY" "XAUTHORITY" "XDG_RUNTIME_DIR"];
               };
             };
           };

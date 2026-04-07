@@ -284,7 +284,15 @@
                 StandardOutput  = "journal";
                 StandardError   = "journal";
                 Environment     = "PYTHONUNBUFFERED=1";
-                PassEnvironment = [ "DISPLAY" "XAUTHORITY" "XDG_RUNTIME_DIR"];
+                PassEnvironment = [
+                "DISPLAY"
+                "XAUTHORITY"
+                "XDG_RUNTIME_DIR"
+                "DBUS_SESSION_BUS_ADDRESS"
+                "PATH"
+                "XDG_DATA_DIRS"
+                "XDG_DATA_HOME"
+              ];
               };
             };
           };

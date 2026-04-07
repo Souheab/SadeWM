@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Layouts
 import PyShell.Services 1.0
+import "../shared"
 
 Rectangle {
     id: dateTimeWidget

@@ -294,6 +294,30 @@ class WindowHelper(QObject):
             print(f"WindowHelper: error raising window: {e}")
 
     @Slot("QVariant")
+    def grabKeyboard(self, window):
+        """Force X11 keyboard focus to the given window."""
+        try:
+            wid = int(window.winId()) if hasattr(window, 'winId') else 0
+            if not wid:
+                return
+            if not self._ensure_libs() or not self._libx11:
+                return
+
+            libx11 = self._libx11
+            _raw = libx11.XOpenDisplay(None)
+            if not _raw:
+                return
+            display = ctypes.c_void_p(_raw)
+            try:
+                # RevertToParent = 1, CurrentTime = 0
+                libx11.XSetInputFocus(display, wid, 1, 0)
+                libx11.XFlush(display)
+            finally:
+                libx11.XCloseDisplay(display)
+        except Exception as e:
+            print(f"WindowHelper.grabKeyboard error: {e}")
+
+    @Slot("QVariant")
     def setInputRegion(self, rects_variant):
         """Restrict X11 pointer input to the given list of {x,y,width,height} rects.
 

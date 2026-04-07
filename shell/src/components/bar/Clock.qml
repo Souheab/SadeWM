@@ -1,4 +1,5 @@
 import QtQuick
+import "../shared"
 
 Text {
     property string clockText: Qt.formatDateTime(new Date(), Theme.clockFormat)

@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Window
 import PyShell.Services 1.0
+import "../shared"
 
 Window {
     id: root

@@ -4,6 +4,22 @@ import sys
 import os
 import signal
 
+
+def _handle_open_launcher():
+    """Handle --open-launcher before loading PySide6."""
+    if "--open-launcher" not in sys.argv:
+        return
+    from sadeshell.services.shared.ipc_client import send_ipc_command
+    result = send_ipc_command("open-launcher")
+    if result == "ok":
+        sys.exit(0)
+    else:
+        print(result, file=sys.stderr)
+        sys.exit(1)
+
+
+_handle_open_launcher()
+
 from PySide6.QtWidgets import QApplication
 from PySide6.QtQml import QQmlApplicationEngine, qmlRegisterSingletonInstance
 from PySide6.QtCore import QUrl, QLibraryInfo
@@ -102,17 +118,18 @@ def _qt_qml_import_paths() -> list[str]:
         _save_qml_path_cache(paths)
     return paths
 
-from sadeshell.services.tag_service import TagService
-from sadeshell.services.audio_service import AudioService
-from sadeshell.services.brightness_service import BrightnessService
-from sadeshell.services.media_service import MediaService
-from sadeshell.services.wifi_service import WiFiService
-from sadeshell.services.notification_service import NotificationService
-from sadeshell.services.app_service import AppService
-from sadeshell.services.power_service import PowerService
-from sadeshell.services.window_helper import WindowHelper
-from sadeshell.services.bluetooth_service import BluetoothService
-from sadeshell.services.systray_service import SystrayService
+from sadeshell.services.bar.tag_service import TagService
+from sadeshell.services.bar.audio_service import AudioService
+from sadeshell.services.bar.brightness_service import BrightnessService
+from sadeshell.services.bar.media_service import MediaService
+from sadeshell.services.bar.wifi_service import WiFiService
+from sadeshell.services.bar.notification_service import NotificationService
+from sadeshell.services.bar.power_service import PowerService
+from sadeshell.services.bar.bluetooth_service import BluetoothService
+from sadeshell.services.bar.systray_service import SystrayService
+from sadeshell.services.shared.app_service import AppService
+from sadeshell.services.shared.window_helper import WindowHelper
+from sadeshell.services.shared.ipc_service import IPCService
 
 
 def main():
@@ -133,6 +150,7 @@ def main():
     window_helper = WindowHelper()
     bluetooth_service = BluetoothService()
     systray_service = SystrayService()
+    ipc_service = IPCService()
 
     # Register singletons for QML access
     qmlRegisterSingletonInstance(TagService, "PyShell.Services", 1, 0, "TagService", tag_service)
@@ -146,6 +164,7 @@ def main():
     qmlRegisterSingletonInstance(WindowHelper, "PyShell.Services", 1, 0, "WindowHelper", window_helper)
     qmlRegisterSingletonInstance(BluetoothService, "PyShell.Services", 1, 0, "BluetoothService", bluetooth_service)
     qmlRegisterSingletonInstance(SystrayService, "PyShell.Services", 1, 0, "SystrayService", systray_service)
+    qmlRegisterSingletonInstance(IPCService, "PyShell.Services", 1, 0, "IPCService", ipc_service)
 
     engine = QQmlApplicationEngine()
 
@@ -155,14 +174,28 @@ def main():
     qml_dir = os.path.join(os.path.dirname(__file__), "components")
     engine.addImportPath(os.path.dirname(__file__))
 
-    shell_qml = os.path.join(qml_dir, "Shell.qml")
+    # Add shared components to the import path so Theme singleton is visible
+    shared_qml = os.path.join(qml_dir, "shared")
+    engine.addImportPath(shared_qml)
+
+    # Load the bar
+    shell_qml = os.path.join(qml_dir, "bar", "Shell.qml")
     engine.load(QUrl.fromLocalFile(shell_qml))
 
     if not engine.rootObjects():
-        print("Failed to load QML", file=sys.stderr)
+        print("Failed to load Shell QML", file=sys.stderr)
         sys.exit(1)
 
-    sys.exit(app.exec())
+    # Load the launcher overlay
+    launcher_qml = os.path.join(qml_dir, "launcher", "AppLauncher.qml")
+    engine.load(QUrl.fromLocalFile(launcher_qml))
+
+    # Start the IPC server so sadeshell --open-launcher works
+    ipc_service.start()
+
+    ret = app.exec()
+    ipc_service.stop()
+    sys.exit(ret)
 
 
 if __name__ == "__main__":

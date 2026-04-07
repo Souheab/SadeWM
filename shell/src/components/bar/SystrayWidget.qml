@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Controls
 import PyShell.Services 1.0
+import "../shared"
 
 // SystrayWidget — shows StatusNotifier tray icons in the bar.
 // Each icon is clickable (left = Activate, right = ContextMenu).

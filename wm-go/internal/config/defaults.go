@@ -110,7 +110,7 @@ func DefaultKeys() []Key {
 	ctrl := uint16(xproto.ModMaskControl)
 
 	keys := []Key{
-		{Mod: mod, KeyStr: "p", Action: "spawn", Arg: Arg{V: []string{"rofi", "-show", "drun"}}},
+		{Mod: mod, KeyStr: "p", Action: "spawn", Arg: Arg{V: []string{"sadeshell", "--open-launcher"}}},
 		{Mod: mod, KeyStr: "Return", Action: "spawn", Arg: Arg{V: []string{TerminalProgram}}},
 		{Mod: mod, KeyStr: "Tab", Action: "focusstack", Arg: Arg{I: +1}},
 		{Mod: mod | shift, KeyStr: "Tab", Action: "focusstack", Arg: Arg{I: -1}},

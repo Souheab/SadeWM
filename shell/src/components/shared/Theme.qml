@@ -46,7 +46,7 @@ QtObject {
 
     // ── Logo ──
     readonly property int logoSize: 18
-    readonly property url logoSource: Qt.resolvedUrl("../assets/nixos-logo.svg")
+    readonly property url logoSource: Qt.resolvedUrl("../../assets/nixos-logo.svg")
 
     // ── Polling intervals (ms) ──
     readonly property int tagPollInterval: 100

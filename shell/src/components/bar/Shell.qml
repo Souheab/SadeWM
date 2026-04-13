@@ -25,6 +25,10 @@ Window {
         anchors.right: parent.right
         height: Theme.barHeight
         color: Theme.barBg
+        // Hide the bar strip when a fullscreen window is active so it doesn't
+        // obstruct the fullscreen content.  The shell window itself stays on top
+        // (WindowStaysOnTopHint) so the launcher / emoji picker still appear.
+        visible: !FullscreenService.hasFullscreen
 
         Row {
             anchors.fill: parent
@@ -118,7 +122,11 @@ Window {
         // everything else passes through to windows below so the WM's
         // focus-follows-mouse keeps working.
         function updateInputRegion() {
-            var rects = [{x: 0, y: 0, width: Screen.width, height: Theme.barHeight}]
+            var rects = []
+            // Only claim input on the bar strip when it is actually visible.
+            if (barArea.visible) {
+                rects.push({x: 0, y: 0, width: Screen.width, height: Theme.barHeight})
+            }
 
             // Panel popups are reparented into popupLayer at runtime.
             // Iterate children and collect every visible, non-full-screen item.
@@ -168,6 +176,11 @@ Window {
 
         onToastsActiveChanged: Qt.callLater(updateInputRegion)
         onMaskActiveChanged:   Qt.callLater(updateInputRegion)
+
+        Connections {
+            target: FullscreenService
+            function onHasFullscreenChanged() { Qt.callLater(popupLayer.updateInputRegion) }
+        }
 
         // Keep input region in sync when the media card or toast column resizes.
         Connections {

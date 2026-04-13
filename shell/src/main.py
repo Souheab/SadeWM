@@ -135,6 +135,7 @@ def _qt_qml_import_paths() -> list[str]:
 from sadeshell.services.bar.tag_service import TagService
 from sadeshell.services.bar.audio_service import AudioService
 from sadeshell.services.bar.brightness_service import BrightnessService
+from sadeshell.services.bar.fullscreen_service import FullscreenService
 from sadeshell.services.bar.media_service import MediaService
 from sadeshell.services.bar.wifi_service import WiFiService
 from sadeshell.services.bar.notification_service import NotificationService
@@ -157,6 +158,7 @@ def main():
     tag_service = TagService()
     audio_service = AudioService()
     brightness_service = BrightnessService()
+    fullscreen_service = FullscreenService()
     media_service = MediaService()
     wifi_service = WiFiService()
     notification_service = NotificationService()
@@ -172,6 +174,7 @@ def main():
     qmlRegisterSingletonInstance(TagService, "PyShell.Services", 1, 0, "TagService", tag_service)
     qmlRegisterSingletonInstance(AudioService, "PyShell.Services", 1, 0, "AudioService", audio_service)
     qmlRegisterSingletonInstance(BrightnessService, "PyShell.Services", 1, 0, "BrightnessService", brightness_service)
+    qmlRegisterSingletonInstance(FullscreenService, "PyShell.Services", 1, 0, "FullscreenService", fullscreen_service)
     qmlRegisterSingletonInstance(MediaService, "PyShell.Services", 1, 0, "MediaService", media_service)
     qmlRegisterSingletonInstance(WiFiService, "PyShell.Services", 1, 0, "WiFiService", wifi_service)
     qmlRegisterSingletonInstance(NotificationService, "PyShell.Services", 1, 0, "NotificationService", notification_service)

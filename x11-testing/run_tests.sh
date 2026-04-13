@@ -78,6 +78,10 @@ done
 
 export DISPLAY="$DISPLAY_NUM"
 
+# Ensure xdrive package (xdrive/xdrive/) is importable, not shadowed by the
+# project directory namespace package when running from the repo root.
+export PYTHONPATH="$REPO_ROOT/xdrive${PYTHONPATH:+:$PYTHONPATH}"
+
 # ── Start sadewm ─────────────────────────────────────────────────────────────
 WM_ARGS=()
 $DEBUG && WM_ARGS+=(-d)
@@ -99,16 +103,29 @@ echo "==> sadewm running (PID=$WM_PID)"
 cd "$REPO_ROOT"
 EXIT_CODE=0
 
+# Determine whether a file uses pytest (has pytest fixtures/imports)
+_uses_pytest() {
+    grep -q "^import pytest\|^from xdrive\|@pytest\." "$1" 2>/dev/null
+}
+
 if [[ -n "$TEST_FILE" ]]; then
     echo "==> Running test: $TEST_FILE"
-    python3 "$TEST_FILE" || EXIT_CODE=$?
+    if _uses_pytest "$TEST_FILE"; then
+        python3 -m pytest "$TEST_FILE" -v || EXIT_CODE=$?
+    else
+        python3 "$TEST_FILE" || EXIT_CODE=$?
+    fi
 else
     echo "==> Running all tests in $SCRIPT_DIR/"
     for f in "$SCRIPT_DIR"/test_*.py; do
         [[ -f "$f" ]] || continue
         echo ""
         echo "━━━ $(basename "$f") ━━━"
-        python3 "$f" || EXIT_CODE=$?
+        if _uses_pytest "$f"; then
+            python3 -m pytest "$f" -v || EXIT_CODE=$?
+        else
+            python3 "$f" || EXIT_CODE=$?
+        fi
     done
 fi
 

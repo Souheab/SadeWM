@@ -352,9 +352,17 @@ func (wm *WM) ReloadConfig(arg *config.Arg) {
 		}
 
 		for c := m.Clients; c != nil; c = c.Next {
-			c.BW = int(config.BorderPx)
-			xproto.ConfigureWindow(wm.Conn, c.Win,
-				xproto.ConfigWindowBorderWidth, []uint32{uint32(c.BW)})
+			if c.TitleWin != 0 {
+				// Client has a titlebar — keep border at 0 and redraw.
+				c.BW = 0
+				xproto.ConfigureWindow(wm.Conn, c.Win,
+					xproto.ConfigWindowBorderWidth, []uint32{0})
+				wm.drawTitlebar(c)
+			} else {
+				c.BW = int(config.BorderPx)
+				xproto.ConfigureWindow(wm.Conn, c.Win,
+					xproto.ConfigWindowBorderWidth, []uint32{uint32(c.BW)})
+			}
 		}
 
 		m.WX = m.MX

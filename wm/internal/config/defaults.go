@@ -40,6 +40,18 @@ var (
 
 var SizeHintsWhitelist = []string{"mpv"}
 
+// Titlebar colors – slightly lighter than the window background so the bar
+// stands out. Override via [titlebar] in the TOML config.
+var (
+	TitlebarBgNorm   = "#24283b" // normal (unfocused) bar background
+	TitlebarBgFocus  = "#2a2e45" // focused bar background
+	TitlebarSep      = "#414868" // bottom separator line
+	TitlebarText     = "#c0caf5" // title text
+	TitlebarClose    = "#f7768e" // close button
+	TitlebarAbove    = "#7aa2f7" // stay-on-top button
+	TitlebarMinimize = "#9ece6a" // minimize button
+)
+
 var Tags = []string{"1", "2", "3", "4", "5", "6", "7", "8", "9"}
 
 // Rule defines a window rule for auto-assigning tags/floating.

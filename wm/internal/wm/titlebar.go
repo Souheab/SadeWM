@@ -17,43 +17,23 @@ package wm
 #include <string.h>
 #include <math.h>
 
-// ── palette (from sadeshell Theme.qml) ────────────────────────────────────────
-#define TB_BG_R   0.102
-#define TB_BG_G   0.106
-#define TB_BG_B   0.149   // #1a1b26
+// ── runtime colour table (filled from Go config vars) ─────────────────────────
+typedef struct {
+    double bg_r,   bg_g,   bg_b;    // normal background
+    double bgf_r,  bgf_g,  bgf_b;   // focused background
+    double sep_r,  sep_g,  sep_b;   // bottom separator
+    double txt_r,  txt_g,  txt_b;   // title text
+    double cls_r,  cls_g,  cls_b;   // close button
+    double abv_r,  abv_g,  abv_b;   // stay-on-top button (active)
+    double abv_dim;                  // stay-on-top alpha when inactive
+    double min_r,  min_g,  min_b;   // minimize button
+} TBColors;
 
-#define TB_BG_F_R 0.125
-#define TB_BG_F_G 0.133
-#define TB_BG_F_B 0.192   // slightly lighter when focused
-
-#define TB_SEP_R  0.161
-#define TB_SEP_G  0.180
-#define TB_SEP_B  0.259   // #292e42
-
-#define TB_TXT_R  0.753
-#define TB_TXT_G  0.792
-#define TB_TXT_B  0.961   // #c0caf5
-
-// Button colours
-#define TB_CLOSE_R  0.969
-#define TB_CLOSE_G  0.463
-#define TB_CLOSE_B  0.557  // #f7768e  close
-
-#define TB_ABOVE_R  0.478
-#define TB_ABOVE_G  0.635
-#define TB_ABOVE_B  0.969  // #7aa2f7  stay-on-top (active)
-
-#define TB_ABOVE_DIM 0.45  // alpha for follow-on-top when inactive
-
-#define TB_MIN_R    0.400
-#define TB_MIN_G    0.435
-#define TB_MIN_B    0.600  // #666f99  minimize
-
-// Button layout constants
-#define TB_BTN_R       6.0   // button radius (px)
-#define TB_BTN_FIRST_X 16    // centre-x of first button
-#define TB_BTN_STEP    20    // x distance between button centres
-#define TB_ROUND_RADIUS 6.0  // top-corner radius
+// Button layout constants (compile-time; not user-configurable)
+#define TB_BTN_R        6.0
+#define TB_BTN_FIRST_X  16
+#define TB_BTN_STEP     20
+#define TB_ROUND_RADIUS  6.0
 
 // Open an Xlib display connection.  Returns NULL on failure.
 static Display* tb_open_display(const char* name) {
@@ -63,7 +43,6 @@ static Display* tb_open_display(const char* name) {
 // Non-fatal X error handler so that Cairo RENDER errors (e.g. freeing a
 // picture for a destroyed window) do not kill the WM via exit(1).
 static int tb_xerror_handler(Display *dpy, XErrorEvent *ev) {
-    // Silently ignore; Cairo is resilient to these.
     (void)dpy; (void)ev;
     return 0;
 }
@@ -73,7 +52,6 @@ static void tb_install_error_handler() {
 }
 
 // Apply a rounded-top-corner shape mask to the titlebar window.
-// Must be called after mapping and after any width change.
 static void tb_apply_rounded_shape(Display *dpy, Window win, int w, int h) {
     double r = TB_ROUND_RADIUS;
     Pixmap mask = XCreatePixmap(dpy, win, w, h, 1);
@@ -83,17 +61,15 @@ static void tb_apply_rounded_shape(Display *dpy, Window win, int w, int h) {
     if (!ms) { XFreePixmap(dpy, mask); return; }
     cairo_t *cr = cairo_create(ms);
     if (!cr) { cairo_surface_destroy(ms); XFreePixmap(dpy, mask); return; }
-    // Clear to 0 (transparent / clipped out)
     cairo_set_operator(cr, CAIRO_OPERATOR_SOURCE);
     cairo_set_source_rgba(cr, 0, 0, 0, 0);
     cairo_paint(cr);
-    // Draw rounded-top rect in 1 (opaque)
     cairo_set_source_rgba(cr, 1, 1, 1, 1);
     cairo_new_path(cr);
-    cairo_arc(cr, r, r, r, M_PI, 3*M_PI/2);       // top-left
-    cairo_arc(cr, w - r, r, r, -M_PI/2, 0);        // top-right
-    cairo_line_to(cr, w, h);                         // bottom-right
-    cairo_line_to(cr, 0, h);                         // bottom-left
+    cairo_arc(cr, r,     r, r, M_PI,     3*M_PI/2);
+    cairo_arc(cr, w - r, r, r, -M_PI/2,  0);
+    cairo_line_to(cr, w, h);
+    cairo_line_to(cr, 0, h);
     cairo_close_path(cr);
     cairo_fill(cr);
     cairo_destroy(cr);
@@ -104,41 +80,29 @@ static void tb_apply_rounded_shape(Display *dpy, Window win, int w, int h) {
     XFlush(dpy);
 }
 
-// Draw the titlebar into window |win| using Cairo Xlib surface.
-//
-// Parameters:
-//   dpy       - Xlib Display *
-//   win       - X11 Window id (the titlebar window)
-//   w, h      - titlebar dimensions in pixels
-//   title     - UTF-8 window title (may be NULL / empty)
-//   focused   - non-zero when the associated client is focused
-//   is_above  - non-zero when client has stay-on-top set
-//   hover_btn - 1=close, 2=above, 3=minimize, 0=none
+// Draw the titlebar.
+//   hover_btn: 1=close, 2=above, 3=minimize, 0=none
 static void tb_draw(Display *dpy, unsigned long win,
                     int w, int h,
                     const char *title,
-                    int focused, int is_above, int hover_btn) {
+                    int focused, int is_above, int hover_btn,
+                    TBColors *col) {
     Visual *visual = XDefaultVisual(dpy, DefaultScreen(dpy));
     cairo_surface_t *surface = cairo_xlib_surface_create(
         dpy, (Drawable)win, visual, w, h);
     if (!surface) return;
-
     cairo_t *cr = cairo_create(surface);
-    if (!cr) {
-        cairo_surface_destroy(surface);
-        return;
-    }
+    if (!cr) { cairo_surface_destroy(surface); return; }
 
-    // ── rounded background (top corners only) ────────────────────────────────
-    if (focused) {
-        cairo_set_source_rgb(cr, TB_BG_F_R, TB_BG_F_G, TB_BG_F_B);
-    } else {
-        cairo_set_source_rgb(cr, TB_BG_R, TB_BG_G, TB_BG_B);
-    }
+    // ── rounded background ────────────────────────────────────────────────────
+    if (focused)
+        cairo_set_source_rgb(cr, col->bgf_r, col->bgf_g, col->bgf_b);
+    else
+        cairo_set_source_rgb(cr, col->bg_r,  col->bg_g,  col->bg_b);
     {
         double r = TB_ROUND_RADIUS;
         cairo_new_path(cr);
-        cairo_arc(cr, r, r, r, M_PI, 3*M_PI/2);
+        cairo_arc(cr, r,     r, r, M_PI,    3*M_PI/2);
         cairo_arc(cr, w - r, r, r, -M_PI/2, 0);
         cairo_line_to(cr, w, h);
         cairo_line_to(cr, 0, h);
@@ -147,41 +111,39 @@ static void tb_draw(Display *dpy, unsigned long win,
     }
 
     // ── bottom separator ──────────────────────────────────────────────────────
-    cairo_set_source_rgb(cr, TB_SEP_R, TB_SEP_G, TB_SEP_B);
+    cairo_set_source_rgb(cr, col->sep_r, col->sep_g, col->sep_b);
     cairo_set_line_width(cr, 1.0);
-    cairo_move_to(cr, 0, h - 0.5);
-    cairo_line_to(cr, w, h - 0.5);
+    cairo_move_to(cr, 0,   h - 0.5);
+    cairo_line_to(cr, w,   h - 0.5);
     cairo_stroke(cr);
 
     // ── buttons ───────────────────────────────────────────────────────────────
     double by = h / 2.0;
 
-    // Close (red)
+    // Close
     double cx0 = TB_BTN_FIRST_X;
-    cairo_arc(cr, cx0, by, TB_BTN_R, 0, 2 * M_PI);
-    cairo_set_source_rgb(cr, TB_CLOSE_R, TB_CLOSE_G, TB_CLOSE_B);
+    cairo_arc(cr, cx0, by, TB_BTN_R, 0, 2*M_PI);
+    cairo_set_source_rgb(cr, col->cls_r, col->cls_g, col->cls_b);
     cairo_fill(cr);
     if (hover_btn == 1) {
         double ic = TB_BTN_R * 0.50;
-        cairo_set_source_rgba(cr, 0.0, 0.0, 0.0, 0.75);
+        cairo_set_source_rgba(cr, 1.0, 1.0, 1.0, 0.90);
         cairo_set_line_width(cr, 1.5);
-        cairo_move_to(cr, cx0 - ic, by - ic); cairo_line_to(cr, cx0 + ic, by + ic); cairo_stroke(cr);
-        cairo_move_to(cr, cx0 + ic, by - ic); cairo_line_to(cr, cx0 - ic, by + ic); cairo_stroke(cr);
+        cairo_move_to(cr, cx0-ic, by-ic); cairo_line_to(cr, cx0+ic, by+ic); cairo_stroke(cr);
+        cairo_move_to(cr, cx0+ic, by-ic); cairo_line_to(cr, cx0-ic, by+ic); cairo_stroke(cr);
     }
 
-    // Stay-on-top (blue; dimmed when not active)
+    // Stay-on-top
     double cx1 = TB_BTN_FIRST_X + TB_BTN_STEP;
-    cairo_arc(cr, cx1, by, TB_BTN_R, 0, 2 * M_PI);
-    if (is_above) {
-        cairo_set_source_rgb(cr, TB_ABOVE_R, TB_ABOVE_G, TB_ABOVE_B);
-    } else {
-        cairo_set_source_rgba(cr, TB_ABOVE_R, TB_ABOVE_G, TB_ABOVE_B, TB_ABOVE_DIM);
-    }
+    cairo_arc(cr, cx1, by, TB_BTN_R, 0, 2*M_PI);
+    if (is_above)
+        cairo_set_source_rgb(cr,  col->abv_r, col->abv_g, col->abv_b);
+    else
+        cairo_set_source_rgba(cr, col->abv_r, col->abv_g, col->abv_b, col->abv_dim);
     cairo_fill(cr);
     if (hover_btn == 2) {
-        double aw = TB_BTN_R * 0.55;
-        double ah = TB_BTN_R * 0.50;
-        cairo_set_source_rgba(cr, 0.0, 0.0, 0.0, 0.75);
+        double aw = TB_BTN_R * 0.55, ah = TB_BTN_R * 0.50;
+        cairo_set_source_rgba(cr, 1.0, 1.0, 1.0, 0.90);
         cairo_set_line_width(cr, 1.5);
         cairo_move_to(cr, cx1 - aw, by + ah * 0.4);
         cairo_line_to(cr, cx1,       by - ah * 0.8);
@@ -189,47 +151,41 @@ static void tb_draw(Display *dpy, unsigned long win,
         cairo_stroke(cr);
     }
 
-    // Minimize (muted purple-gray)
-    double cx2 = TB_BTN_FIRST_X + 2 * TB_BTN_STEP;
-    cairo_arc(cr, cx2, by, TB_BTN_R, 0, 2 * M_PI);
-    cairo_set_source_rgb(cr, TB_MIN_R, TB_MIN_G, TB_MIN_B);
+    // Minimize
+    double cx2 = TB_BTN_FIRST_X + 2*TB_BTN_STEP;
+    cairo_arc(cr, cx2, by, TB_BTN_R, 0, 2*M_PI);
+    cairo_set_source_rgb(cr, col->min_r, col->min_g, col->min_b);
     cairo_fill(cr);
     if (hover_btn == 3) {
         double hw = TB_BTN_R * 0.55;
-        cairo_set_source_rgba(cr, 0.0, 0.0, 0.0, 0.75);
+        cairo_set_source_rgba(cr, 1.0, 1.0, 1.0, 0.90);
         cairo_set_line_width(cr, 1.5);
-        cairo_move_to(cr, cx2 - hw, by); cairo_line_to(cr, cx2 + hw, by); cairo_stroke(cr);
+        cairo_move_to(cr, cx2-hw, by); cairo_line_to(cr, cx2+hw, by); cairo_stroke(cr);
     }
 
     // ── window title ──────────────────────────────────────────────────────────
     if (title && title[0] != '\0') {
-        cairo_set_source_rgb(cr, TB_TXT_R, TB_TXT_G, TB_TXT_B);
+        cairo_set_source_rgb(cr, col->txt_r, col->txt_g, col->txt_b);
         cairo_select_font_face(cr, "Sans",
             CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_NORMAL);
         cairo_set_font_size(cr, 12.0);
-
         cairo_text_extents_t ext;
         cairo_text_extents(cr, title, &ext);
-
-        // Center, keeping clear of the three buttons (left guard ~65 px)
         double max_w = (double)(w - 70 - 10);
         double tx;
         if (ext.width > max_w) {
-            tx = 70;  // left-align if too long to center
+            tx = 70;
         } else {
             tx = (w - ext.width) / 2.0 - ext.x_bearing;
             if (tx < 70) tx = 70;
         }
         double ty = (h - ext.height) / 2.0 - ext.y_bearing;
-
         cairo_move_to(cr, tx, ty);
         cairo_show_text(cr, title);
     }
 
-    // ── flush ─────────────────────────────────────────────────────────────────
     cairo_surface_flush(surface);
     XFlush(dpy);
-
     cairo_destroy(cr);
     cairo_surface_destroy(surface);
 }
@@ -237,10 +193,13 @@ static void tb_draw(Display *dpy, unsigned long win,
 import "C"
 
 import (
+	"fmt"
 	"os"
 	"unsafe"
 
 	"github.com/BurntSushi/xgb/xproto"
+
+	"github.com/sadewm/sadewm/wm/internal/config"
 )
 
 const titlebarHeight = 28
@@ -328,6 +287,11 @@ func (wm *WM) createTitlebar(c *Client) {
 	xproto.MapWindow(wm.Conn, win)
 	c.TitleWin = win
 
+	// Remove the client window's X11 border — the titlebar acts as the frame.
+	c.BW = 0
+	xproto.ConfigureWindow(wm.Conn, c.Win,
+		xproto.ConfigWindowBorderWidth, []uint32{0})
+
 	if wm.TitlebarMap == nil {
 		wm.TitlebarMap = make(map[xproto.Window]*Client)
 	}
@@ -352,6 +316,10 @@ func (wm *WM) destroyTitlebar(c *Client) {
 	delete(wm.TitlebarMap, c.TitleWin)
 	xproto.DestroyWindow(wm.Conn, c.TitleWin)
 	c.TitleWin = 0
+	// Restore the client border.
+	c.BW = int(config.BorderPx)
+	xproto.ConfigureWindow(wm.Conn, c.Win,
+		xproto.ConfigWindowBorderWidth, []uint32{uint32(c.BW)})
 }
 
 // ── Geometry helpers ──────────────────────────────────────────────────────────
@@ -418,6 +386,54 @@ func (wm *WM) raiseTitlebar(c *Client) {
 
 // ── Cairo rendering ───────────────────────────────────────────────────────────
 
+// hexToRGB converts a "#rrggbb" string to [0,1] float64 components.
+func hexToRGB(hex string) (r, g, b float64) {
+	if len(hex) > 0 && hex[0] == '#' {
+		hex = hex[1:]
+	}
+	if len(hex) == 6 {
+		var ri, gi, bi int
+		fmt.Sscanf(hex, "%02x%02x%02x", &ri, &gi, &bi)
+		return float64(ri) / 255.0, float64(gi) / 255.0, float64(bi) / 255.0
+	}
+	return 0, 0, 0
+}
+
+// tbColors builds a C.TBColors struct from the current config globals.
+func tbColors() C.TBColors {
+	var col C.TBColors
+	col.bg_r, col.bg_g, col.bg_b = func() (C.double, C.double, C.double) {
+		r, g, b := hexToRGB(config.TitlebarBgNorm)
+		return C.double(r), C.double(g), C.double(b)
+	}()
+	col.bgf_r, col.bgf_g, col.bgf_b = func() (C.double, C.double, C.double) {
+		r, g, b := hexToRGB(config.TitlebarBgFocus)
+		return C.double(r), C.double(g), C.double(b)
+	}()
+	col.sep_r, col.sep_g, col.sep_b = func() (C.double, C.double, C.double) {
+		r, g, b := hexToRGB(config.TitlebarSep)
+		return C.double(r), C.double(g), C.double(b)
+	}()
+	col.txt_r, col.txt_g, col.txt_b = func() (C.double, C.double, C.double) {
+		r, g, b := hexToRGB(config.TitlebarText)
+		return C.double(r), C.double(g), C.double(b)
+	}()
+	col.cls_r, col.cls_g, col.cls_b = func() (C.double, C.double, C.double) {
+		r, g, b := hexToRGB(config.TitlebarClose)
+		return C.double(r), C.double(g), C.double(b)
+	}()
+	col.abv_r, col.abv_g, col.abv_b = func() (C.double, C.double, C.double) {
+		r, g, b := hexToRGB(config.TitlebarAbove)
+		return C.double(r), C.double(g), C.double(b)
+	}()
+	col.abv_dim = 0.45
+	col.min_r, col.min_g, col.min_b = func() (C.double, C.double, C.double) {
+		r, g, b := hexToRGB(config.TitlebarMinimize)
+		return C.double(r), C.double(g), C.double(b)
+	}()
+	return col
+}
+
 // applyTitlebarShape applies the X SHAPE extension rounded-top-corner mask.
 func (wm *WM) applyTitlebarShape(c *Client) {
 	if c.TitleWin == 0 || wm.XlibDpy == nil {
@@ -444,6 +460,7 @@ func (wm *WM) drawTitlebar(c *Client) {
 	cTitle := C.CString(c.Name)
 	defer C.free(unsafe.Pointer(cTitle))
 
+	col := tbColors()
 	C.tb_draw(
 		(*C.Display)(wm.XlibDpy),
 		C.ulong(c.TitleWin),
@@ -453,6 +470,7 @@ func (wm *WM) drawTitlebar(c *Client) {
 		boolToInt(focused),
 		boolToInt(c.IsAbove),
 		C.int(c.TitleHover),
+		&col,
 	)
 }
 

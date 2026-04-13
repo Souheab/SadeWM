@@ -13,10 +13,22 @@ import (
 type TOMLConfig struct {
 	Appearance *TOMLAppearance `toml:"appearance"`
 	Colors     *TOMLColors     `toml:"colors"`
+	Titlebar   *TOMLTitlebar   `toml:"titlebar"`
 	Layout     *TOMLLayout     `toml:"layout"`
 	Rules      []TOMLRule      `toml:"rules"`
 	Keys       []TOMLKey       `toml:"keys"`
 	TagKeys    []TOMLTagKey    `toml:"tagkeys"`
+}
+
+// TOMLTitlebar configures the floating-window titlebar colours.
+type TOMLTitlebar struct {
+	BgNorm   string `toml:"bg"`
+	BgFocus  string `toml:"bg_focused"`
+	Sep      string `toml:"sep"`
+	Text     string `toml:"text"`
+	Close    string `toml:"close"`
+	Above    string `toml:"above"`
+	Minimize string `toml:"minimize"`
 }
 
 type TOMLAppearance struct {
@@ -109,6 +121,30 @@ func ApplyTOML(tc *TOMLConfig) {
 		}
 		if tc.Colors.Sel != nil && tc.Colors.Sel.Border != "" {
 			ColBorderSel = tc.Colors.Sel.Border
+		}
+	}
+
+	if tb := tc.Titlebar; tb != nil {
+		if tb.BgNorm != "" {
+			TitlebarBgNorm = tb.BgNorm
+		}
+		if tb.BgFocus != "" {
+			TitlebarBgFocus = tb.BgFocus
+		}
+		if tb.Sep != "" {
+			TitlebarSep = tb.Sep
+		}
+		if tb.Text != "" {
+			TitlebarText = tb.Text
+		}
+		if tb.Close != "" {
+			TitlebarClose = tb.Close
+		}
+		if tb.Above != "" {
+			TitlebarAbove = tb.Above
+		}
+		if tb.Minimize != "" {
+			TitlebarMinimize = tb.Minimize
 		}
 	}
 

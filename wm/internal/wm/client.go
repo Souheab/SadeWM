@@ -5,7 +5,7 @@ import (
 	"github.com/BurntSushi/xgb/xproto"
 	"github.com/BurntSushi/xgbutil"
 
-	"github.com/sadewm/sadewm/wm-go/internal/config"
+	"github.com/sadewm/sadewm/wm/internal/config"
 )
 
 // Client represents a managed window.

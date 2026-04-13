@@ -7,10 +7,10 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/sadewm/sadewm/wm-go/internal/config"
-	"github.com/sadewm/sadewm/wm-go/internal/ipc"
-	"github.com/sadewm/sadewm/wm-go/internal/util"
-	"github.com/sadewm/sadewm/wm-go/internal/wm"
+	"github.com/sadewm/sadewm/wm/internal/config"
+	"github.com/sadewm/sadewm/wm/internal/ipc"
+	"github.com/sadewm/sadewm/wm/internal/util"
+	"github.com/sadewm/sadewm/wm/internal/wm"
 )
 
 func main() {

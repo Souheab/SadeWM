@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-test_mouse_drag.py — Validate Super+Button1 drag behaviour in sadewm-go.
+test_mouse_drag.py — Validate Super+Button1 drag behaviour in sadewm.
 
 Tests:
   1. Tiled mode: Super+drag swaps windows in the direction of the drag
@@ -285,7 +285,7 @@ def test_button_press_received():
 
 if __name__ == "__main__":
     print("=" * 70)
-    print("sadewm-go Mouse Drag Tests")
+    print("sadewm Mouse Drag Tests")
     print("=" * 70)
 
     test_button_press_received()

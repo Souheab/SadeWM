@@ -1,7 +1,6 @@
 # wm build artifacts
 wm/*.o
 wm/sadewm
-wm-go/sadewm
 wm/*.tar.gz
 wm/compile_commands.json
 wm/.cache/

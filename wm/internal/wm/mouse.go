@@ -3,8 +3,8 @@ package wm
 import (
 	"github.com/BurntSushi/xgb"
 	"github.com/BurntSushi/xgb/xproto"
-	"github.com/sadewm/sadewm/wm-go/internal/config"
-	"github.com/sadewm/sadewm/wm-go/internal/util"
+	"github.com/sadewm/sadewm/wm/internal/config"
+	"github.com/sadewm/sadewm/wm/internal/util"
 )
 
 // isMouseDragEvent returns true for events that should be handled inline

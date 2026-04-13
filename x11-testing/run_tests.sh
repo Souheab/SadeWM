@@ -35,11 +35,11 @@ python3 -c "import Xlib" 2>/dev/null || {
     exit 1
 }
 
-# ── Build sadewm-go ──────────────────────────────────────────────────────────
-echo "==> Building sadewm-go..."
-cd "$REPO_ROOT/wm-go"
+# ── Build sadewm ─────────────────────────────────────────────────────────────
+echo "==> Building sadewm..."
+cd "$REPO_ROOT/wm"
 make -s 2>&1
-WM_BIN="$REPO_ROOT/wm-go/sadewm"
+WM_BIN="$REPO_ROOT/wm/sadewm"
 if [[ ! -x "$WM_BIN" ]]; then
     echo "ERROR: sadewm binary not found at $WM_BIN" >&2
     exit 1

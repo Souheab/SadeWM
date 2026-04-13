@@ -8,9 +8,9 @@ import (
 	"github.com/BurntSushi/xgb/xproto"
 	"github.com/BurntSushi/xgbutil"
 
-	"github.com/sadewm/sadewm/wm-go/internal/config"
-	"github.com/sadewm/sadewm/wm-go/internal/ipc"
-	"github.com/sadewm/sadewm/wm-go/internal/util"
+	"github.com/sadewm/sadewm/wm/internal/config"
+	"github.com/sadewm/sadewm/wm/internal/ipc"
+	"github.com/sadewm/sadewm/wm/internal/util"
 )
 
 // New creates a new WM instance but does not connect to X yet.

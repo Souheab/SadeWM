@@ -2,7 +2,7 @@ package wm
 
 import (
 	"github.com/BurntSushi/xgb/xproto"
-	"github.com/sadewm/sadewm/wm-go/internal/config"
+	"github.com/sadewm/sadewm/wm/internal/config"
 )
 
 // Minimize pushes the selected client onto the minimize stack.

@@ -1,5 +1,5 @@
 """
-test_sadewm_mouse.py — xdrive-based tests for sadewm-go mouse behaviour.
+test_sadewm_mouse.py — xdrive-based tests for sadewm mouse behaviour.
 
 Tests:
   1. test_button_press_received — Super+drag triggers movemouse (no "no binding

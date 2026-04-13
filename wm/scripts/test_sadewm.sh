@@ -1,5 +1,5 @@
 #!/bin/bash
-# test_sadewm.sh — run sadewm-go inside a Xephyr nested display
+# test_sadewm.sh — run sadewm inside a Xephyr nested display
 set -euo pipefail
 
 DISPLAY_NUM=":7"

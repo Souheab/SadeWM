@@ -2,8 +2,8 @@ package wm
 
 import (
 	"github.com/BurntSushi/xgb/xproto"
-	"github.com/sadewm/sadewm/wm-go/internal/config"
-	"github.com/sadewm/sadewm/wm-go/internal/util"
+	"github.com/sadewm/sadewm/wm/internal/config"
+	"github.com/sadewm/sadewm/wm/internal/util"
 )
 
 // Focus sets focus to client c, or to the top visible client if c is nil.

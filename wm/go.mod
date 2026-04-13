@@ -1,4 +1,4 @@
-module github.com/sadewm/sadewm/wm-go
+module github.com/sadewm/sadewm/wm
 
 go 1.26.1
 

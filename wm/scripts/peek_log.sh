@@ -2,8 +2,8 @@
 # peek_log.sh — tail sadewm's live FIFO log.
 #
 # Usage:
-#   ./wm-go/scripts/peek_log.sh              # just tail the FIFO
-#   ./wm-go/scripts/peek_log.sh --restart    # kill + restart sadewm first
+#   ./wm/scripts/peek_log.sh              # just tail the FIFO
+#   ./wm/scripts/peek_log.sh --restart    # kill + restart sadewm first
 #
 # The FIFO path is derived from $DISPLAY (matching sadewm's own logic):
 #   DISPLAY=:0 → /home/<user>/.local/share/sadewm/sadewm.fifo
@@ -28,7 +28,7 @@ if [[ "$RESTART" == "1" ]]; then
   sleep 0.3
 
   if [[ ! -x "$BINARY" ]]; then
-    echo "==> Building sadewm-go..."
+    echo "==> Building sadewm..."
     (cd "$(dirname "$(dirname "$0")")" && make -j"$(nproc)" 2>&1)
   fi
 

@@ -1,5 +1,5 @@
 #!/bin/bash
-# test_sadewm_headless.sh — run sadewm-go inside Xvfb (fully headless) for smoke-testing
+# test_sadewm_headless.sh — run sadewm inside Xvfb (fully headless) for smoke-testing
 # Usage: ./scripts/test_sadewm_headless.sh [-r] [-d] [-t <seconds>]
 #   -r   recompile before running
 #   -d   enable sadewm debug logging

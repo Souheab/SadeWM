@@ -4,8 +4,8 @@ import (
 	"github.com/BurntSushi/xgb/xproto"
 	"github.com/BurntSushi/xgbutil/keybind"
 
-	"github.com/sadewm/sadewm/wm-go/internal/config"
-	"github.com/sadewm/sadewm/wm-go/internal/util"
+	"github.com/sadewm/sadewm/wm/internal/config"
+	"github.com/sadewm/sadewm/wm/internal/util"
 )
 
 // GrabKeys grabs all active key bindings on the root window.

@@ -12,39 +12,6 @@
         pkgs   = nixpkgs.legacyPackages.${system};
         python = pkgs.python3;
 
-        # ── sadewm (C / X11 window manager) ──────────────────────────────────
-        sadewm = pkgs.stdenv.mkDerivation {
-          pname   = "sadewm";
-          version = "0.9";
-          src     = ./wm;
-
-          nativeBuildInputs = with pkgs; [ gnumake pkg-config ];
-          buildInputs = with pkgs; [
-            libX11
-            libXft
-            libXinerama
-            fontconfig
-            freetype
-          ];
-
-          makeFlags = [
-            "X11INC=${pkgs.libX11.dev}/include"
-            "X11LIB=${pkgs.libX11}/lib"
-            "FREETYPEINC=${pkgs.freetype.dev}/include/freetype2"
-          ];
-
-          installFlags = [ "PREFIX=${placeholder "out"}" ];
-
-          passthru.providedSessions = [ "sadewm" ];
-
-          meta = with pkgs.lib; {
-            description = "sadewm window manager";
-            license     = licenses.mit;
-            platforms   = [ "x86_64-linux" "aarch64-linux" ];
-            mainProgram = "sadewm";
-          };
-        };
-
         # ── sadeshell (PySide6/QML status bar) ───────────────────────────────
         pythonEnv = python.withPackages (ps: with ps; [
           pyside6
@@ -119,11 +86,11 @@
           };
         };
 
-        # ── sadewm-go (Go / X11 window manager) ────────────────────────────
-        sadewm-go = pkgs.buildGoModule {
-          pname   = "sadewm-go";
+        # ── sadewm (Go / X11 window manager) ─────────────────────────────────
+        sadewm = pkgs.buildGoModule {
+          pname   = "sadewm";
           version = "0.1";
-          src     = ./wm-go;
+          src     = ./wm;
 
           vendorHash = null;  # uses go mod vendor or set to actual hash
 
@@ -136,7 +103,7 @@
           subPackages = [ "cmd/sadewm" ];
 
           meta = with pkgs.lib; {
-            description = "sadewm window manager (Go rewrite)";
+            description = "sadewm window manager";
             license     = licenses.mit;
             platforms   = [ "x86_64-linux" "aarch64-linux" ];
             mainProgram = "sadewm";
@@ -148,18 +115,10 @@
           paths = [ sadewm sadeshell ];
         };
 
-        combined-go = pkgs.symlinkJoin {
-          name  = "sadewm-go-with-sadeshell";
-          paths = [ sadewm-go sadeshell ];
-        };
-
       in {
-        packages.default      = combined-go;
-        packages.sadewm       = sadewm;
-        packages.sadewm-go    = sadewm-go;
-        packages.sadeshell    = sadeshell;
-        packages.combined     = combined;
-        packages.combined-go  = combined-go;
+        packages.default   = combined;
+        packages.sadewm    = combined;
+        packages.sadeshell = sadeshell;
 
         apps.default = {
           type    = "app";
@@ -186,10 +145,7 @@
           buildInputs = with pkgs; [
             # WM libraries
             libX11
-            libXft
             libXinerama
-            fontconfig
-            freetype
             xorgserver
             xprop
             python3
@@ -205,11 +161,6 @@
           ];
 
           shellHook = ''
-            export MAKEFLAGS="\
-              X11INC=${pkgs.libX11.dev}/include \
-              X11LIB=${pkgs.libX11}/lib \
-              FREETYPEINC=${pkgs.freetype.dev}/include/freetype2"
-
             # Make sadeshell importable during development
             ln -sfn src shell/sadeshell 2>/dev/null || true
             export PYTHONPATH="$PWD/shell''${PYTHONPATH:+:$PYTHONPATH}"
@@ -225,9 +176,8 @@
       # ── NixOS module: sadewm window manager ─────────────────────────────────
       nixosModules.default = { config, lib, pkgs, ... }:
         let
-          cfg      = config.services.xserver.windowManager.sadewm;
-          wmPkg    = self.packages.${pkgs.system}.sadewm;
-          wmGoPkg  = self.packages.${pkgs.system}.sadewm-go;
+          cfg   = config.services.xserver.windowManager.sadewm;
+          wmPkg = self.packages.${pkgs.system}.sadewm;
         in {
           imports = [ self.nixosModules.sadeshell ];
 
@@ -238,24 +188,16 @@
           config = lib.mkIf cfg.enable {
             services.xserver.windowManager.session = [
               {
-                name = "sadewm";
+                name = "SADE";
                 managed = "desktop";
                 start = ''
                   ${wmPkg}/bin/sadewm &
                   waitPID=$!
                 '';
               }
-              {
-                name = "sadewm-go";
-                managed = "desktop";
-                start = ''
-                  ${wmGoPkg}/bin/sadewm &
-                  waitPID=$!
-                '';
-              }
             ];
 
-            environment.systemPackages = [ wmPkg wmGoPkg ];
+            environment.systemPackages = [ wmPkg ];
 
             services.sadeshell.enable = lib.mkDefault true;
           };

@@ -16,7 +16,7 @@ if ! kill -0 $XVFB 2>/dev/null; then
 fi
 
 export DISPLAY=$DISP
-/workspaces/sadewm/wm-go/sadewm -d &
+/workspaces/sadewm/wm/sadewm -d &
 WM=$!
 sleep 2
 

@@ -6,8 +6,8 @@ import (
 	"syscall"
 
 	"github.com/BurntSushi/xgb/xproto"
-	"github.com/sadewm/sadewm/wm-go/internal/config"
-	"github.com/sadewm/sadewm/wm-go/internal/util"
+	"github.com/sadewm/sadewm/wm/internal/config"
+	"github.com/sadewm/sadewm/wm/internal/util"
 )
 
 // RegisterActions populates the action dispatch table.

@@ -24,4 +24,4 @@ DISPLAY=:97 python3 x11-testing/test_mouse_drag.py
 ## Requirements
 
 - `xvfb`, `xdotool`, `socat`, `python3-xlib`, `x11-apps` (xeyes)
-- Go toolchain (to build sadewm-go)
+- Go toolchain (to build sadewm)

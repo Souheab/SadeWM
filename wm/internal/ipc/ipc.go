@@ -8,7 +8,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/sadewm/sadewm/wm-go/internal/util"
+	"github.com/sadewm/sadewm/wm/internal/util"
 )
 
 // GetSocketPath returns the Unix socket path for the current DISPLAY.

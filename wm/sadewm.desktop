@@ -1,6 +1,0 @@
-[Desktop Entry]
-Name=sadewm
-Comment=Dynamic window manager
-Exec=sadewm
-Icon=sadewm
-Type=XSession

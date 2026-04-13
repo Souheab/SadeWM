@@ -127,6 +127,7 @@ func (wm *WM) Restack(m *Monitor) {
 	for c := m.Stack; c != nil; c = c.SNext {
 		if c.IsVisible() && (c.IsFloating || c.IsAbove) {
 			wm.raiseWindow(c.Win)
+			wm.raiseTitlebar(c)
 		}
 	}
 }
@@ -148,12 +149,14 @@ func (wm *WM) showHide(c *Client) {
 		if (c.Mon.Lt.Arrange == nil || c.IsFloating) && !c.IsFullscreen {
 			wm.Resize(c, c.X, c.Y, c.W, c.H, false)
 		}
+		wm.showTitlebar(c)
 		wm.showHide(c.SNext)
 	} else {
 		wm.showHide(c.SNext)
 		xproto.ConfigureWindow(wm.Conn, c.Win,
 			xproto.ConfigWindowX,
 			[]uint32{uint32(c.Width() * -2)})
+		wm.hideTitlebar(c)
 	}
 }
 
@@ -180,6 +183,7 @@ func (wm *WM) resizeClient(c *Client, x, y, w, h int) {
 			xproto.ConfigWindowBorderWidth,
 		[]uint32{uint32(x), uint32(y), uint32(w), uint32(h), uint32(c.BW)})
 	wm.configure(c)
+	wm.moveTitlebar(c)
 }
 
 func (wm *WM) configure(c *Client) {

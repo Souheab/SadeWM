@@ -22,6 +22,7 @@ func New() *WM {
 		Layouts:       make([]config.Layout, len(config.DefaultLayouts)),
 		MinimizeStack: make([]*Client, 0),
 		Actions:       make(map[string]config.ActionFunc),
+		TitlebarMap:   make(map[xproto.Window]*Client),
 	}
 	copy(wm.Layouts, config.DefaultLayouts)
 	// Set tile arrange function
@@ -97,6 +98,7 @@ func (wm *WM) Setup() {
 	wm.Focus(nil)
 
 	wm.RegisterActions()
+	wm.initXlibDpy()
 }
 
 func (wm *WM) checkOtherWM() {

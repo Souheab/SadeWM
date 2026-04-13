@@ -15,6 +15,7 @@ func (wm *WM) Minimize(arg *config.Arg) {
 	wm.MinimizeStack = append(wm.MinimizeStack, c)
 	xproto.ConfigureWindow(wm.Conn, c.Win,
 		xproto.ConfigWindowX, []uint32{uint32(c.Width() * -2)})
+	wm.hideTitlebar(c)
 	wm.Focus(nil)
 	wm.Arrange(wm.SelMon)
 }
@@ -34,6 +35,10 @@ func (wm *WM) Restore(arg *config.Arg) {
 	wm.Arrange(c.Mon)
 	wm.Focus(c)
 	wm.Restack(c.Mon)
+	if c.IsFloating {
+		wm.showTitlebar(c)
+		wm.raiseTitlebar(c)
+	}
 }
 
 // SetFullscreen toggles fullscreen state on a client.
@@ -47,6 +52,7 @@ func (wm *WM) SetFullscreen(c *Client, fullscreen bool) {
 		c.OldBW = c.BW
 		c.BW = 0
 		c.IsFloating = true
+		wm.hideTitlebar(c)
 		wm.resizeClient(c, c.Mon.MX, c.Mon.MY, c.Mon.MW, c.Mon.MH)
 		wm.raiseWindow(c.Win)
 	} else if !fullscreen && c.IsFullscreen {
@@ -60,6 +66,9 @@ func (wm *WM) SetFullscreen(c *Client, fullscreen bool) {
 		c.W = c.OldW
 		c.H = c.OldH
 		wm.resizeClient(c, c.X, c.Y, c.W, c.H)
+		if c.IsFloating {
+			wm.showTitlebar(c)
+		}
 		wm.Arrange(c.Mon)
 	}
 }
@@ -72,12 +81,14 @@ func (wm *WM) SetAbove(c *Client, above bool) {
 			uint32ToBytes(uint32(wm.NetAtom[NetWMStateAbove])))
 		c.IsAbove = true
 		wm.raiseWindow(c.Win)
+		wm.raiseTitlebar(c)
 	} else if !above && c.IsAbove {
 		xproto.ChangeProperty(wm.Conn, xproto.PropModeReplace, c.Win,
 			wm.NetAtom[NetWMState], xproto.AtomAtom, 32, 0, nil)
 		c.IsAbove = false
 		wm.Arrange(c.Mon)
 	}
+	wm.drawTitlebar(c)
 }
 
 // ToggleFullscr toggles fullscreen on the selected client.

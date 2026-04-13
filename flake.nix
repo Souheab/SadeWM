@@ -94,10 +94,16 @@
 
           vendorHash = null;  # uses go mod vendor or set to actual hash
 
+          nativeBuildInputs = with pkgs; [
+            pkg-config
+          ];
+
           buildInputs = with pkgs; [
             libX11
             libXinerama
             libxcursor
+            cairo
+            libxext
           ];
 
           subPackages = [ "cmd/sadewm" ];
@@ -148,6 +154,7 @@
             libXinerama
             xorgserver
             xprop
+            cairo
             python3
             # Shell libraries
             pythonEnv

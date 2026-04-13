@@ -31,6 +31,7 @@ func (wm *WM) Focus(c *Client) {
 		xproto.ChangeWindowAttributes(wm.Conn, c.Win,
 			xproto.CwBorderPixel, []uint32{wm.BorderSel})
 		wm.setFocus(c)
+		wm.drawTitlebar(c)
 	} else {
 		xproto.SetInputFocus(wm.Conn, xproto.InputFocusPointerRoot,
 			wm.Root, xproto.TimeCurrentTime)
@@ -53,6 +54,7 @@ func (wm *WM) Unfocus(c *Client, setFocusToRoot bool) {
 			wm.Root, xproto.TimeCurrentTime)
 		xproto.DeleteProperty(wm.Conn, wm.Root, wm.NetAtom[NetActiveWindow])
 	}
+	wm.drawTitlebar(c)
 }
 
 // FocusStack cycles focus through visible clients.

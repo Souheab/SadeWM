@@ -23,6 +23,10 @@ func (wm *WM) handleEvent(ev xgb.Event) {
 		wm.handleDestroyNotify(e)
 	case xproto.EnterNotifyEvent:
 		wm.handleEnterNotify(e)
+	case xproto.LeaveNotifyEvent:
+		wm.handleLeaveNotify(e)
+	case xproto.ExposeEvent:
+		wm.handleExpose(e)
 	case xproto.FocusInEvent:
 		wm.handleFocusIn(e)
 	case xproto.KeyPressEvent:
@@ -45,6 +49,18 @@ func (wm *WM) handleButtonPress(e xproto.ButtonPressEvent) {
 
 	util.LogDebug("buttonpress: win=0x%x button=%d state=0x%04x",
 		e.Event, e.Detail, e.State)
+
+	// Check if the click is on a titlebar window first.
+	if c := wm.titlebarToClient(e.Event); c != nil {
+		util.LogDebug("buttonpress: titlebar for client %q", c.Name)
+		m := c.Mon
+		if m != wm.SelMon {
+			wm.Unfocus(wm.SelMon.Sel, true)
+			wm.SelMon = m
+		}
+		wm.handleTitlebarButtonPress(e, c)
+		return
+	}
 
 	if m := wm.winToMon(e.Event); m != nil && m != wm.SelMon {
 		wm.Unfocus(wm.SelMon.Sel, true)
@@ -229,6 +245,10 @@ func (wm *WM) handleEnterNotify(e xproto.EnterNotifyEvent) {
 	if (e.Mode != xproto.NotifyModeNormal || e.Detail == xproto.NotifyDetailInferior) && e.Event != wm.Root {
 		return
 	}
+	// Ignore enter events on titlebar windows – they belong to the client.
+	if wm.titlebarToClient(e.Event) != nil {
+		return
+	}
 
 	c := wm.winToClient(e.Event)
 	var m *Monitor
@@ -250,6 +270,16 @@ func (wm *WM) handleEnterNotify(e xproto.EnterNotifyEvent) {
 func (wm *WM) handleFocusIn(e xproto.FocusInEvent) {
 	if wm.SelMon.Sel != nil && e.Event != wm.SelMon.Sel.Win {
 		wm.setFocus(wm.SelMon.Sel)
+	}
+}
+
+func (wm *WM) handleExpose(e xproto.ExposeEvent) {
+	// Only redraw on the last expose in a series (Count == 0).
+	if e.Count != 0 {
+		return
+	}
+	if c := wm.titlebarToClient(e.Window); c != nil {
+		wm.drawTitlebar(c)
 	}
 }
 
@@ -285,6 +315,19 @@ func (wm *WM) handleMapRequest(e xproto.MapRequestEvent) {
 }
 
 func (wm *WM) handleMotionNotify(e xproto.MotionNotifyEvent) {
+	// Update titlebar button hover state.
+	if c := wm.titlebarToClient(e.Event); c != nil {
+		hit := hitTestTitlebar(int(e.EventX), int(e.EventY))
+		newHover := hit
+		if newHover == tbDragArea {
+			newHover = tbNone
+		}
+		if newHover != c.TitleHover {
+			c.TitleHover = newHover
+			wm.drawTitlebar(c)
+		}
+		return
+	}
 	if e.Event != wm.Root {
 		return
 	}
@@ -293,6 +336,15 @@ func (wm *WM) handleMotionNotify(e xproto.MotionNotifyEvent) {
 		wm.Unfocus(wm.SelMon.Sel, true)
 		wm.SelMon = m
 		wm.Focus(nil)
+	}
+}
+
+func (wm *WM) handleLeaveNotify(e xproto.LeaveNotifyEvent) {
+	if c := wm.titlebarToClient(e.Event); c != nil {
+		if c.TitleHover != tbNone {
+			c.TitleHover = tbNone
+			wm.drawTitlebar(c)
+		}
 	}
 }
 
@@ -324,6 +376,7 @@ func (wm *WM) handlePropertyNotify(e xproto.PropertyNotifyEvent) {
 
 	if e.Atom == xproto.AtomWmName || e.Atom == wm.NetAtom[NetWMName] {
 		wm.updateTitle(c)
+		wm.drawTitlebar(c)
 	}
 	if e.Atom == wm.NetAtom[NetWMWindowType] {
 		wm.updateWindowType(c)
@@ -480,12 +533,18 @@ func (wm *WM) manage(w xproto.Window, wa *xproto.GetWindowAttributesReply) {
 	wm.Arrange(c.Mon)
 	xproto.MapWindow(wm.Conn, c.Win)
 	wm.Focus(nil)
+
+	// Create titlebar for floating windows.
+	if c.IsFloating && !c.IsDock && !c.IsFullscreen {
+		wm.createTitlebar(c)
+	}
 }
 
 // unmanage removes a client.
 func (wm *WM) unmanage(c *Client, destroyed bool) {
 	m := c.Mon
 
+	wm.destroyTitlebar(c)
 	wm.detach(c)
 	wm.detachStack(c)
 

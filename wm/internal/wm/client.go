@@ -1,12 +1,17 @@
 package wm
 
 import (
+	"unsafe"
+
 	"github.com/BurntSushi/xgb"
 	"github.com/BurntSushi/xgb/xproto"
 	"github.com/BurntSushi/xgbutil"
 
 	"github.com/sadewm/sadewm/wm/internal/config"
 )
+
+// Suppress "unsafe imported and not used" when CGo is the sole consumer.
+var _ = unsafe.Pointer(nil)
 
 // Client represents a managed window.
 type Client struct {
@@ -38,6 +43,10 @@ type Client struct {
 	SNext *Client // stack order
 	Mon   *Monitor
 	Win   xproto.Window
+
+	// Titlebar (non-zero only for floating windows)
+	TitleWin   xproto.Window
+	TitleHover titleButton // button currently hovered (tbNone when none)
 }
 
 // Tag stores per-tag state.
@@ -127,6 +136,10 @@ type WM struct {
 
 	// Action dispatch table
 	Actions map[string]config.ActionFunc
+
+	// Cairo titlebar support
+	XlibDpy     unsafe.Pointer            // *C.Display – opened once for Cairo
+	TitlebarMap map[xproto.Window]*Client // titlebar win → owning client
 }
 
 // Atom enums

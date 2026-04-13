@@ -167,9 +167,15 @@ func (wm *WM) ToggleFloating(arg *config.Arg) {
 	if c == nil || c.IsDock || c.IsFullscreen {
 		return
 	}
+	wasFloating := c.IsFloating
 	c.IsFloating = !c.IsFloating || c.IsFixed
 	if c.IsFloating {
 		wm.Resize(c, c.X, c.Y, c.W, c.H, false)
+		if !wasFloating {
+			wm.createTitlebar(c)
+		}
+	} else {
+		wm.destroyTitlebar(c)
 	}
 	wm.Arrange(wm.SelMon)
 }

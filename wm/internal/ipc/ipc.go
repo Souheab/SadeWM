@@ -39,6 +39,7 @@ func GetSocketPath() string {
 type IPCRequest struct {
 	Cmd        string `json:"cmd"`
 	Mask       uint32 `json:"mask,omitempty"`
+	WinID      uint32 `json:"win_id,omitempty"`
 	ResponseCh chan *Response
 }
 
@@ -59,10 +60,13 @@ type Response struct {
 // ClientDTO is the per-client info returned in get_state.
 type ClientDTO struct {
 	Name      string `json:"name"`
+	WinID     uint32 `json:"win_id"`
+	Class     string `json:"class"`
 	Tags      uint32 `json:"tags"`
 	Floating  bool   `json:"floating"`
 	Maximized bool   `json:"maximized"`
 	Focused   bool   `json:"focused"`
+	Minimized bool   `json:"minimized"`
 }
 
 // Server is the Unix-socket IPC listener.

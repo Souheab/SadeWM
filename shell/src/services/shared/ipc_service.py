@@ -35,6 +35,7 @@ class IPCService(QObject):
 
     openLauncherRequested = Signal()
     openEmojiPickerRequested = Signal()
+    openWindowPickerRequested = Signal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -92,6 +93,11 @@ class IPCService(QObject):
                 self, "_emit_open_emoji_picker", Qt.ConnectionType.QueuedConnection
             )
             conn.sendall(b"ok\n")
+        elif data == "open-window-picker":
+            QMetaObject.invokeMethod(
+                self, "_emit_open_window_picker", Qt.ConnectionType.QueuedConnection
+            )
+            conn.sendall(b"ok\n")
         else:
             conn.sendall(b"unknown command\n")
 
@@ -102,6 +108,10 @@ class IPCService(QObject):
     @Slot()
     def _emit_open_emoji_picker(self):
         self.openEmojiPickerRequested.emit()
+
+    @Slot()
+    def _emit_open_window_picker(self):
+        self.openWindowPickerRequested.emit()
 
     def stop(self):
         self._running = False

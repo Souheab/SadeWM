@@ -464,6 +464,13 @@ func (wm *WM) handleIPCRequest(req *ipc.IPCRequest) *ipc.Response {
 	case "open-emoji-picker":
 		wm.spawnCmd([]string{"sadeshell", "--open-emoji-picker"})
 		return &ipc.Response{OK: true}
+	case "open-window-picker":
+		wm.spawnCmd([]string{"sadeshell", "--open-window-picker"})
+		return &ipc.Response{OK: true}
+	case "get_clients":
+		return wm.ipcGetClients()
+	case "focus_window":
+		return wm.ipcFocusWindow(req.WinID)
 	default:
 		return &ipc.Response{OK: false, Error: "unknown command"}
 	}
@@ -484,10 +491,13 @@ func (wm *WM) ipcGetState() *ipc.Response {
 	for c := wm.SelMon.Clients; c != nil; c = c.Next {
 		resp.Clients = append(resp.Clients, ipc.ClientDTO{
 			Name:      c.Name,
+			WinID:     uint32(c.Win),
+			Class:     wm.getWMClass(c.Win),
 			Tags:      c.Tags,
 			Floating:  c.IsFloating,
 			Maximized: c.Maximized,
 			Focused:   c == wm.SelMon.Sel,
+			Minimized: c.Minimized,
 		})
 	}
 
@@ -521,4 +531,112 @@ func (wm *WM) ipcTagsState() *ipc.Response {
 	}
 
 	return &ipc.Response{OK: true, TagsState: states}
+}
+
+// ipcGetClients returns all managed clients across all tags (all monitors).
+// Dock windows, override-redirect windows, and minimized windows that are
+// purely system windows are included only if they pass the IsDock check.
+func (wm *WM) ipcGetClients() *ipc.Response {
+	clients := []ipc.ClientDTO{}
+	for m := wm.Mons; m != nil; m = m.Next {
+		for c := m.Clients; c != nil; c = c.Next {
+			if c.IsDock {
+				continue
+			}
+			clients = append(clients, ipc.ClientDTO{
+				Name:      c.Name,
+				WinID:     uint32(c.Win),
+				Class:     wm.getWMClass(c.Win),
+				Tags:      c.Tags,
+				Floating:  c.IsFloating,
+				Maximized: c.Maximized,
+				Focused:   c == m.Sel,
+				Minimized: c.Minimized,
+			})
+		}
+	}
+	return &ipc.Response{OK: true, Clients: clients}
+}
+
+// ipcFocusWindow switches to the tag containing the given window and focuses it.
+func (wm *WM) ipcFocusWindow(winID uint32) *ipc.Response {
+	if winID == 0 {
+		return &ipc.Response{OK: false, Error: "invalid win_id"}
+	}
+	target := xproto.Window(winID)
+
+	// Find the client across all monitors
+	var found *Client
+	for m := wm.Mons; m != nil; m = m.Next {
+		for c := m.Clients; c != nil; c = c.Next {
+			if c.Win == target {
+				found = c
+				break
+			}
+		}
+		if found != nil {
+			break
+		}
+	}
+
+	if found == nil {
+		return &ipc.Response{OK: false, Error: "window not found"}
+	}
+
+	// Switch selected monitor to the one that owns this client
+	if found.Mon != wm.SelMon {
+		wm.Unfocus(wm.SelMon.Sel, true)
+		wm.SelMon = found.Mon
+	}
+
+	// Switch to the client's tag (use the lowest-numbered tag the client is on)
+	clientTags := found.Tags & TagMask()
+	if clientTags != 0 {
+		// Pick lowest bit tag
+		tagMask := clientTags & (^clientTags + 1)
+		wm.SelMon.SelTags ^= 1
+		wm.SelMon.TagSet[wm.SelMon.SelTags] = tagMask
+		wm.ApplyTag(wm.GetDomTag(wm.SelMon.Tags))
+	}
+
+	// If minimized, restore it
+	if found.Minimized {
+		// Remove from minimize stack if present
+		for i, mc := range wm.MinimizeStack {
+			if mc == found {
+				wm.MinimizeStack = append(wm.MinimizeStack[:i], wm.MinimizeStack[i+1:]...)
+				break
+			}
+		}
+		found.Minimized = false
+		xproto.ConfigureWindow(wm.Conn, found.Win,
+			xproto.ConfigWindowX|xproto.ConfigWindowY,
+			[]uint32{uint32(found.X), uint32(found.Y)})
+		if found.IsFloating {
+			wm.showTitlebar(found)
+			wm.raiseTitlebar(found)
+		}
+	}
+
+	wm.Focus(found)
+	wm.Restack(found.Mon)
+	wm.Arrange(found.Mon)
+	return &ipc.Response{OK: true}
+}
+
+// getWMClass returns the WM_CLASS string (second part = class name) for a window.
+func (wm *WM) getWMClass(w xproto.Window) string {
+	reply, err := xproto.GetProperty(wm.Conn, false, w,
+		xproto.AtomWmClass, xproto.AtomString, 0, 256).Reply()
+	if err != nil || reply.ValueLen == 0 {
+		return ""
+	}
+	parts := splitWMClass(reply.Value)
+	if len(parts) >= 2 {
+		return parts[1]
+	}
+	if len(parts) == 1 {
+		return parts[0]
+	}
+	return ""
 }

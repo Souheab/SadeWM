@@ -31,8 +31,22 @@ def _handle_open_emoji_picker():
         sys.exit(1)
 
 
+def _handle_open_window_picker():
+    """Handle --open-window-picker before loading PySide6."""
+    if "--open-window-picker" not in sys.argv:
+        return
+    from sadeshell.services.shared.ipc_client import send_ipc_command
+    result = send_ipc_command("open-window-picker")
+    if result == "ok":
+        sys.exit(0)
+    else:
+        print(result, file=sys.stderr)
+        sys.exit(1)
+
+
 _handle_open_launcher()
 _handle_open_emoji_picker()
+_handle_open_window_picker()
 
 from PySide6.QtWidgets import QApplication
 from PySide6.QtQml import QQmlApplicationEngine, qmlRegisterSingletonInstance
@@ -146,6 +160,7 @@ from sadeshell.services.shared.app_service import AppService
 from sadeshell.services.shared.emoji_service import EmojiService
 from sadeshell.services.shared.window_helper import WindowHelper
 from sadeshell.services.shared.ipc_service import IPCService
+from sadeshell.services.shared.window_picker_service import WindowPickerService
 
 
 def main():
@@ -169,6 +184,7 @@ def main():
     bluetooth_service = BluetoothService()
     systray_service = SystrayService()
     ipc_service = IPCService()
+    window_picker_service = WindowPickerService()
 
     # Register singletons for QML access
     qmlRegisterSingletonInstance(TagService, "PyShell.Services", 1, 0, "TagService", tag_service)
@@ -185,6 +201,7 @@ def main():
     qmlRegisterSingletonInstance(BluetoothService, "PyShell.Services", 1, 0, "BluetoothService", bluetooth_service)
     qmlRegisterSingletonInstance(SystrayService, "PyShell.Services", 1, 0, "SystrayService", systray_service)
     qmlRegisterSingletonInstance(IPCService, "PyShell.Services", 1, 0, "IPCService", ipc_service)
+    qmlRegisterSingletonInstance(WindowPickerService, "PyShell.Services", 1, 0, "WindowPickerService", window_picker_service)
 
     engine = QQmlApplicationEngine()
 
@@ -213,6 +230,10 @@ def main():
     # Load the emoji picker overlay
     emoji_qml = os.path.join(qml_dir, "launcher", "EmojiPicker.qml")
     engine.load(QUrl.fromLocalFile(emoji_qml))
+
+    # Load the window picker overlay
+    window_picker_qml = os.path.join(qml_dir, "launcher", "WindowPicker.qml")
+    engine.load(QUrl.fromLocalFile(window_picker_qml))
 
     # Start the IPC server so sadeshell --open-launcher works
     ipc_service.start()

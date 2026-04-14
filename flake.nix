@@ -154,6 +154,8 @@
             libXinerama
             xorgserver
             xprop
+            xwd
+            imagemagick
             cairo
             python3
             # Shell libraries

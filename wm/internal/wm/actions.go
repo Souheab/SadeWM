@@ -278,7 +278,16 @@ func (wm *WM) SwapClients(c1, c2 *Client) {
 	c1.Next = c2.Next
 	c2.Next = tmp
 
+	// Grab the pointer before re-arranging so that EnterNotify events X
+	// generates when windows slide under the cursor get Mode=WhileGrabbed
+	// (or Mode=Ungrab after release).  handleEnterNotify already filters
+	// out any mode other than Normal, so focus stays on the swapped window
+	// and does not jump to whatever window the cursor happens to land on.
+	xproto.GrabPointerUnchecked(wm.Conn, false, wm.Root, 0,
+		xproto.GrabModeAsync, xproto.GrabModeAsync,
+		xproto.WindowNone, xproto.CursorNone, xproto.TimeCurrentTime)
 	wm.Arrange(wm.SelMon)
+	xproto.UngrabPointer(wm.Conn, xproto.TimeCurrentTime)
 }
 
 func (wm *WM) SwapDown(arg *config.Arg) {

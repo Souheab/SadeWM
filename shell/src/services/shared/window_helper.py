@@ -346,8 +346,8 @@ class WindowHelper(QObject):
                 ]
 
             n = len(rects)
-            if n == 0:
-                return
+            # n == 0 is valid: set the input region to empty so the window
+            # is fully click-through (happens during fullscreen with no popups).
             xrects = (XRectangle * n)()
             for i, r in enumerate(rects):
                 if isinstance(r, dict):
@@ -366,10 +366,14 @@ class WindowHelper(QObject):
                 ShapeInput = 2
                 ShapeSet   = 0
                 Unsorted   = 0
+                # When n == 0, pass NULL for the rectangle pointer.  XShape with
+                # ShapeSet + 0 rects clears the input region so the window is
+                # fully click-through (e.g. when a fullscreen app is active).
+                rects_ptr = xrects if n > 0 else None
                 libxext.XShapeCombineRectangles(
                     display, self._wid,
                     ShapeInput, 0, 0,
-                    xrects, n,
+                    rects_ptr, n,
                     ShapeSet, Unsorted
                 )
                 libx11.XFlush(display)

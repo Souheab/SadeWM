@@ -262,6 +262,7 @@ Window {
                                 fillMode: Image.PreserveAspectFit
                                 asynchronous: true
                                 mipmap: true
+                                cache: false
                                 visible: status === Image.Ready
                                 smooth: true
                             }
@@ -322,6 +323,7 @@ Window {
                                     sourceSize: Qt.size(24, 24)
                                     asynchronous: true
                                     mipmap: true
+                                    cache: false
                                     visible: status === Image.Ready
                                     smooth: true
                                 }

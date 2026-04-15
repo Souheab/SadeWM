@@ -124,6 +124,7 @@ func DefaultKeys() []Key {
 	keys := []Key{
 		{Mod: mod, KeyStr: "p", Action: "spawn", Arg: Arg{V: []string{"sadeshell", "--open-launcher"}}},
 		{Mod: mod, KeyStr: "period", Action: "spawn", Arg: Arg{V: []string{"sadeshell", "--open-emoji-picker"}}},
+		{Mod: alt, KeyStr: "Tab", Action: "spawn", Arg: Arg{V: []string{"sadeshell", "--open-window-picker"}}},
 		{Mod: mod, KeyStr: "Return", Action: "spawn", Arg: Arg{V: []string{TerminalProgram}}},
 		{Mod: mod, KeyStr: "Tab", Action: "focusstack", Arg: Arg{I: +1}},
 		{Mod: mod | shift, KeyStr: "Tab", Action: "focusstack", Arg: Arg{I: -1}},

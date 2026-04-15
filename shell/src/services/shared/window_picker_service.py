@@ -2,26 +2,29 @@
 
 Uses:
 - sadewm IPC socket to enumerate clients (get_clients) and focus them (focus_window)
-- python-xlib (via Xlib) to read _NET_WM_ICON for per-window icons
-- xwd + ImageMagick (convert) to capture window thumbnails as base64 PNG data URIs,
-  falling back gracefully when unavailable.
+- python-xlib to read _NET_WM_ICON for per-window icons, with XDG theme fallback
+- python-xlib get_image() + Pillow for window thumbnails (no external tools needed)
+- Images are saved to /tmp/sadeshell-winpicker/ as PNG files and exposed as file:// URIs
 """
 
 from __future__ import annotations
 
-import base64
+import glob
+import io
 import json
 import os
-import shutil
 import socket
-import subprocess
 import threading
 
-from PySide6.QtCore import QObject, Property, Signal, Slot, QTimer
+from PySide6.QtCore import QObject, Property, Signal, Slot
+
+# Cache dir for saved thumbnails and icons
+_CACHE_DIR = "/tmp/sadeshell-winpicker"
+os.makedirs(_CACHE_DIR, exist_ok=True)
 
 
 # ---------------------------------------------------------------------------
-# sadewm IPC helpers (same pattern as tag_service.py)
+# sadewm IPC helpers
 # ---------------------------------------------------------------------------
 
 def _get_sadewm_socket() -> str:
@@ -51,141 +54,174 @@ def _sadewm_request(request: dict) -> dict:
 
 
 # ---------------------------------------------------------------------------
-# Icon resolution helpers via python-xlib
+# Icon resolution — _NET_WM_ICON then XDG theme fallback
 # ---------------------------------------------------------------------------
 
-_xlib_display = None
-_xlib_lock = threading.Lock()
+def _build_icon_search_dirs() -> list[str]:
+    """Return icon search directories from XDG_DATA_DIRS + nix paths."""
+    dirs: list[str] = []
+    seen: set[str] = set()
+
+    def add(p: str) -> None:
+        if p and p not in seen and os.path.isdir(p):
+            seen.add(p)
+            dirs.append(p)
+
+    home = os.path.expanduser("~")
+    add(os.path.join(home, ".local/share/icons"))
+    add(os.path.join(home, ".local/share/pixmaps"))
+
+    for base in os.environ.get("XDG_DATA_DIRS", "/usr/share:/usr/local/share").split(":"):
+        add(os.path.join(base, "icons"))
+        add(os.path.join(base, "pixmaps"))
+
+    # NixOS: nix profile and current system
+    for nix in (
+        os.path.join(home, ".nix-profile/share"),
+        "/run/current-system/sw/share",
+    ):
+        add(os.path.join(nix, "icons"))
+        add(os.path.join(nix, "pixmaps"))
+
+    return dirs
 
 
-def _get_xlib_display():
-    global _xlib_display
-    with _xlib_lock:
-        if _xlib_display is None:
-            try:
-                from Xlib import display as xdisplay
-                _xlib_display = xdisplay.Display()
-            except Exception:
-                pass
-    return _xlib_display
+_ICON_DIRS: list[str] | None = None
+_ICON_DIRS_LOCK = threading.Lock()
 
 
-def _net_wm_icon_data_uri(win_id: int) -> str:
-    """Read _NET_WM_ICON and return a data: URI for the largest icon, or ''."""
-    dpy = _get_xlib_display()
-    if dpy is None:
+def _icon_search_dirs() -> list[str]:
+    global _ICON_DIRS
+    with _ICON_DIRS_LOCK:
+        if _ICON_DIRS is None:
+            _ICON_DIRS = _build_icon_search_dirs()
+    return _ICON_DIRS
+
+
+def _icon_path_from_class(wm_class: str) -> str:
+    """Look up <wm_class> in XDG icon theme dirs. Returns file path or ''."""
+    if not wm_class:
         return ""
-    try:
-        from Xlib import X
-        atom = dpy.intern_atom("_NET_WM_ICON", only_if_exists=True)
-        if atom == X.NONE:
-            return ""
-        win = dpy.create_resource_object("window", win_id)
-        prop = win.get_full_property(atom, X.AnyPropertyType)
-        if prop is None or not prop.value:
-            return ""
-        data = list(prop.value)
-        # Parse all icons and pick the largest
-        best_w, best_h, best_pixels = 0, 0, []
-        idx = 0
-        while idx + 2 <= len(data):
-            w = data[idx]
-            h = data[idx + 1]
-            idx += 2
-            n = w * h
-            if idx + n > len(data):
-                break
-            if w * h > best_w * best_h:
-                best_w, best_h = w, h
-                best_pixels = data[idx: idx + n]
-            idx += n
-        if not best_pixels:
-            return ""
-        # Convert ARGB ints to RGBA bytes PNG
-        import struct
-        import zlib
-        # Build raw RGBA scanlines
-        def png_bytes(w: int, h: int, argb_pixels: list[int]) -> bytes:
-            """Minimal PNG encoder for RGBA data."""
-            raw_rows = []
-            for row in range(h):
-                row_bytes = b"\x00"  # filter type None
-                for col in range(w):
-                    argb = argb_pixels[row * w + col]
-                    a = (argb >> 24) & 0xFF
-                    r = (argb >> 16) & 0xFF
-                    g = (argb >> 8) & 0xFF
-                    b_ = argb & 0xFF
-                    row_bytes += struct.pack("BBBB", r, g, b_, a)
-                raw_rows.append(row_bytes)
-            raw = b"".join(raw_rows)
-            compressed = zlib.compress(raw)
-
-            def chunk(tag, data):
-                c = tag + data
-                return struct.pack(">I", len(data)) + c + struct.pack(">I", zlib.crc32(c) & 0xFFFFFFFF)
-
-            ihdr_data = struct.pack(">IIBBBBB", w, h, 8, 2 | 4, 0, 0, 0)  # RGBA
-            # Correct IHDR: bit_depth=8, color_type=6 (RGBA), compression=0, filter=0, interlace=0
-            ihdr_data = struct.pack(">II", w, h) + bytes([8, 6, 0, 0, 0])
-            png = b"\x89PNG\r\n\x1a\n"
-            png += chunk(b"IHDR", ihdr_data)
-            png += chunk(b"IDAT", compressed)
-            png += chunk(b"IEND", b"")
-            return png
-
-        png = png_bytes(best_w, best_h, best_pixels)
-        b64 = base64.b64encode(png).decode()
-        return f"data:image/png;base64,{b64}"
-    except Exception:
-        return ""
+    names = [wm_class, wm_class.lower()]
+    for d in _icon_search_dirs():
+        for name in names:
+            for ext in ("png", "svg", "xpm"):
+                # Prefer 48x48/apps, then any apps dir, then any match
+                for pattern in (
+                    f"{d}/**/48x48/apps/{name}.{ext}",
+                    f"{d}/**/32x32/apps/{name}.{ext}",
+                    f"{d}/**/apps/{name}.{ext}",
+                    f"{d}/**/{name}.{ext}",
+                    f"{d}/{name}.{ext}",
+                ):
+                    matches = glob.glob(pattern, recursive=True)
+                    if matches:
+                        return matches[0]
+    return ""
 
 
-# ---------------------------------------------------------------------------
-# Window screenshot helpers
-# ---------------------------------------------------------------------------
+def _net_wm_icon_file_uri(win_id: int, wm_class: str) -> str:
+    """Return a file:// URI for the window icon.
 
-_HAS_XWD = shutil.which("xwd") is not None
-_HAS_CONVERT = shutil.which("convert") is not None
-
-
-def _capture_window_thumbnail(win_id: int, max_size: int = 280) -> str:
-    """Capture a window thumbnail as a base64 encoded PNG data URI.
-
-    Uses xwd (X11 window dump) piped through ImageMagick convert for resizing.
-    Returns '' on failure.
+    Tries in order:
+    1. _NET_WM_ICON X property (ARGB pixels) — saved as PNG to cache dir
+    2. WM_CLASS-based XDG icon theme lookup
+    Returns '' if nothing found.
     """
-    if not (_HAS_XWD and _HAS_CONVERT):
-        return ""
-    display = os.environ.get("DISPLAY", ":0")
     try:
-        xwd_proc = subprocess.Popen(
-            ["xwd", "-id", str(win_id), "-display", display, "-silent"],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.DEVNULL,
-        )
-        convert_proc = subprocess.Popen(
-            [
-                "convert",
-                "-",           # read from stdin (xwd format)
-                "-resize", f"{max_size}x{max_size}>",
-                "-format", "png",
-                "png:-",       # output PNG to stdout
-            ],
-            stdin=xwd_proc.stdout,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.DEVNULL,
-        )
-        if xwd_proc.stdout:
-            xwd_proc.stdout.close()
-        png_data, _ = convert_proc.communicate(timeout=3)
-        xwd_proc.wait(timeout=1)
-        if convert_proc.returncode == 0 and png_data:
-            b64 = base64.b64encode(png_data).decode()
-            return f"data:image/png;base64,{b64}"
+        from PIL import Image
+        from Xlib import display as xdisplay, X
+
+        # Fresh connection per call — python-xlib is not thread-safe
+        dpy = xdisplay.Display()
+        atom = dpy.intern_atom("_NET_WM_ICON", only_if_exists=True)
+
+        if atom != X.NONE:
+            win = dpy.create_resource_object("window", win_id)
+            prop = win.get_full_property(atom, X.AnyPropertyType)
+            if prop is not None and prop.value:
+                values = list(prop.value)
+                best_w = best_h = best_start = 0
+                idx = 0
+                while idx + 2 <= len(values):
+                    w_icon = int(values[idx])
+                    h_icon = int(values[idx + 1])
+                    idx += 2
+                    n = w_icon * h_icon
+                    if idx + n > len(values):
+                        break
+                    if w_icon * h_icon > best_w * best_h:
+                        best_w, best_h = w_icon, h_icon
+                        best_start = idx
+                    idx += n
+                if best_w > 0:
+                    # Convert ARGB ints → RGBA bytes
+                    raw = bytearray(best_w * best_h * 4)
+                    for i in range(best_w * best_h):
+                        argb = int(values[best_start + i])
+                        raw[i * 4]     = (argb >> 16) & 0xFF  # R
+                        raw[i * 4 + 1] = (argb >> 8) & 0xFF   # G
+                        raw[i * 4 + 2] = argb & 0xFF           # B
+                        raw[i * 4 + 3] = (argb >> 24) & 0xFF  # A
+                    img = Image.frombytes("RGBA", (best_w, best_h), bytes(raw))
+                    out_path = os.path.join(_CACHE_DIR, f"icon_{win_id}.png")
+                    img.save(out_path, "PNG")
+                    dpy.close()
+                    return f"file://{out_path}"
+        dpy.close()
     except Exception:
         pass
-    return ""
+
+    # Fallback: XDG theme lookup by WM_CLASS
+    path = _icon_path_from_class(wm_class)
+    return f"file://{path}" if path else ""
+
+
+# ---------------------------------------------------------------------------
+# Thumbnail capture via python-xlib get_image + Pillow
+# ---------------------------------------------------------------------------
+
+_THUMB_W = 280
+_THUMB_H = 175
+
+
+def _capture_thumbnail_file_uri(win_id: int) -> str:
+    """Capture a window thumbnail using python-xlib and Pillow.
+
+    Returns a file:// URI pointing to the saved PNG, or '' on failure.
+    """
+    try:
+        from PIL import Image
+        from Xlib import display as xdisplay, X
+
+        dpy = xdisplay.Display()
+        win = dpy.create_resource_object("window", win_id)
+
+        # Only capture if the window is viewable
+        attrs = win.get_attributes()
+        if attrs.map_state != X.IsViewable:
+            dpy.close()
+            return ""
+
+        geom = win.get_geometry()
+        w, h = int(geom.width), int(geom.height)
+        if w < 1 or h < 1:
+            dpy.close()
+            return ""
+
+        raw_img = win.get_image(0, 0, w, h, X.ZPixmap, 0xFFFFFFFF)
+        dpy.close()
+
+        raw_bytes = bytes(raw_img.data)
+        # X11 ZPixmap on little-endian: 32bpp, pixel layout is BGRX
+        pil = Image.frombuffer("RGB", (w, h), raw_bytes, "raw", "BGRX", 0, 1)
+        pil.thumbnail((_THUMB_W, _THUMB_H), Image.LANCZOS)
+
+        out_path = os.path.join(_CACHE_DIR, f"thumb_{win_id}.png")
+        pil.save(out_path, "PNG")
+        return f"file://{out_path}"
+    except Exception:
+        return ""
 
 
 # ---------------------------------------------------------------------------
@@ -193,10 +229,9 @@ def _capture_window_thumbnail(win_id: int, max_size: int = 280) -> str:
 # ---------------------------------------------------------------------------
 
 class WindowPickerService(QObject):
-    """Provides the list of all WM windows with icons & thumbnails.
+    """Provides the list of all WM windows with icons and thumbnails.
 
     windowsChanged is emitted whenever the window list is refreshed.
-    Instances are registered as a QML singleton.
     """
 
     windowsChanged = Signal()
@@ -211,73 +246,47 @@ class WindowPickerService(QObject):
 
     @Slot()
     def refresh(self):
-        """Re-query all windows from the WM and update the list."""
+        """Re-query all windows from the WM, capture thumbnails and icons."""
         threading.Thread(target=self._do_refresh, daemon=True).start()
 
     def _do_refresh(self):
+        from PySide6.QtCore import QMetaObject, Qt
+
         resp = _sadewm_request({"cmd": "get_clients"})
         if not resp.get("ok"):
-            from PySide6.QtCore import QMetaObject, Qt
-            QMetaObject.invokeMethod(self, "_set_windows_empty", Qt.ConnectionType.QueuedConnection)
+            self._windows = []
+            QMetaObject.invokeMethod(self, "_emit_changed", Qt.ConnectionType.QueuedConnection)
             return
 
         clients = resp.get("clients", [])
         result = []
         for c in clients:
             win_id = c.get("win_id", 0)
-            name = c.get("name", "")
             wm_class = c.get("class", "")
             tags = c.get("tags", 0)
-            # Derive tag number from bitmask (lowest bit set)
-            tag_num = 0
-            if tags:
-                bit = tags & (-tags)  # lowest set bit
-                tag_num = bit.bit_length()
+            tag_num = (tags & -tags).bit_length() if tags else 0
 
-            icon_uri = _net_wm_icon_data_uri(win_id)
-            # thumbnail is expensive; skip for now — updated lazily via loadThumbnail
-            entry = {
+            icon_uri = _net_wm_icon_file_uri(win_id, wm_class)
+            thumb_uri = _capture_thumbnail_file_uri(win_id)
+
+            result.append({
                 "winId": win_id,
-                "name": name,
+                "name": c.get("name", ""),
                 "wmClass": wm_class,
                 "tags": tags,
                 "tagNum": tag_num,
                 "focused": c.get("focused", False),
                 "minimized": c.get("minimized", False),
                 "iconUri": icon_uri,
-                "thumbnailUri": "",
-            }
-            result.append(entry)
+                "thumbnailUri": thumb_uri,
+            })
 
-        from PySide6.QtCore import QMetaObject, Qt
         self._windows = result
         QMetaObject.invokeMethod(self, "_emit_changed", Qt.ConnectionType.QueuedConnection)
 
     @Slot()
     def _emit_changed(self):
         self.windowsChanged.emit()
-
-    @Slot()
-    def _set_windows_empty(self):
-        self._windows = []
-        self.windowsChanged.emit()
-
-    @Slot(int)
-    def loadThumbnail(self, win_id: int):
-        """Asynchronously capture and inject a thumbnail for a single window."""
-        threading.Thread(
-            target=self._load_thumb_async, args=(win_id,), daemon=True
-        ).start()
-
-    def _load_thumb_async(self, win_id: int):
-        uri = _capture_window_thumbnail(win_id)
-        from PySide6.QtCore import QMetaObject, Qt
-        # Find and update the entry
-        for entry in self._windows:
-            if entry["winId"] == win_id:
-                entry["thumbnailUri"] = uri
-                break
-        QMetaObject.invokeMethod(self, "_emit_changed", Qt.ConnectionType.QueuedConnection)
 
     @Slot(int)
     def focusWindow(self, win_id: int):

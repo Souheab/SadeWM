@@ -29,6 +29,7 @@ func (wm *WM) RegisterActions() {
 		"minimize":       wm.Minimize,
 		"restore":        wm.Restore,
 		"view":           wm.View,
+		"swapview":       wm.SwapView,
 		"reloadconfig":   wm.ReloadConfig,
 		"viewprev":       wm.ViewPrev,
 		"viewnext":       wm.ViewNext,
@@ -189,6 +190,18 @@ func (wm *WM) ToggleTileDir(arg *config.Arg) {
 	t.IsRightTiled = !t.IsRightTiled
 	wm.ApplyTag(t)
 	wm.Arrange(wm.SelMon)
+}
+
+// SwapView toggles to the other stored tagset and ensures per-tag state is applied.
+func (wm *WM) SwapView(arg *config.Arg) {
+	if wm.SelMon == nil {
+		return
+	}
+	other := wm.SelMon.TagSet[wm.SelMon.SelTags^1] & TagMask()
+	if other == 0 {
+		return
+	}
+	wm.View(&config.Arg{UI: other})
 }
 
 // LayoutNext cycles to the next layout.

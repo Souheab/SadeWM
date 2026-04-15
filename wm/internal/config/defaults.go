@@ -152,7 +152,7 @@ func DefaultKeys() []Key {
 		{Mod: mod | shift, KeyStr: "space", Action: "layoutprev"},
 		{Mod: mod | ctrl, KeyStr: "space", Action: "togglefloating"},
 		{Mod: mod, KeyStr: "0", Action: "view", Arg: Arg{UI: ^uint32(0)}},
-		{Mod: mod, KeyStr: "Escape", Action: "view"},
+		{Mod: mod, KeyStr: "Escape", Action: "swapview"},
 		{Mod: mod, KeyStr: "Left", Action: "viewprev"},
 		{Mod: mod, KeyStr: "Right", Action: "viewnext"},
 		{Mod: mod | shift, KeyStr: "0", Action: "tag", Arg: Arg{UI: ^uint32(0)}},

@@ -95,7 +95,7 @@ Rectangle {
                         var item = iconBtn.modelData;
                         var pos = iconBtn.mapToGlobal(iconBtn.width / 2, iconBtn.height / 2);
                         if (mouse.button === Qt.RightButton)
-                            SystrayService.contextMenu(item.id, pos.x, pos.y);
+                            SystrayService.contextMenu(item.id, pos.x, Theme.barHeight);
                         else
                             SystrayService.activate(item.id, pos.x, pos.y);
                     }

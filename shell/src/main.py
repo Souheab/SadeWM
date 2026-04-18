@@ -44,9 +44,23 @@ def _handle_open_window_picker():
         sys.exit(1)
 
 
+def _handle_open_minimized_picker():
+    """Handle --open-minimized-picker before loading PySide6."""
+    if "--open-minimized-picker" not in sys.argv:
+        return
+    from sadeshell.services.shared.ipc_client import send_ipc_command
+    result = send_ipc_command("open-minimized-picker")
+    if result == "ok":
+        sys.exit(0)
+    else:
+        print(result, file=sys.stderr)
+        sys.exit(1)
+
+
 _handle_open_launcher()
 _handle_open_emoji_picker()
 _handle_open_window_picker()
+_handle_open_minimized_picker()
 
 from PySide6.QtWidgets import QApplication
 from PySide6.QtQml import QQmlApplicationEngine, qmlRegisterSingletonInstance
@@ -234,6 +248,10 @@ def main():
     # Load the window picker overlay
     window_picker_qml = os.path.join(qml_dir, "launcher", "WindowPicker.qml")
     engine.load(QUrl.fromLocalFile(window_picker_qml))
+
+    # Load the minimized window picker overlay
+    minimized_picker_qml = os.path.join(qml_dir, "launcher", "MinimizedWindowPicker.qml")
+    engine.load(QUrl.fromLocalFile(minimized_picker_qml))
 
     # Start the IPC server so sadeshell --open-launcher works
     ipc_service.start()

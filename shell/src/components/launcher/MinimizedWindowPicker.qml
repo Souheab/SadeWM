@@ -32,7 +32,7 @@ Window {
         searchQuery = ""
         selectedIndex = 0
         searchBox.clear()
-        WindowPickerService.refresh()
+        WindowPickerService.refreshMinimized()
         picker.visible = true
         picker.raise()
         picker.requestActivate()
@@ -94,7 +94,7 @@ Window {
     // React to IPC open request
     Connections {
         target: IPCService
-        function onOpenWindowPickerRequested() {
+        function onOpenMinimizedPickerRequested() {
             if (picker.visible)
                 picker.close()
             else
@@ -153,8 +153,8 @@ Window {
             LauncherSearchBox {
                 id: searchBox
                 anchors.fill: parent
-                placeholderText: "Switch to window\u2026"
-                iconGlyph: "\uf2d2"   // window icon from Nerd Font
+                placeholderText: "Restore minimized window\u2026"
+                iconGlyph: "\uf2d1"   // window-minimize icon
                 onQueryChanged: (text) => {
                     picker.searchQuery = text
                     picker._applyFilter(text)
@@ -200,7 +200,7 @@ Window {
                 id: noResultsText
                 anchors.centerIn: parent
                 visible: gridView.count === 0
-                text: "No windows found"
+                text: "No minimized windows"
                 color: Theme.dotOccupied
                 font.family: Theme.monoFont
                 font.pixelSize: 14
@@ -268,25 +268,10 @@ Window {
                             radius: 10
                             clip: true
 
-                            // Thumbnail image
-                            Image {
-                                id: thumbImg
-                                anchors.fill: parent
-                                anchors.margins: 4
-                                source: delegateRoot.modelData.thumbnailUri || ""
-                                fillMode: Image.PreserveAspectFit
-                                asynchronous: true
-                                mipmap: true
-                                cache: false
-                                visible: status === Image.Ready
-                                smooth: true
-                            }
-
-                            // Placeholder when no thumbnail
+                            // Placeholder (minimized windows have no thumbnail)
                             Text {
                                 anchors.centerIn: parent
-                                visible: thumbImg.status !== Image.Ready
-                                text: "\uf2d2"
+                                text: "\uf2d1"
                                 font.family: Theme.iconFont
                                 font.pixelSize: 36
                                 color: Theme.dotEmpty

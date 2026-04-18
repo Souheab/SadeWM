@@ -493,6 +493,9 @@ func (wm *WM) handleIPCRequest(req *ipc.IPCRequest) *ipc.Response {
 	case "open-window-picker":
 		wm.spawnCmd([]string{"sadeshell", "--open-window-picker"})
 		return &ipc.Response{OK: true}
+	case "open-minimized-picker":
+		wm.spawnCmd([]string{"sadeshell", "--open-minimized-picker"})
+		return &ipc.Response{OK: true}
 	case "get_clients":
 		return wm.ipcGetClients()
 	case "focus_window":

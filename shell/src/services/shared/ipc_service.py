@@ -36,6 +36,7 @@ class IPCService(QObject):
     openLauncherRequested = Signal()
     openEmojiPickerRequested = Signal()
     openWindowPickerRequested = Signal()
+    openMinimizedPickerRequested = Signal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -98,6 +99,11 @@ class IPCService(QObject):
                 self, "_emit_open_window_picker", Qt.ConnectionType.QueuedConnection
             )
             conn.sendall(b"ok\n")
+        elif data == "open-minimized-picker":
+            QMetaObject.invokeMethod(
+                self, "_emit_open_minimized_picker", Qt.ConnectionType.QueuedConnection
+            )
+            conn.sendall(b"ok\n")
         else:
             conn.sendall(b"unknown command\n")
 
@@ -112,6 +118,10 @@ class IPCService(QObject):
     @Slot()
     def _emit_open_window_picker(self):
         self.openWindowPickerRequested.emit()
+
+    @Slot()
+    def _emit_open_minimized_picker(self):
+        self.openMinimizedPickerRequested.emit()
 
     def stop(self):
         self._running = False

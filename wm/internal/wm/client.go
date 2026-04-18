@@ -134,6 +134,10 @@ type WM struct {
 	// Events buffered during a drag that should be re-processed after.
 	pendingEvts []xgb.Event
 
+	// dragging is true while MoveMouse/ResizeMouse owns an active GrabPointer.
+	// SwapClients checks this to avoid replacing/releasing the outer grab.
+	dragging bool
+
 	// Action dispatch table
 	Actions map[string]config.ActionFunc
 

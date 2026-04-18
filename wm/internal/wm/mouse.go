@@ -153,6 +153,9 @@ func (wm *WM) MoveMouse(arg *config.Arg) {
 
 	ptrX, ptrY := wm.getRootPtr()
 
+	wm.dragging = true
+	defer func() { wm.dragging = false }()
+
 	for {
 		ev := wm.nextDragEvent()
 		if ev == nil {
@@ -241,6 +244,9 @@ func (wm *WM) ResizeMouse(arg *config.Arg) {
 		util.LogDebug("ResizeMouse: GrabPointer failed status=%d err=%v", reply.Status, err)
 		return
 	}
+
+	wm.dragging = true
+	defer func() { wm.dragging = false }()
 
 	// Warp pointer to bottom-right corner of the window.
 	xproto.WarpPointer(wm.Conn, xproto.WindowNone, c.Win,

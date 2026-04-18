@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"runtime"
 	"syscall"
 
 	"github.com/sadewm/sadewm/wm/internal/config"
@@ -91,6 +92,19 @@ func main() {
 	go func() {
 		<-sigCh
 		wmgr.Running = false
+	}()
+
+	// SIGUSR1: dump goroutine stacks + WM state to log and FIFO.
+	// Usage: kill -USR1 $(pidof sadewm)
+	usr1Ch := make(chan os.Signal, 1)
+	signal.Notify(usr1Ch, syscall.SIGUSR1)
+	go func() {
+		for range usr1Ch {
+			buf := make([]byte, 1<<20) // 1 MiB — enough for all goroutines
+			n := runtime.Stack(buf, true)
+			report := wmgr.DebugInfo() + "\n=== goroutine dump ===\n" + string(buf[:n]) + "\n"
+			util.LogInfo("SIGUSR1 debug report:\n%s", report)
+		}
 	}()
 
 	// Main event loop

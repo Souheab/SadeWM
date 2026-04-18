@@ -296,11 +296,22 @@ func (wm *WM) SwapClients(c1, c2 *Client) {
 	// (or Mode=Ungrab after release).  handleEnterNotify already filters
 	// out any mode other than Normal, so focus stays on the swapped window
 	// and does not jump to whatever window the cursor happens to land on.
-	xproto.GrabPointerUnchecked(wm.Conn, false, wm.Root, 0,
-		xproto.GrabModeAsync, xproto.GrabModeAsync,
-		xproto.WindowNone, xproto.CursorNone, xproto.TimeCurrentTime)
+	//
+	// Skip the grab when already inside a drag (MoveMouse/ResizeMouse owns
+	// an active GrabPointer).  Calling GrabPointerUnchecked here would
+	// replace that grab (clearing its event mask) and the subsequent
+	// UngrabPointer would release it entirely, leaving the drag loop
+	// blocked in nextDragEvent() waiting for a ButtonRelease that can
+	// never arrive — causing a complete WM input freeze.
+	if !wm.dragging {
+		xproto.GrabPointerUnchecked(wm.Conn, false, wm.Root, 0,
+			xproto.GrabModeAsync, xproto.GrabModeAsync,
+			xproto.WindowNone, xproto.CursorNone, xproto.TimeCurrentTime)
+	}
 	wm.Arrange(wm.SelMon)
-	xproto.UngrabPointer(wm.Conn, xproto.TimeCurrentTime)
+	if !wm.dragging {
+		xproto.UngrabPointer(wm.Conn, xproto.TimeCurrentTime)
+	}
 }
 
 func (wm *WM) SwapDown(arg *config.Arg) {

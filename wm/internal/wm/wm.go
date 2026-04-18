@@ -418,6 +418,32 @@ func (wm *WM) SetBottomOffset(offset uint) {
 	wm.Arrange(nil)
 }
 
+// DebugInfo returns a multi-line string with a snapshot of WM internal state.
+// Intended for use in the SIGUSR1 handler together with a goroutine stack dump.
+func (wm *WM) DebugInfo() string {
+	var b strings.Builder
+	b.WriteString("=== sadewm debug snapshot ===\n")
+	fmt.Fprintf(&b, "dragging:     %v\n", wm.dragging)
+	fmt.Fprintf(&b, "running:      %v\n", wm.Running)
+	fmt.Fprintf(&b, "pendingEvts:  %d\n", len(wm.pendingEvts))
+	fmt.Fprintf(&b, "XEvCh len:    %d\n", len(wm.XEvCh))
+	monIdx := 0
+	for m := wm.Mons; m != nil; m = m.Next {
+		nClients := 0
+		for c := m.Clients; c != nil; c = c.Next {
+			nClients++
+		}
+		selName := ""
+		if m.Sel != nil {
+			selName = m.Sel.Name
+		}
+		fmt.Fprintf(&b, "monitor[%d]:   tags=0x%04x clients=%d sel=%q layout=%s\n",
+			monIdx, m.TagSet[m.SelTags], nClients, selName, m.LtSymbol)
+		monIdx++
+	}
+	return b.String()
+}
+
 // Helper: uint32 to little-endian bytes
 func uint32ToBytes(v uint32) []byte {
 	b := make([]byte, 4)

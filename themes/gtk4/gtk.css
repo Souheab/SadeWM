@@ -1,0 +1,934 @@
+/*
+ * sadewm GTK4 Theme
+ *
+ * Dark blue-purple theme matching the sadeshell status bar aesthetic.
+ * Colors sourced from shell/src/components/shared/Theme.qml.
+ *
+ * GTK4 differences from GTK3:
+ *   - No more GtkMenu/GtkMenuBar; replaced by GtkPopoverMenu
+ *   - No more engine-based rendering
+ *   - Gadget node names replace widget class selectors
+ *   - .navigation-sidebar replaces .sidebar in many apps
+ *   - windowcontrols is the standard CSD button container
+ *   - GtkColumnView replaces GtkTreeView for most use cases
+ *
+ * Install:
+ *   mkdir -p ~/.config/gtk-4.0
+ *   cp gtk4/gtk.css ~/.config/gtk-4.0/gtk.css
+ */
+
+/* ── Color definitions ──────────────────────────────────────────────── */
+
+@define-color accent_bg_color   #7aa2f7;
+@define-color accent_fg_color   #1a1b26;
+@define-color accent_color      #7aa2f7;
+
+@define-color window_bg_color   #1a1b26;
+@define-color window_fg_color   #c0caf5;
+
+@define-color view_bg_color     #292e42;
+@define-color view_fg_color     #c0caf5;
+
+@define-color headerbar_bg_color      #1a1b26;
+@define-color headerbar_fg_color      #c0caf5;
+@define-color headerbar_border_color  #3d4166;
+@define-color headerbar_backdrop_color #1a1b26;
+@define-color headerbar_shade_color   rgba(0, 0, 0, 0.2);
+
+@define-color sidebar_bg_color        #292e42;
+@define-color sidebar_fg_color        #c0caf5;
+@define-color sidebar_backdrop_color  #292e42;
+@define-color sidebar_shade_color     rgba(0, 0, 0, 0.15);
+
+@define-color card_bg_color    #292e42;
+@define-color card_fg_color    #c0caf5;
+@define-color card_shade_color rgba(0, 0, 0, 0.2);
+
+@define-color dialog_bg_color  #1a1b26;
+@define-color dialog_fg_color  #c0caf5;
+
+@define-color popover_bg_color #292e42;
+@define-color popover_fg_color #c0caf5;
+
+@define-color shade_color      rgba(0, 0, 0, 0.2);
+@define-color scrollbar_outline_color rgba(0, 0, 0, 0);
+
+/* Custom palette */
+@define-color sade_bg          #1a1b26;
+@define-color sade_surface     #292e42;
+@define-color sade_button      #323851;
+@define-color sade_hover       #3b4166;
+@define-color sade_border      #3d4166;
+@define-color sade_disabled    #414868;
+@define-color sade_subtle      #666f99;
+@define-color sade_fg          #c0caf5;
+@define-color sade_accent      #7aa2f7;
+@define-color sade_accent_hover #89b4fa;
+@define-color sade_danger      #bf616a;
+@define-color sade_urgent      #f7768e;
+@define-color sade_warning     #e0af68;
+@define-color sade_track       #1f2237;
+
+@define-color borders          @sade_border;
+@define-color error_color      @sade_urgent;
+@define-color warning_color    @sade_warning;
+@define-color success_color    @sade_accent;
+
+/* ── Global ─────────────────────────────────────────────────────────── */
+
+* {
+    font-family: "JetBrains Mono", "Fira Code", monospace;
+    outline-style: none;
+}
+
+/* ── Window ─────────────────────────────────────────────────────────── */
+
+window,
+window.background {
+    background-color: @sade_bg;
+    color: @sade_fg;
+}
+
+/* ── Labels ─────────────────────────────────────────────────────────── */
+
+label {
+    color: @sade_fg;
+}
+
+label:disabled {
+    color: @sade_disabled;
+}
+
+.dim-label,
+label.dim-label {
+    color: @sade_subtle;
+}
+
+/* ── Buttons ────────────────────────────────────────────────────────── */
+
+button {
+    background-color: @sade_button;
+    color: @sade_fg;
+    border: 1px solid @sade_border;
+    border-radius: 14px;
+    padding: 6px 16px;
+    min-height: 28px;
+    transition: background-color 150ms ease;
+}
+
+button:hover {
+    background-color: @sade_hover;
+}
+
+button:active,
+button:checked {
+    background-color: @sade_surface;
+}
+
+button:disabled {
+    background-color: @sade_surface;
+    color: @sade_disabled;
+    border-color: @sade_disabled;
+}
+
+button:focus-visible {
+    outline: 2px solid @sade_accent;
+    outline-offset: -2px;
+}
+
+button.suggested-action {
+    background-color: @sade_accent;
+    color: @accent_fg_color;
+    border-color: @sade_accent;
+    font-weight: bold;
+}
+
+button.suggested-action:hover {
+    background-color: @sade_accent_hover;
+}
+
+button.destructive-action {
+    background-color: @sade_danger;
+    color: @sade_fg;
+    border-color: @sade_danger;
+}
+
+button.destructive-action:hover {
+    background-color: @sade_urgent;
+}
+
+button.flat {
+    background-color: transparent;
+    border-color: transparent;
+}
+
+button.flat:hover {
+    background-color: @sade_hover;
+}
+
+button.circular {
+    border-radius: 50%;
+    padding: 8px;
+    min-width: 28px;
+    min-height: 28px;
+}
+
+button.pill {
+    border-radius: 9999px;
+    padding: 8px 24px;
+}
+
+/* ── Toggle button ──────────────────────────────────────────────────── */
+
+togglebutton:checked {
+    background-color: @sade_hover;
+    border-color: @sade_accent;
+}
+
+/* ── Link button ────────────────────────────────────────────────────── */
+
+button.link,
+link {
+    color: @sade_accent;
+}
+
+button.link:hover,
+link:hover {
+    color: @sade_accent_hover;
+}
+
+/* ── Check & radio ──────────────────────────────────────────────────── */
+
+check,
+radio {
+    min-width: 18px;
+    min-height: 18px;
+    border: 1px solid @sade_border;
+    background-color: @sade_surface;
+    transition: background-color 150ms ease;
+}
+
+check {
+    border-radius: 4px;
+}
+
+radio {
+    border-radius: 50%;
+}
+
+check:hover,
+radio:hover {
+    border-color: @sade_accent;
+}
+
+check:checked,
+radio:checked {
+    background-color: @sade_accent;
+    border-color: @sade_accent;
+    color: @accent_fg_color;
+}
+
+check:disabled,
+radio:disabled {
+    background-color: @sade_bg;
+    border-color: @sade_disabled;
+}
+
+/* ── Switch ─────────────────────────────────────────────────────────── */
+
+switch {
+    background-color: @sade_disabled;
+    border-radius: 14px;
+    min-width: 48px;
+    min-height: 24px;
+    border: none;
+    transition: background-color 200ms ease;
+}
+
+switch:checked {
+    background-color: @sade_accent;
+}
+
+switch > slider {
+    background-color: @sade_fg;
+    border-radius: 50%;
+    min-width: 20px;
+    min-height: 20px;
+    margin: 2px;
+}
+
+/* ── Entry ──────────────────────────────────────────────────────────── */
+
+entry,
+text {
+    background-color: @sade_surface;
+    color: @sade_fg;
+    caret-color: @sade_fg;
+}
+
+entry {
+    border: 1px solid @sade_border;
+    border-radius: 8px;
+    padding: 6px 12px;
+    min-height: 28px;
+    transition: border-color 150ms ease;
+}
+
+entry:focus-within {
+    border-color: @sade_accent;
+}
+
+entry:disabled {
+    background-color: @sade_bg;
+    color: @sade_disabled;
+}
+
+entry > text > selection,
+textview > text > selection {
+    background-color: @sade_accent;
+    color: @accent_fg_color;
+}
+
+entry > text > block-cursor {
+    background-color: @sade_fg;
+    color: @sade_bg;
+}
+
+/* ── Text view ──────────────────────────────────────────────────────── */
+
+textview {
+    background-color: @sade_surface;
+    color: @sade_fg;
+}
+
+/* ── Spin button ────────────────────────────────────────────────────── */
+
+spinbutton {
+    background-color: @sade_surface;
+    border: 1px solid @sade_border;
+    border-radius: 8px;
+    color: @sade_fg;
+}
+
+spinbutton > button {
+    background-color: @sade_button;
+    border-radius: 0;
+    border: none;
+    border-left: 1px solid @sade_border;
+}
+
+spinbutton > button:hover {
+    background-color: @sade_hover;
+}
+
+/* ── Drop down / combo ──────────────────────────────────────────────── */
+
+dropdown > button {
+    background-color: @sade_surface;
+    border: 1px solid @sade_border;
+    border-radius: 8px;
+    padding: 6px 12px;
+    min-height: 28px;
+}
+
+dropdown > button:hover {
+    background-color: @sade_button;
+}
+
+dropdown > popover > contents {
+    background-color: @sade_surface;
+    border: 1px solid @sade_border;
+    border-radius: 12px;
+    padding: 4px;
+}
+
+dropdown > popover > contents > listview > row {
+    padding: 8px 12px;
+    border-radius: 8px;
+}
+
+dropdown > popover > contents > listview > row:selected {
+    background-color: @sade_hover;
+    color: @sade_fg;
+}
+
+/* ── Scrollbar ──────────────────────────────────────────────────────── */
+
+scrollbar {
+    background-color: transparent;
+    border: none;
+}
+
+scrollbar > range > trough {
+    background-color: transparent;
+}
+
+scrollbar > range > trough > slider {
+    background-color: @sade_disabled;
+    border-radius: 4px;
+    min-width: 8px;
+    min-height: 32px;
+    transition: background-color 150ms ease;
+}
+
+scrollbar > range > trough > slider:hover {
+    background-color: @sade_subtle;
+}
+
+scrollbar.horizontal > range > trough > slider {
+    min-height: 8px;
+    min-width: 32px;
+}
+
+/* ── Scale (slider) ─────────────────────────────────────────────────── */
+
+scale {
+    padding: 8px 0;
+}
+
+scale > trough {
+    background-color: @sade_track;
+    border-radius: 3px;
+    min-height: 6px;
+    min-width: 6px;
+}
+
+scale > trough > highlight {
+    background-color: @sade_accent;
+    border-radius: 3px;
+    min-height: 6px;
+}
+
+scale > trough > slider {
+    background-color: @sade_accent;
+    border-radius: 50%;
+    min-width: 16px;
+    min-height: 16px;
+    margin: -5px;
+    transition: background-color 150ms ease;
+}
+
+scale > trough > slider:hover {
+    background-color: @sade_accent_hover;
+}
+
+/* ── Progress bar ───────────────────────────────────────────────────── */
+
+progressbar > trough {
+    background-color: @sade_track;
+    border-radius: 3px;
+    min-height: 6px;
+}
+
+progressbar > trough > progress {
+    background-color: @sade_accent;
+    border-radius: 3px;
+    min-height: 6px;
+}
+
+levelbar > trough {
+    background-color: @sade_track;
+    border-radius: 3px;
+}
+
+levelbar > trough > block.filled {
+    background-color: @sade_accent;
+    border-radius: 3px;
+}
+
+levelbar > trough > block.empty {
+    background-color: @sade_track;
+}
+
+/* ── Notebook (tabs) ────────────────────────────────────────────────── */
+
+notebook {
+    background-color: @sade_bg;
+}
+
+notebook > header {
+    background-color: @sade_bg;
+    border-bottom: 1px solid @sade_border;
+}
+
+notebook > header > tabs > tab {
+    background-color: @sade_surface;
+    color: @sade_subtle;
+    border: 1px solid @sade_border;
+    border-bottom: none;
+    border-top-left-radius: 8px;
+    border-top-right-radius: 8px;
+    padding: 8px 16px;
+    margin-right: 2px;
+    min-width: 80px;
+    transition: background-color 150ms ease;
+}
+
+notebook > header > tabs > tab:checked {
+    background-color: @sade_bg;
+    color: @sade_fg;
+    border-bottom: 2px solid @sade_accent;
+}
+
+notebook > header > tabs > tab:hover:not(:checked) {
+    background-color: @sade_hover;
+    color: @sade_fg;
+}
+
+notebook > header > tabs > tab > button.flat {
+    border-radius: 4px;
+    padding: 2px;
+    min-width: 16px;
+    min-height: 16px;
+}
+
+notebook > header > tabs > tab > button.flat:hover {
+    background-color: @sade_danger;
+}
+
+notebook > stack {
+    background-color: @sade_bg;
+}
+
+/* ── Header bar ─────────────────────────────────────────────────────── */
+
+headerbar {
+    background-color: @sade_bg;
+    color: @sade_fg;
+    border-bottom: 1px solid @sade_border;
+    padding: 4px 8px;
+    min-height: 40px;
+}
+
+headerbar > windowhandle > box > .title {
+    font-weight: bold;
+}
+
+headerbar button {
+    border-radius: 8px;
+    padding: 4px 8px;
+}
+
+/* ── Popover menu (replaces GtkMenu in GTK4) ────────────────────────── */
+
+popover,
+popover.background {
+    background-color: @sade_surface;
+    color: @sade_fg;
+    border: 1px solid @sade_border;
+    border-radius: 12px;
+    padding: 4px;
+}
+
+popover > contents {
+    background-color: @sade_surface;
+    border-radius: 12px;
+}
+
+popover > arrow {
+    background-color: @sade_surface;
+    border-color: @sade_border;
+}
+
+popover modelbutton,
+popover.menu > contents > box > row {
+    padding: 8px 12px;
+    border-radius: 8px;
+    min-height: 24px;
+    transition: background-color 100ms ease;
+}
+
+popover modelbutton:hover,
+popover.menu > contents > box > row:hover {
+    background-color: @sade_hover;
+}
+
+popover separator {
+    background-color: @sade_border;
+    min-height: 1px;
+    margin: 4px 8px;
+}
+
+/* ── Toolbar ────────────────────────────────────────────────────────── */
+
+.toolbar {
+    background-color: @sade_bg;
+    border-bottom: 1px solid @sade_border;
+    padding: 4px;
+}
+
+separator {
+    background-color: @sade_border;
+    min-width: 1px;
+    min-height: 1px;
+}
+
+/* ── Status bar (action bar) ────────────────────────────────────────── */
+
+actionbar > revealer > box {
+    background-color: @sade_bg;
+    color: @sade_subtle;
+    border-top: 1px solid @sade_border;
+    padding: 4px 8px;
+}
+
+/* ── List / column views ────────────────────────────────────────────── */
+
+listview,
+columnview,
+gridview {
+    background-color: @sade_bg;
+    color: @sade_fg;
+}
+
+listview > row,
+columnview > listview > row {
+    padding: 4px 8px;
+    border-radius: 6px;
+    margin: 1px 2px;
+    transition: background-color 100ms ease;
+}
+
+listview > row:hover,
+columnview > listview > row:hover {
+    background-color: @sade_button;
+}
+
+listview > row:selected,
+columnview > listview > row:selected {
+    background-color: @sade_hover;
+    color: @sade_fg;
+}
+
+gridview > child {
+    padding: 4px;
+    border-radius: 6px;
+}
+
+gridview > child:selected {
+    background-color: @sade_hover;
+}
+
+/* Column view header */
+columnview > listview > row > columnviewcell > box > button {
+    background-color: @sade_surface;
+    color: @sade_fg;
+    border-bottom: 1px solid @sade_border;
+    border-right: 1px solid @sade_border;
+    border-radius: 0;
+    padding: 6px 12px;
+    font-weight: bold;
+}
+
+columnview > listview > row > columnviewcell > box > button:hover {
+    background-color: @sade_hover;
+}
+
+/* ── Card (GtkBox with .card) ───────────────────────────────────────── */
+
+.card {
+    background-color: @sade_surface;
+    color: @sade_fg;
+    border: 1px solid @sade_border;
+    border-radius: 12px;
+    padding: 12px;
+}
+
+.card:hover {
+    background-color: mix(@sade_surface, @sade_hover, 0.5);
+}
+
+/* ── Linked controls ────────────────────────────────────────────────── */
+
+.linked > button {
+    border-radius: 0;
+    margin: 0;
+}
+
+.linked > button:first-child {
+    border-top-left-radius: 14px;
+    border-bottom-left-radius: 14px;
+}
+
+.linked > button:last-child {
+    border-top-right-radius: 14px;
+    border-bottom-right-radius: 14px;
+}
+
+.linked > entry {
+    border-radius: 0;
+}
+
+.linked > entry:first-child {
+    border-top-left-radius: 8px;
+    border-bottom-left-radius: 8px;
+}
+
+.linked > entry:last-child {
+    border-top-right-radius: 8px;
+    border-bottom-right-radius: 8px;
+}
+
+/* ── Tooltip ────────────────────────────────────────────────────────── */
+
+tooltip,
+tooltip.background {
+    background-color: @sade_surface;
+    color: @sade_fg;
+    border: 1px solid @sade_border;
+    border-radius: 6px;
+    padding: 6px 8px;
+}
+
+/* ── Info bar ───────────────────────────────────────────────────────── */
+
+infobar > revealer > box {
+    border: none;
+    border-radius: 0;
+}
+
+infobar.info > revealer > box {
+    background-color: @sade_surface;
+    color: @sade_fg;
+}
+
+infobar.warning > revealer > box {
+    background-color: @sade_warning;
+    color: @sade_bg;
+}
+
+infobar.error > revealer > box {
+    background-color: @sade_urgent;
+    color: @sade_bg;
+}
+
+/* ── Paned (splitter) ───────────────────────────────────────────────── */
+
+paned > separator {
+    background-color: @sade_border;
+    min-width: 1px;
+    min-height: 1px;
+}
+
+paned > separator:hover {
+    background-color: @sade_accent;
+}
+
+/* ── Calendar ───────────────────────────────────────────────────────── */
+
+calendar {
+    background-color: @sade_bg;
+    color: @sade_fg;
+    border: 1px solid @sade_border;
+    border-radius: 8px;
+    padding: 4px;
+}
+
+calendar > header {
+    background-color: @sade_surface;
+    border-bottom: 1px solid @sade_border;
+    border-radius: 8px 8px 0 0;
+}
+
+calendar > header > button {
+    border-radius: 6px;
+}
+
+calendar > grid > label.day-number:selected {
+    background-color: @sade_accent;
+    color: @accent_fg_color;
+    border-radius: 50%;
+}
+
+calendar > grid > label.day-number.other-month {
+    color: @sade_disabled;
+}
+
+/* ── Dialog / message dialog ────────────────────────────────────────── */
+
+dialog,
+messagedialog {
+    background-color: @sade_bg;
+}
+
+messagedialog .titlebar {
+    background-color: @sade_surface;
+    border-bottom: 1px solid @sade_border;
+}
+
+/* ── Expander ───────────────────────────────────────────────────────── */
+
+expander > title {
+    padding: 4px;
+    border-radius: 6px;
+}
+
+expander > title:hover {
+    background-color: @sade_button;
+}
+
+/* ── Sidebar / navigation ───────────────────────────────────────────── */
+
+.navigation-sidebar,
+.sidebar {
+    background-color: @sade_surface;
+    border-right: 1px solid @sade_border;
+}
+
+.navigation-sidebar > row,
+.sidebar > row {
+    padding: 8px 12px;
+    border-radius: 0;
+}
+
+.navigation-sidebar > row:selected,
+.sidebar > row:selected {
+    background-color: @sade_hover;
+}
+
+/* ── Frame ──────────────────────────────────────────────────────────── */
+
+frame > border {
+    border: 1px solid @sade_border;
+    border-radius: 8px;
+}
+
+/* ── Scrolled window ────────────────────────────────────────────────── */
+
+scrolledwindow {
+    border-radius: 8px;
+}
+
+scrolledwindow > edge-overshoot,
+scrolledwindow > undershoot {
+    background-color: transparent;
+}
+
+/* ── Stack switcher ─────────────────────────────────────────────────── */
+
+stackswitcher > button {
+    border-radius: 8px;
+}
+
+stackswitcher > button:checked {
+    background-color: @sade_hover;
+    border-color: @sade_accent;
+}
+
+/* ── View switcher (libadwaita) ─────────────────────────────────────── */
+
+viewswitcher button {
+    border-radius: 8px;
+}
+
+viewswitcher button:checked {
+    background-color: @sade_hover;
+    border-color: @sade_accent;
+}
+
+/* ── Selection ──────────────────────────────────────────────────────── */
+
+selection {
+    background-color: @sade_accent;
+    color: @accent_fg_color;
+}
+
+/* ── Rubberband ─────────────────────────────────────────────────────── */
+
+rubberband,
+.rubberband {
+    background-color: alpha(@sade_accent, 0.2);
+    border: 1px solid @sade_accent;
+}
+
+/* ── OSD ────────────────────────────────────────────────────────────── */
+
+.osd {
+    background-color: alpha(@sade_surface, 0.9);
+    color: @sade_fg;
+    border: 1px solid @sade_border;
+    border-radius: 12px;
+}
+
+/* ── Window controls ────────────────────────────────────────────────── */
+
+windowcontrols > button {
+    min-width: 20px;
+    min-height: 20px;
+    padding: 2px;
+    border-radius: 50%;
+    margin: 0 2px;
+}
+
+windowcontrols > button.close:hover {
+    background-color: @sade_danger;
+}
+
+windowcontrols > button.maximize:hover,
+windowcontrols > button.minimize:hover {
+    background-color: @sade_hover;
+}
+
+/* ── Window decoration ──────────────────────────────────────────────── */
+
+window.csd {
+    border-radius: 12px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4),
+                0 0 0 1px @sade_border;
+}
+
+window.csd:backdrop {
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3),
+                0 0 0 1px @sade_border;
+}
+
+window.maximized,
+window.fullscreen,
+window.tiled {
+    border-radius: 0;
+}
+
+/* ── Toast (libadwaita) ─────────────────────────────────────────────── */
+
+toast {
+    background-color: @sade_surface;
+    color: @sade_fg;
+    border: 1px solid @sade_border;
+    border-radius: 14px;
+    padding: 8px 16px;
+    margin: 8px;
+}
+
+/* ── AdwStatusPage ──────────────────────────────────────────────────── */
+
+statuspage > scrolledwindow > viewport > box > clamp > box > .icon {
+    color: @sade_subtle;
+}
+
+/* ── Search bar / entry ─────────────────────────────────────────────── */
+
+searchbar > revealer > box {
+    background-color: @sade_bg;
+    border-bottom: 1px solid @sade_border;
+    padding: 4px 8px;
+}
+
+searchentry {
+    background-color: @sade_surface;
+    color: @sade_fg;
+    border: 1px solid @sade_border;
+    border-radius: 14px;
+    padding: 6px 12px;
+}
+
+searchentry:focus-within {
+    border-color: @sade_accent;
+}
+
+/* ── Banner (libadwaita) ────────────────────────────────────────────── */
+
+banner > revealer > widget {
+    background-color: @sade_accent;
+    color: @accent_fg_color;
+    padding: 8px 12px;
+}

@@ -1,0 +1,11 @@
+<!DOCTYPE RCC><RCC version="1.0">
+<qresource prefix="/qml">
+    <file>Greeter.qml</file>
+    <file>Theme.qml</file>
+    <file>qmldir</file>
+    <file>PowerButtons.qml</file>
+    <file>SessionPicker.qml</file>
+    <file>LoginCard.qml</file>
+    <file>PillButton.qml</file>
+</qresource>
+</RCC>

@@ -1,0 +1,6 @@
+module SadewmGreeter
+singleton Theme 1.0 Theme.qml
+PowerButtons 1.0 PowerButtons.qml
+SessionPicker 1.0 SessionPicker.qml
+LoginCard 1.0 LoginCard.qml
+PillButton 1.0 PillButton.qml

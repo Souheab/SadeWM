@@ -1,0 +1,5 @@
+[Desktop Entry]
+Name=sadewm greeter
+Comment=LightDM QML greeter matching the sadewm/sadeshell aesthetic
+Exec=sadewm-greeter
+Type=Application

@@ -116,15 +116,48 @@
           };
         };
 
+        # ── sadewm-greeter (Qt5/QML LightDM greeter) ─────────────────────────
+        sadewm-greeter = pkgs.stdenv.mkDerivation {
+          pname   = "sadewm-greeter";
+          version = "0.1.0";
+          src     = ./lightdm-qml-greeter;
+
+          nativeBuildInputs = with pkgs; [
+            cmake
+            pkg-config
+            libsForQt5.wrapQtAppsHook
+          ];
+
+          buildInputs = with pkgs; [
+            libsForQt5.qtbase
+            libsForQt5.qtdeclarative
+            libsForQt5.qtquickcontrols2
+            libsForQt5.qtgraphicaleffects
+            libsForQt5.qtsvg
+            lightdm_qt
+          ];
+
+          # Pass through the standard cmake install prefix.
+          cmakeFlags = [ "-DCMAKE_BUILD_TYPE=Release" ];
+
+          meta = with pkgs.lib; {
+            description = "LightDM QML greeter matching the sadewm/sadeshell aesthetic";
+            license     = licenses.mit;
+            platforms   = [ "x86_64-linux" "aarch64-linux" ];
+            mainProgram = "sadewm-greeter";
+          };
+        };
+
         combined = pkgs.symlinkJoin {
           name  = "sadewm-with-sadeshell";
-          paths = [ sadewm sadeshell ];
+          paths = [ sadewm sadeshell sadewm-greeter ];
         };
 
       in {
-        packages.default   = combined;
-        packages.sadewm    = combined;
-        packages.sadeshell = sadeshell;
+        packages.default        = combined;
+        packages.sadewm         = combined;
+        packages.sadeshell      = sadeshell;
+        packages.sadewm-greeter = sadewm-greeter;
 
         apps.default = {
           type    = "app";
@@ -134,6 +167,11 @@
         apps.sadeshell = {
           type    = "app";
           program = "${sadeshell}/bin/sadeshell";
+        };
+
+        apps.sadewm-greeter = {
+          type    = "app";
+          program = "${sadewm-greeter}/bin/sadewm-greeter";
         };
 
         devShells.default = pkgs.mkShell {
@@ -146,6 +184,9 @@
             go
             # Shell Qt wrapping
             qt6.wrapQtAppsHook
+            # Greeter build tools
+            cmake
+            libsForQt5.wrapQtAppsHook
           ];
 
           buildInputs = with pkgs; [
@@ -167,6 +208,13 @@
             libxext
             libpulseaudio
             xcb-util-cursor
+            # Greeter libraries (Qt5 + liblightdm-qt5-3)
+            libsForQt5.qtbase
+            libsForQt5.qtdeclarative
+            libsForQt5.qtquickcontrols2
+            libsForQt5.qtgraphicaleffects
+            libsForQt5.qtsvg
+            lightdm_qt
           ];
 
           shellHook = ''
@@ -241,6 +289,52 @@
                 PATH = lib.mkForce "/run/current-system/sw/bin:/etc/profiles/per-user/%u/bin:${lib.makeBinPath [ pkg ]}"; # TODO lib.makeBinPath doesn't do anything, app works fine though
               };
             };
+          };
+        };
+
+      # ── NixOS module: sadewm-greeter (LightDM QML greeter) ──────────────────
+      nixosModules.sadewm-greeter = { config, lib, pkgs, ... }:
+        let
+          cfg = config.services.xserver.displayManager.lightdm.greeters.sadewm;
+        in {
+          options.services.xserver.displayManager.lightdm.greeters.sadewm = {
+
+            enable = lib.mkOption {
+              type        = lib.types.bool;
+              default     = false;
+              description = ''
+                Whether to enable sadewm-greeter as the LightDM greeter.
+
+                Enabling this option automatically enables LightDM, disables
+                the default GTK greeter, and points LightDM at the sadewm QML
+                greeter provided by the sadewm flake.
+              '';
+            };
+
+            package = lib.mkOption {
+              type        = lib.types.package;
+              default     = self.packages.${pkgs.system}.sadewm-greeter;
+              defaultText = lib.literalExpression
+                "sadewm.packages.\${pkgs.system}.sadewm-greeter";
+              description = ''
+                The sadewm-greeter package to use.  Override this if you are
+                building the greeter yourself or need a patched version.
+              '';
+            };
+
+          };
+
+          config = lib.mkIf cfg.enable {
+            services.xserver.displayManager.lightdm = {
+              enable          = lib.mkDefault true;
+              greeters.gtk.enable = false;
+              greeter          = lib.mkDefault {
+                package = cfg.package;
+                name    = "sadewm-greeter";
+              };
+            };
+
+            environment.systemPackages = [ cfg.package ];
           };
         };
 

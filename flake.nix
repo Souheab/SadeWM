@@ -326,11 +326,19 @@
 
           config = lib.mkIf cfg.enable {
             services.xserver.displayManager.lightdm = {
-              enable          = lib.mkDefault true;
+              enable              = lib.mkDefault true;
               greeters.gtk.enable = false;
-              greeter          = lib.mkDefault {
-                package = cfg.package;
-                name    = "sadewm-greeter";
+              # LightDM sets greeters-directory to greeter.package and then
+              # looks for <name>.desktop at the root of that directory.
+              # We create a flat xgreeters derivation (same pattern as
+              # lightdm-slick-greeter.xgreeters) so the .desktop file is at
+              # the package root rather than buried in share/xgreeters/.
+              greeter = lib.mkDefault {
+                package = pkgs.runCommand "sadewm-greeter-xgreeters" {} ''
+                  mkdir -p "$out"
+                  cp ${cfg.package}/share/xgreeters/sadewm-greeter.desktop "$out/"
+                '';
+                name = "sadewm-greeter";
               };
             };
 

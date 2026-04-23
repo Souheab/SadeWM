@@ -236,7 +236,7 @@
           cfg   = config.services.xserver.windowManager.sadewm;
           wmPkg = self.packages.${pkgs.system}.sadewm;
         in {
-          imports = [ self.nixosModules.sadeshell ];
+          imports = [ self.nixosModules.sadeshell self.nixosModules.sadewm-greeter ];
 
           options.services.xserver.windowManager.sadewm = {
             enable = lib.mkEnableOption "sadewm window manager";

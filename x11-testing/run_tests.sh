@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # run_tests.sh — Start Xvfb + sadewm, run the X11 test suite, collect results.
 # Usage: ./x11-testing/run_tests.sh [-d] [-t test_file.py]
 #   -d   enable sadewm debug logging
@@ -23,7 +23,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 # ── Preflight checks ─────────────────────────────────────────────────────────
-for tool in Xvfb xdotool xeyes python3; do
+for tool in Xvfb xeyes python3; do
     if ! command -v "$tool" &>/dev/null; then
         echo "ERROR: $tool not found. Install it first." >&2
         exit 1
@@ -103,30 +103,12 @@ echo "==> sadewm running (PID=$WM_PID)"
 cd "$REPO_ROOT"
 EXIT_CODE=0
 
-# Determine whether a file uses pytest (has pytest fixtures/imports)
-_uses_pytest() {
-    grep -q "^import pytest\|^from xdrive\|@pytest\." "$1" 2>/dev/null
-}
-
 if [[ -n "$TEST_FILE" ]]; then
     echo "==> Running test: $TEST_FILE"
-    if _uses_pytest "$TEST_FILE"; then
-        python3 -m pytest "$TEST_FILE" -v || EXIT_CODE=$?
-    else
-        python3 "$TEST_FILE" || EXIT_CODE=$?
-    fi
+    python3 -m pytest "$TEST_FILE" -v || EXIT_CODE=$?
 else
     echo "==> Running all tests in $SCRIPT_DIR/"
-    for f in "$SCRIPT_DIR"/test_*.py; do
-        [[ -f "$f" ]] || continue
-        echo ""
-        echo "━━━ $(basename "$f") ━━━"
-        if _uses_pytest "$f"; then
-            python3 -m pytest "$f" -v || EXIT_CODE=$?
-        else
-            python3 "$f" || EXIT_CODE=$?
-        fi
-    done
+    python3 -m pytest "$SCRIPT_DIR" -v || EXIT_CODE=$?
 fi
 
 # ── Dump WM log on failure ───────────────────────────────────────────────────

@@ -30,14 +30,15 @@ q = r.query_pointer()
 print(f"\nPointer: ({q.root_x},{q.root_y}), child=0x{q.child.id if q.child else 0:x}")
 
 # Move pointer to center of first window and query again
-from Xlib import Xutil
-import subprocess
-subprocess.run(["xdotool", "mousemove", "200", "400"], timeout=3)
-import time; time.sleep(0.1)
+import time
+r.warp_pointer(200, 400)
+d.flush()
+time.sleep(0.1)
 q2 = r.query_pointer()
 print(f"Pointer at (200,400): child=0x{q2.child.id if q2.child else 0:x}")
 
-subprocess.run(["xdotool", "mousemove", "800", "400"], timeout=3)
+r.warp_pointer(800, 400)
+d.flush()
 time.sleep(0.1)
 q3 = r.query_pointer()
 print(f"Pointer at (800,400): child=0x{q3.child.id if q3.child else 0:x}")

@@ -5,13 +5,11 @@ Provides:
   - X11 event injection via python-xlib (ButtonPress, MotionNotify, etc.)
   - IPC client for sadewm's Unix-socket protocol
   - Window discovery and state queries
-  - Xdotool wrappers for convenience
 """
 
 import json
 import os
 import socket
-import struct
 import subprocess
 import time
 
@@ -124,97 +122,6 @@ def send_button_release(dpy, x, y, button=1, state=0):
     )
     root.send_event(evt, event_mask=X.ButtonReleaseMask)
     dpy.sync()
-
-
-# ── xdotool wrappers (more reliable for grab-aware input) ────────────────────
-
-
-def xdotool(*args):
-    """Run xdotool with the given arguments and return stdout."""
-    result = subprocess.run(
-        ["xdotool"] + list(args),
-        capture_output=True,
-        text=True,
-        timeout=10,
-    )
-    if result.returncode != 0:
-        raise RuntimeError(f"xdotool failed: {result.stderr.strip()}")
-    return result.stdout.strip()
-
-
-def move_mouse(x, y):
-    """Move the mouse pointer to (x, y)."""
-    xdotool("mousemove", str(x), str(y))
-
-
-def mouse_down(button=1):
-    """Press a mouse button (do not release)."""
-    xdotool("mousedown", str(button))
-
-
-def mouse_up(button=1):
-    """Release a mouse button."""
-    xdotool("mouseup", str(button))
-
-
-def click(x, y, button=1):
-    """Click at (x, y)."""
-    move_mouse(x, y)
-    xdotool("click", str(button))
-
-
-def key_down(key):
-    """Press a key (do not release)."""
-    xdotool("keydown", key)
-
-
-def key_up(key):
-    """Release a key."""
-    xdotool("keyup", key)
-
-
-def drag(start_x, start_y, end_x, end_y, button=1, steps=10, delay_ms=10):
-    """
-    Simulate a mouse drag from (start_x, start_y) to (end_x, end_y).
-    Does NOT hold modifier keys — caller should use key_down/key_up around this.
-    """
-    move_mouse(start_x, start_y)
-    time.sleep(0.05)
-    mouse_down(button)
-    time.sleep(0.05)
-    dx = (end_x - start_x) / steps
-    dy = (end_y - start_y) / steps
-    for i in range(1, steps + 1):
-        nx = int(start_x + dx * i)
-        ny = int(start_y + dy * i)
-        move_mouse(nx, ny)
-        time.sleep(delay_ms / 1000.0)
-    time.sleep(0.05)
-    mouse_up(button)
-
-
-def super_drag(start_x, start_y, end_x, end_y, button=1, steps=10, delay_ms=10):
-    """
-    Simulate Super+ButtonDrag from start to end.
-    Holds Super key throughout the drag.
-    """
-    move_mouse(start_x, start_y)
-    time.sleep(0.05)
-    key_down("super")
-    time.sleep(0.05)
-    mouse_down(button)
-    time.sleep(0.05)
-    dx = (end_x - start_x) / steps
-    dy = (end_y - start_y) / steps
-    for i in range(1, steps + 1):
-        nx = int(start_x + dx * i)
-        ny = int(start_y + dy * i)
-        move_mouse(nx, ny)
-        time.sleep(delay_ms / 1000.0)
-    time.sleep(0.05)
-    mouse_up(button)
-    time.sleep(0.05)
-    key_up("super")
 
 
 # ── Spawn helper windows ─────────────────────────────────────────────────────

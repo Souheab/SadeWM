@@ -5,7 +5,7 @@ Headless X11 testing tools for debugging and validating the sadewm window manage
 ## Components
 
 - **`helpers.py`** — Python library: X11 event simulation, IPC client, WM state queries
-- **`test_mouse_drag.py`** — Automated test for Mod+Button1 drag (tiled swap + floating move)
+- **`mouse/test_drag.py`** — xdrive-based tests for Mod+Button1 drag (button press, tiled swap, floating move)
 - **`run_tests.sh`** — Shell wrapper: starts Xvfb, launches sadewm, runs tests, collects logs
 
 ## Quick Start
@@ -17,11 +17,11 @@ Headless X11 testing tools for debugging and validating the sadewm window manage
 # Run with debug logging from sadewm
 ./x11-testing/run_tests.sh -d
 
-# Run a single test script against an already-running sadewm
-DISPLAY=:97 python3 x11-testing/test_mouse_drag.py
+# Run a single test file against an already-running sadewm
+DISPLAY=:98 python3 -m pytest x11-testing/mouse/test_drag.py -v
 ```
 
 ## Requirements
 
-- `xvfb`, `xdotool`, `socat`, `python3-xlib`, `x11-apps` (xeyes)
+- `Xvfb`, `python3-xlib`, `x11-apps` (xeyes)
 - Go toolchain (to build sadewm)

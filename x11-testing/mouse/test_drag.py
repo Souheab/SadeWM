@@ -1,9 +1,9 @@
 """
-test_sadewm_mouse.py — xdrive-based tests for sadewm mouse behaviour.
+mouse/test_drag.py — xdrive tests for sadewm Super+drag behaviour.
 
 Tests:
-  1. test_button_press_received — Super+drag triggers movemouse (no "no binding
-     matched" in log + window actually moves when floating)
+  1. test_button_press_received — Super+drag triggers movemouse binding (no
+     "no binding matched" in log + window actually moves when floating)
   2. test_tiled_swap — Super+drag swaps master and slave in tiled layout
   3. test_floating_move — Super+drag moves a floating window
 
@@ -12,17 +12,13 @@ Key notes:
   at their requested size (400x300).  A window toggled from tiled-to-floating
   retains its full-screen tile dimensions, causing snap-clamp to prevent
   movement; the dialog approach avoids this entirely.
-- sadewm INFO log is at ~/.local/share/sadewm/sadewm.log
-- DEBUG messages go to FIFO only; INFO log is checked for failure absence
 
 Run via run_tests.sh (which sets up Xvfb + sadewm), or directly:
-    pytest x11-testing/test_sadewm_mouse.py -v
+    pytest x11-testing/ -v
 """
 
 import os
 import time
-
-import pytest
 
 import helpers  # x11-testing/helpers.py — IPC, WM log helpers
 
@@ -58,10 +54,10 @@ def test_button_press_received(xd):
     """Super+drag on a managed floating window: movemouse binding must fire.
 
     Validates that:
-    - sadewm does NOT log "no binding matched" (INFO level) for a Super+Button1
-      press on a managed window — i.e., the binding matched successfully
+    - sadewm does NOT log "no binding matched" for a Super+Button1 press on a
+      managed window — i.e. the binding matched successfully.
     - The window actually moves after the drag (behavioural confirmation that
-      GrabPointer + MotionNotify processing all worked end-to-end)
+      GrabPointer + MotionNotify processing all worked end-to-end).
 
     Uses type="dialog" so sadewm starts it as floating at its requested size.
     This avoids the snap-clamp that prevents movement of full-screen tiled
@@ -70,8 +66,6 @@ def test_button_press_received(xd):
     helpers.ipc_request("view", mask=4)
     time.sleep(0.3)
 
-    # Dialog windows are auto-floated at requested size (400x300) by sadewm,
-    # so they can be freely dragged without the snap-clamp issue.
     win = xd.new_window(title="test-btn-press", size=(400, 300), type="dialog")
     xd.wait_for_layout()
 
@@ -81,7 +75,6 @@ def test_button_press_received(xd):
 
     log_offset = _log_size()
 
-    # Super+drag 50px right — movemouse should grab and track motion
     with xd.keyboard.held("super"):
         xd.mouse.move(sx, sy)
         time.sleep(0.05)
@@ -123,7 +116,6 @@ def test_tiled_swap(xd):
     win2 = xd.new_window(title="test-tile-2", size=(400, 300))
     xd.wait_for_layout()
 
-    # Sort by X to identify master (leftmost) and slave
     if win1.geometry.x <= win2.geometry.x:
         master, slave = win1, win2
     else:
@@ -166,14 +158,11 @@ def test_floating_move(xd):
     """Super+drag a floating window moves it ~100px right and ~80px down.
 
     Uses type="dialog" so the window is auto-floated at 400x300 from the start.
-    This ensures sadewm places it at its requested size so the snap clamp does
-    not prevent movement when dragging.
     The window displacement must be within 30px of (100, 80).
     """
     helpers.ipc_request("view", mask=2)
     time.sleep(0.3)
 
-    # Dialog window: sadewm auto-floats at 400x300, so dragging 100/80px works
     win = xd.new_window(title="test-float-move", size=(400, 300), type="dialog")
     xd.wait_for_layout()
 
@@ -201,8 +190,3 @@ def test_floating_move(xd):
 
     win.kill()
     time.sleep(0.2)
-
-
-if __name__ == "__main__":
-    import sys
-    sys.exit(pytest.main([__file__, "-v"]))

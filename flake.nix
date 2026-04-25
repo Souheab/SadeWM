@@ -20,6 +20,13 @@
           emoji
         ]);
 
+        # ── dev/testing Python env (not shipped in sadeshell) ─────────────────
+        devPythonEnv = python.withPackages (ps: with ps; [
+          pytest
+          xlib
+          pillow
+        ]);
+
         shellSrc = pkgs.lib.cleanSourceWith {
           src    = ./shell;
           filter = path: _type:
@@ -198,6 +205,8 @@
             python3
             # Shell libraries
             pythonEnv
+            # Dev/testing tools
+            devPythonEnv
             qt6.qtbase
             qt6.qtdeclarative
             qt6.qtsvg
@@ -210,7 +219,7 @@
           shellHook = ''
             # Make sadeshell importable during development
             ln -sfn src shell/sadeshell 2>/dev/null || true
-            export PYTHONPATH="$PWD/shell''${PYTHONPATH:+:$PYTHONPATH}"
+            export PYTHONPATH="$PWD/shell:$PWD/xdrive''${PYTHONPATH:+:$PYTHONPATH}"
 
             echo "sadewm + sadeshell dev shell ready"
             echo "  WM:    cd wm && make"

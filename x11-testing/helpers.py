@@ -10,14 +10,12 @@ Provides:
 import json
 import os
 import socket
-import subprocess
 import time
 
-from Xlib import X, Xatom, display, error
+from Xlib import X, Xatom, display
+
 
 # ── X11 helpers ───────────────────────────────────────────────────────────────
-
-MOD_SUPER = "super"  # Mod4
 
 
 def open_display(display_name=None):
@@ -122,39 +120,6 @@ def send_button_release(dpy, x, y, button=1, state=0):
     )
     root.send_event(evt, event_mask=X.ButtonReleaseMask)
     dpy.sync()
-
-
-# ── Spawn helper windows ─────────────────────────────────────────────────────
-
-
-def spawn_window(name="test", width=200, height=200):
-    """Spawn an xeyes window and return its PID."""
-    proc = subprocess.Popen(
-        ["xeyes", "-geometry", f"{width}x{height}"],
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-    )
-    return proc.pid
-
-
-def spawn_windows(count, delay=0.4):
-    """Spawn multiple test windows and return their PIDs."""
-    pids = []
-    for i in range(count):
-        pids.append(spawn_window(f"test{i}"))
-        time.sleep(delay)
-    return pids
-
-
-def kill_pids(pids):
-    """Kill a list of PIDs."""
-    import signal
-
-    for pid in pids:
-        try:
-            os.kill(pid, signal.SIGTERM)
-        except ProcessLookupError:
-            pass
 
 
 # ── IPC client ────────────────────────────────────────────────────────────────

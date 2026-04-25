@@ -23,5 +23,5 @@ DISPLAY=:98 python3 -m pytest x11-testing/mouse/test_drag.py -v
 
 ## Requirements
 
-- `Xvfb`, `python3-xlib`, `x11-apps` (xeyes)
 - Go toolchain (to build sadewm)
+- `Xvfb` (managed automatically by xdrive's `VirtualDisplay`; must be installed)

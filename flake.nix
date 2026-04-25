@@ -184,9 +184,6 @@
             go
             # Shell Qt wrapping
             qt6.wrapQtAppsHook
-            # Greeter build tools
-            cmake
-            libsForQt5.wrapQtAppsHook
           ];
 
           buildInputs = with pkgs; [
@@ -208,13 +205,6 @@
             libxext
             libpulseaudio
             xcb-util-cursor
-            # Greeter libraries (Qt5 + liblightdm-qt5-3)
-            libsForQt5.qtbase
-            libsForQt5.qtdeclarative
-            libsForQt5.qtquickcontrols2
-            libsForQt5.qtgraphicaleffects
-            libsForQt5.qtsvg
-            lightdm_qt
           ];
 
           shellHook = ''
@@ -225,6 +215,28 @@
             echo "sadewm + sadeshell dev shell ready"
             echo "  WM:    cd wm && make"
             echo "  Shell: python -m sadeshell.main"
+          '';
+        };
+
+        devShells.sadewm-greeter = pkgs.mkShell {
+          nativeBuildInputs = with pkgs; [
+            cmake
+            pkg-config
+            libsForQt5.wrapQtAppsHook
+          ];
+
+          buildInputs = with pkgs; [
+            libsForQt5.qtbase
+            libsForQt5.qtdeclarative
+            libsForQt5.qtquickcontrols2
+            libsForQt5.qtgraphicaleffects
+            libsForQt5.qtsvg
+            lightdm_qt
+          ];
+
+          shellHook = ''
+            echo "sadewm-greeter dev shell ready (Qt5 + LightDM)"
+            echo "  Build: mkdir -p lightdm-qml-greeter/build && cd lightdm-qml-greeter/build && cmake .. && make"
           '';
         };
       }

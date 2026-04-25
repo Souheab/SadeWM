@@ -264,6 +264,20 @@ func (wm *WM) handleEnterNotify(e xproto.EnterNotifyEvent) {
 	} else if c == nil || c == wm.SelMon.Sel {
 		return
 	}
+	// For mouse-movement focus changes, only follow when the pointer has
+	// physically moved over any window first (mouseMoved set by
+	// handleMotionNotify, which now fires for both root and client windows).
+	// This prevents synthetic EnterNotify events — generated when windows are
+	// mapped/unmapped under a stationary pointer during tag switches or
+	// fullscreen toggles — from stealing focus.  Those events produce no
+	// preceding MotionNotify so mouseMoved stays false.  Clicks always focus
+	// directly via handleButtonPress, bypassing this path entirely.
+	if c != nil && !wm.mouseMoved {
+		return
+	}
+	if c != nil {
+		wm.mouseMoved = false
+	}
 	wm.Focus(c)
 }
 
@@ -315,8 +329,9 @@ func (wm *WM) handleMapRequest(e xproto.MapRequestEvent) {
 }
 
 func (wm *WM) handleMotionNotify(e xproto.MotionNotifyEvent) {
-	// Update titlebar button hover state.
+	// Update titlebar button hover state and mark mouse as moved.
 	if c := wm.titlebarToClient(e.Event); c != nil {
+		wm.mouseMoved = true
 		hit := hitTestTitlebar(int(e.EventX), int(e.EventY))
 		newHover := hit
 		if newHover == tbDragArea {
@@ -328,6 +343,12 @@ func (wm *WM) handleMotionNotify(e xproto.MotionNotifyEvent) {
 		}
 		return
 	}
+	// Any mouse movement over a client window or root counts as "mouse moved".
+	// This lets handleEnterNotify distinguish real pointer movement (which is
+	// always preceded by a MotionNotify) from synthetic EnterNotify events
+	// generated when windows are mapped under a stationary pointer (tag
+	// switch, fullscreen toggle) which produce no preceding MotionNotify.
+	wm.mouseMoved = true
 	if e.Event != wm.Root {
 		return
 	}
@@ -497,8 +518,9 @@ func (wm *WM) manage(w xproto.Window, wa *xproto.GetWindowAttributesReply) {
 	wm.updateWMHints(c)
 
 	xproto.ChangeWindowAttributes(wm.Conn, w, xproto.CwEventMask,
-		[]uint32{xproto.EventMaskEnterWindow | xproto.EventMaskFocusChange |
-			xproto.EventMaskPropertyChange | xproto.EventMaskStructureNotify})
+		[]uint32{xproto.EventMaskEnterWindow | xproto.EventMaskPointerMotion |
+			xproto.EventMaskFocusChange | xproto.EventMaskPropertyChange |
+			xproto.EventMaskStructureNotify})
 	wm.GrabButtons(c, false)
 
 	isTransient := transProp != nil && transProp.ValueLen > 0

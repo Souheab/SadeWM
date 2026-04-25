@@ -138,6 +138,14 @@ type WM struct {
 	// SwapClients checks this to avoid replacing/releasing the outer grab.
 	dragging bool
 
+	// mouseMoved is set true when the pointer physically moves over any managed
+	// window or root (via MotionNotify).  handleEnterNotify uses this to
+	// distinguish genuine pointer movement (focus should follow) from synthetic
+	// EnterNotify events generated when windows are mapped/unmapped under a
+	// stationary pointer (e.g. tag switch, fullscreen toggle) — in those cases
+	// no MotionNotify fires so mouseMoved stays false and focus is unchanged.
+	mouseMoved bool
+
 	// Action dispatch table
 	Actions map[string]config.ActionFunc
 

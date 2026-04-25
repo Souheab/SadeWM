@@ -67,6 +67,10 @@ func (wm *WM) Tile(m *Monitor) {
 
 // Arrange show/hides windows and calls the layout function.
 func (wm *WM) Arrange(m *Monitor) {
+	// Window remapping caused by Arrange produces synthetic EnterNotify events
+	// under a stationary pointer.  Reset mouseMoved so those events don't
+	// trigger focus-follows-mouse; the user must move the mouse again.
+	wm.mouseMoved = false
 	if m != nil {
 		wm.showHide(m.Stack)
 	} else {

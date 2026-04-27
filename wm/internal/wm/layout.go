@@ -149,6 +149,12 @@ func (wm *WM) showHide(c *Client) {
 		if (c.Mon.Lt.Arrange == nil || c.IsFloating) && !c.IsFullscreen {
 			wm.Resize(c, c.X, c.Y, c.W, c.H, false)
 		}
+		// Ensure titlebar existence matches current layout/floating state.
+		if (c.IsFloating || c.Mon.Lt.Arrange == nil) && !c.IsFullscreen && !c.IsDock {
+			wm.createTitlebar(c) // no-op if TitleWin already set
+		} else if !c.IsFloating {
+			wm.destroyTitlebar(c) // no-op if TitleWin is 0
+		}
 		wm.showTitlebar(c)
 		wm.showHide(c.SNext)
 	} else {

@@ -53,8 +53,19 @@ func (wm *WM) SetFullscreen(c *Client, fullscreen bool) {
 		c.BW = 0
 		c.IsFloating = true
 		wm.hideTitlebar(c)
+		// Grab pointer so EnterNotify events from the resize get Mode=WhileGrabbed
+		// and are ignored by handleEnterNotify, preventing focus-follows-mouse
+		// from stealing focus during the geometry change.
+		if !wm.dragging {
+			xproto.GrabPointerUnchecked(wm.Conn, false, wm.Root, 0,
+				xproto.GrabModeAsync, xproto.GrabModeAsync,
+				xproto.WindowNone, xproto.CursorNone, xproto.TimeCurrentTime)
+		}
 		wm.resizeClient(c, c.Mon.MX, c.Mon.MY, c.Mon.MW, c.Mon.MH)
 		wm.raiseWindow(c.Win)
+		if !wm.dragging {
+			xproto.UngrabPointer(wm.Conn, xproto.TimeCurrentTime)
+		}
 	} else if !fullscreen && c.IsFullscreen {
 		xproto.ChangeProperty(wm.Conn, xproto.PropModeReplace, c.Win,
 			wm.NetAtom[NetWMState], xproto.AtomAtom, 32, 0, nil)
@@ -65,11 +76,19 @@ func (wm *WM) SetFullscreen(c *Client, fullscreen bool) {
 		c.Y = c.OldY
 		c.W = c.OldW
 		c.H = c.OldH
+		if !wm.dragging {
+			xproto.GrabPointerUnchecked(wm.Conn, false, wm.Root, 0,
+				xproto.GrabModeAsync, xproto.GrabModeAsync,
+				xproto.WindowNone, xproto.CursorNone, xproto.TimeCurrentTime)
+		}
 		wm.resizeClient(c, c.X, c.Y, c.W, c.H)
 		if c.IsFloating {
 			wm.showTitlebar(c)
 		}
 		wm.Arrange(c.Mon)
+		if !wm.dragging {
+			xproto.UngrabPointer(wm.Conn, xproto.TimeCurrentTime)
+		}
 	}
 }
 
@@ -108,5 +127,15 @@ func (wm *WM) ToggleMaximize(arg *config.Arg) {
 	if wm.SelMon.Sel.IsFullscreen {
 		wm.SetFullscreen(wm.SelMon.Sel, false)
 	}
+	// Grab pointer so EnterNotify events from the layout change get
+	// Mode=WhileGrabbed and are ignored by handleEnterNotify.
+	if !wm.dragging {
+		xproto.GrabPointerUnchecked(wm.Conn, false, wm.Root, 0,
+			xproto.GrabModeAsync, xproto.GrabModeAsync,
+			xproto.WindowNone, xproto.CursorNone, xproto.TimeCurrentTime)
+	}
 	wm.Arrange(wm.SelMon)
+	if !wm.dragging {
+		xproto.UngrabPointer(wm.Conn, xproto.TimeCurrentTime)
+	}
 }

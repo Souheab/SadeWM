@@ -138,31 +138,28 @@ func (wm *WM) raiseWindow(win xproto.Window) {
 		[]uint32{uint32(xproto.StackModeAbove)})
 }
 
-func (wm *WM) showHide(c *Client) {
-	if c == nil {
-		return
-	}
-	if c.IsVisible() {
-		xproto.ConfigureWindow(wm.Conn, c.Win,
-			xproto.ConfigWindowX|xproto.ConfigWindowY,
-			[]uint32{uint32(c.X), uint32(c.Y)})
-		if (c.Mon.Lt.Arrange == nil || c.IsFloating) && !c.IsFullscreen {
-			wm.Resize(c, c.X, c.Y, c.W, c.H, false)
+func (wm *WM) showHide(head *Client) {
+	for c := head; c != nil; c = c.SNext {
+		if c.IsVisible() {
+			xproto.ConfigureWindow(wm.Conn, c.Win,
+				xproto.ConfigWindowX|xproto.ConfigWindowY,
+				[]uint32{uint32(c.X), uint32(c.Y)})
+			if (c.Mon.Lt.Arrange == nil || c.IsFloating) && !c.IsFullscreen {
+				wm.Resize(c, c.X, c.Y, c.W, c.H, false)
+			}
+			// Ensure titlebar existence matches current layout/floating state.
+			if (c.IsFloating || c.Mon.Lt.Arrange == nil) && !c.IsFullscreen && !c.IsDock {
+				wm.createTitlebar(c) // no-op if TitleWin already set
+			} else if !c.IsFloating {
+				wm.destroyTitlebar(c) // no-op if TitleWin is 0
+			}
+			wm.showTitlebar(c)
+		} else {
+			xproto.ConfigureWindow(wm.Conn, c.Win,
+				xproto.ConfigWindowX,
+				[]uint32{uint32(c.Width() * -2)})
+			wm.hideTitlebar(c)
 		}
-		// Ensure titlebar existence matches current layout/floating state.
-		if (c.IsFloating || c.Mon.Lt.Arrange == nil) && !c.IsFullscreen && !c.IsDock {
-			wm.createTitlebar(c) // no-op if TitleWin already set
-		} else if !c.IsFloating {
-			wm.destroyTitlebar(c) // no-op if TitleWin is 0
-		}
-		wm.showTitlebar(c)
-		wm.showHide(c.SNext)
-	} else {
-		wm.showHide(c.SNext)
-		xproto.ConfigureWindow(wm.Conn, c.Win,
-			xproto.ConfigWindowX,
-			[]uint32{uint32(c.Width() * -2)})
-		wm.hideTitlebar(c)
 	}
 }
 

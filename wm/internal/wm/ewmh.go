@@ -17,6 +17,20 @@ func (wm *WM) getAtomProp(c *Client, prop xproto.Atom) xproto.Atom {
 	return xproto.Atom(getUint32(reply.Value))
 }
 
+// getAtomProps returns all atoms stored in a property (up to maxN).
+func (wm *WM) getAtomProps(c *Client, prop xproto.Atom, maxN uint32) []xproto.Atom {
+	reply, err := xproto.GetProperty(wm.Conn, false, c.Win, prop,
+		xproto.AtomAtom, 0, maxN).Reply()
+	if err != nil || reply.ValueLen == 0 {
+		return nil
+	}
+	atoms := make([]xproto.Atom, reply.ValueLen)
+	for i := uint32(0); i < reply.ValueLen; i++ {
+		atoms[i] = xproto.Atom(getUint32(reply.Value[i*4:]))
+	}
+	return atoms
+}
+
 func (wm *WM) getState(w xproto.Window) int {
 	reply, err := xproto.GetProperty(wm.Conn, false, w,
 		wm.WMAtom[WMState], wm.WMAtom[WMState], 0, 2).Reply()
@@ -78,15 +92,16 @@ func (wm *WM) sendEvent(c *Client, proto xproto.Atom) bool {
 
 // updateWindowType checks EWMH window type and state atoms.
 func (wm *WM) updateWindowType(c *Client) {
-	state := wm.getAtomProp(c, wm.NetAtom[NetWMState])
+	states := wm.getAtomProps(c, wm.NetAtom[NetWMState], 32)
+	for _, state := range states {
+		if state == wm.NetAtom[NetWMFullscreen] {
+			wm.SetFullscreen(c, true)
+		}
+		if state == wm.NetAtom[NetWMStateAbove] || state == wm.NetAtom[NetWMStateStaysOnTop] {
+			wm.SetAbove(c, true)
+		}
+	}
 	wtype := wm.getAtomProp(c, wm.NetAtom[NetWMWindowType])
-
-	if state == wm.NetAtom[NetWMFullscreen] {
-		wm.SetFullscreen(c, true)
-	}
-	if state == wm.NetAtom[NetWMStateAbove] || state == wm.NetAtom[NetWMStateStaysOnTop] {
-		wm.SetAbove(c, true)
-	}
 	if wm.isFloatingWindowType(wtype) {
 		c.IsFloating = true
 	}
@@ -231,14 +246,23 @@ func (wm *WM) updateTitle(c *Client) {
 
 // updateClientList rebuilds _NET_CLIENT_LIST.
 func (wm *WM) updateClientList() {
-	xproto.DeleteProperty(wm.Conn, wm.Root, wm.NetAtom[NetClientList])
+	// Count clients to pre-allocate.
+	count := 0
 	for m := wm.Mons; m != nil; m = m.Next {
 		for c := m.Clients; c != nil; c = c.Next {
-			xproto.ChangeProperty(wm.Conn, xproto.PropModeAppend, wm.Root,
-				wm.NetAtom[NetClientList], xproto.AtomWindow, 32, 1,
-				uint32ToBytes(uint32(c.Win)))
+			count++
 		}
 	}
+	data := make([]byte, count*4)
+	i := 0
+	for m := wm.Mons; m != nil; m = m.Next {
+		for c := m.Clients; c != nil; c = c.Next {
+			putUint32(data[i*4:], uint32(c.Win))
+			i++
+		}
+	}
+	xproto.ChangeProperty(wm.Conn, xproto.PropModeReplace, wm.Root,
+		wm.NetAtom[NetClientList], xproto.AtomWindow, 32, uint32(count), data)
 }
 
 // setUrgent sets the urgency hint on a window.

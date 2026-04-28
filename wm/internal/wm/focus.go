@@ -217,7 +217,7 @@ func (wm *WM) getLeftClient(c *Client) *Client {
 	best := c
 	bestYDev := 999999
 	for iter := wm.NextTiled(wm.SelMon.Clients); iter != nil; iter = wm.NextTiled(iter.Next) {
-		if iter.X >= c.X || !c.IsVisible() {
+		if iter.X >= c.X || !iter.IsVisible() {
 			continue
 		}
 		yDev := abs(c.Y - iter.Y)
@@ -237,7 +237,7 @@ func (wm *WM) getRightClient(c *Client) *Client {
 	best := c
 	bestYDev := 999999
 	for iter := wm.NextTiled(wm.SelMon.Clients); iter != nil; iter = wm.NextTiled(iter.Next) {
-		if iter == c {
+		if iter == c || !iter.IsVisible() {
 			continue
 		}
 		if iter.X > c.X {

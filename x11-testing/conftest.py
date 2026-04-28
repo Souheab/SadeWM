@@ -53,6 +53,7 @@ def xd():
 
     env = os.environ.copy()
     env["DISPLAY"] = vd.name
+    os.environ["DISPLAY"] = vd.name  # also update current process so helpers.get_socket_path() resolves correctly
 
     log_fh = open(log_path, "w")
     wm_proc = subprocess.Popen(

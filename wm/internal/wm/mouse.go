@@ -156,6 +156,8 @@ func (wm *WM) MoveMouse(arg *config.Arg) {
 	wm.dragging = true
 	defer func() { wm.dragging = false }()
 
+	var lastSwapTarget *Client // guard: only swap when entering a NEW tiled window
+
 	for {
 		ev := wm.nextDragEvent()
 		if ev == nil {
@@ -192,15 +194,24 @@ func (wm *WM) MoveMouse(arg *config.Arg) {
 			ny = wm.snapY(ny, ocy, c.Height())
 
 			if !c.IsFloating && wm.SelMon.Lt.Arrange != nil {
-				// Tiled mode: swap with the client under the cursor.
+				// Tiled mode: swap with the client under the cursor, but only
+				// once per window entry to prevent oscillation while the cursor
+				// stays inside the same window across multiple MotionNotify events.
 				m := wm.winToMon(c.Win)
+				var target *Client
 				for t := m.Clients; t != nil; t = t.Next {
 					if t != c && !t.IsFloating && t.IsVisible() &&
-						int(e.RootX) >= t.X && int(e.RootX) <= t.X+t.W &&
-						int(e.RootY) >= t.Y && int(e.RootY) <= t.Y+t.H {
-						wm.SwapClients(c, t)
+						int(e.RootX) >= t.X && int(e.RootX) < t.X+t.W &&
+						int(e.RootY) >= t.Y && int(e.RootY) < t.Y+t.H {
+						target = t
 						break
 					}
+				}
+				if target != nil && target != lastSwapTarget {
+					wm.SwapClients(c, target)
+					lastSwapTarget = target
+				} else if target == nil {
+					lastSwapTarget = nil
 				}
 			} else {
 				wm.Resize(c, nx, ny, c.W, c.H, true)

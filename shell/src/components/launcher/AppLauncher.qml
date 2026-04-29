@@ -65,6 +65,18 @@ Window {
         }
     }
 
+    // Refresh the visible list whenever the app catalogue is rescanned
+    // (e.g. a new .desktop file was installed while the shell is running).
+    Connections {
+        target: AppService
+        function onAppsChanged() {
+            if (launcher.visible) {
+                launcher.filteredApps = AppService.search(searchBox.text)
+                launcher.selectedIndex = 0
+            }
+        }
+    }
+
     // Dismiss on click outside the card
     MouseArea {
         anchors.fill: parent

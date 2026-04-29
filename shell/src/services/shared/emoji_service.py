@@ -1,6 +1,7 @@
 """EmojiService — emoji search and clipboard copy."""
 
 import subprocess
+import threading
 
 try:
     import emoji as _emoji_lib
@@ -68,6 +69,9 @@ class EmojiService(QObject):
 
     def __init__(self, parent=None):
         super().__init__(parent)
+        # Pre-warm the emoji list in the background so the first open() call
+        # is instant — _get_emoji_list() is safe to call from any thread.
+        threading.Thread(target=_get_emoji_list, daemon=True).start()
 
     @Slot(str, result="QVariantList")
     def search(self, query: str) -> list:

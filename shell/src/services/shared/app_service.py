@@ -5,8 +5,12 @@ import shutil
 import subprocess
 import configparser
 import glob
+import threading
 
-from PySide6.QtCore import QObject, Property, Signal, Slot
+from PySide6.QtCore import (
+    QObject, Property, Signal, Slot,
+    QFileSystemWatcher, QTimer, QMetaObject, Qt, Q_ARG,
+)
 
 
 # True when sadeshell is running as a systemd user service unit.
@@ -129,9 +133,9 @@ def _resolve_icon(icon_name):
     return ""
 
 
-def _parse_desktop_files():
-    """Parse .desktop files from standard XDG directories."""
-    dirs = []
+def _apps_dirs() -> list[str]:
+    """Return the list of XDG applications directories that exist on disk."""
+    dirs: list[str] = []
     xdg_data = os.environ.get("XDG_DATA_DIRS", "/usr/share:/usr/local/share")
     for d in xdg_data.split(":"):
         app_dir = os.path.join(d, "applications")
@@ -139,8 +143,17 @@ def _parse_desktop_files():
             dirs.append(app_dir)
 
     home_apps = os.path.expanduser("~/.local/share/applications")
-    if os.path.isdir(home_apps):
+    # Ensure the user dir exists so we can watch it for new files even before
+    # any .desktop files are installed there.
+    os.makedirs(home_apps, exist_ok=True)
+    if home_apps not in dirs:
         dirs.insert(0, home_apps)
+    return dirs
+
+
+def _parse_desktop_files():
+    """Parse .desktop files from standard XDG directories."""
+    dirs = _apps_dirs()
 
     apps = []
     seen = set()
@@ -195,7 +208,51 @@ class AppService(QObject):
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self._apps = _parse_desktop_files()
+        self._apps: list = []
+
+        # Watch XDG application dirs for new/removed .desktop files.
+        self._watcher = QFileSystemWatcher(self)
+        watched_dirs = _apps_dirs()
+        self._watcher.addPaths(watched_dirs)
+        self._watcher.directoryChanged.connect(self._on_dir_changed)
+
+        # Debounce rapid successive filesystem events (e.g. a package manager
+        # writing several .desktop files at once).
+        self._rescan_timer = QTimer(self)
+        self._rescan_timer.setSingleShot(True)
+        self._rescan_timer.setInterval(500)
+        self._rescan_timer.timeout.connect(self._start_rescan)
+
+        # Initial load happens in the background so __init__ returns immediately
+        # and does not block the Qt main thread during startup.
+        self._start_rescan()
+
+    @Slot(str)
+    def _on_dir_changed(self, _path: str) -> None:
+        """Called by QFileSystemWatcher when an applications/ dir changes."""
+        # Restart the debounce timer so we batch rapid events.
+        self._rescan_timer.start()
+
+    @Slot()
+    def _start_rescan(self) -> None:
+        """Spawn a daemon thread to re-scan desktop files off the main thread."""
+        threading.Thread(target=self._do_scan, daemon=True).start()
+
+    def _do_scan(self) -> None:
+        """Worker: parse desktop files then schedule _set_apps on the main thread."""
+        result = _parse_desktop_files()
+        QMetaObject.invokeMethod(
+            self,
+            "_set_apps",
+            Qt.ConnectionType.QueuedConnection,
+            Q_ARG("QVariantList", result),
+        )
+
+    @Slot("QVariantList")
+    def _set_apps(self, apps: list) -> None:
+        """Main-thread slot: update the app list and notify QML."""
+        self._apps = apps
+        self.appsChanged.emit()
 
     @Property("QVariantList", notify=appsChanged)
     def apps(self):

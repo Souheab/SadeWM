@@ -1,0 +1,9 @@
+# github.com/BurntSushi/xgb v0.0.0-20210121224620-deaf085860bc
+## explicit
+github.com/BurntSushi/xgb
+github.com/BurntSushi/xgb/composite
+github.com/BurntSushi/xgb/damage
+github.com/BurntSushi/xgb/render
+github.com/BurntSushi/xgb/shape
+github.com/BurntSushi/xgb/xfixes
+github.com/BurntSushi/xgb/xproto

@@ -4,9 +4,9 @@ import (
 	"fmt"
 	"log"
 
-	"github.com/BurntSushi/xgb"
-	"github.com/BurntSushi/xgb/render"
-	"github.com/BurntSushi/xgb/xproto"
+	"github.com/jezek/xgb"
+	"github.com/jezek/xgb/render"
+	"github.com/jezek/xgb/xproto"
 )
 
 func (c *Compositor) initRootBackgroundTracking() error {

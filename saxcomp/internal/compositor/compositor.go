@@ -4,13 +4,13 @@ import (
 	"fmt"
 	"log"
 
-	"github.com/BurntSushi/xgb"
-	"github.com/BurntSushi/xgb/composite"
-	"github.com/BurntSushi/xgb/damage"
-	"github.com/BurntSushi/xgb/render"
-	"github.com/BurntSushi/xgb/shape"
-	"github.com/BurntSushi/xgb/xfixes"
-	"github.com/BurntSushi/xgb/xproto"
+	"github.com/jezek/xgb"
+	"github.com/jezek/xgb/composite"
+	"github.com/jezek/xgb/damage"
+	"github.com/jezek/xgb/render"
+	"github.com/jezek/xgb/shape"
+	"github.com/jezek/xgb/xfixes"
+	"github.com/jezek/xgb/xproto"
 )
 
 // Compositor is the main state for saxcomp.

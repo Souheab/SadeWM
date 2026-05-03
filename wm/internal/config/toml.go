@@ -6,7 +6,7 @@ import (
 	"strings"
 
 	"github.com/BurntSushi/toml"
-	"github.com/BurntSushi/xgb/xproto"
+	"github.com/jezek/xgb/xproto"
 )
 
 // TOMLConfig mirrors the TOML file structure.

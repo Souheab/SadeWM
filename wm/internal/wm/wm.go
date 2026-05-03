@@ -4,9 +4,9 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/BurntSushi/xgb"
-	"github.com/BurntSushi/xgb/xproto"
-	"github.com/BurntSushi/xgbutil"
+	"github.com/jezek/xgb"
+	"github.com/jezek/xgb/xproto"
+	"github.com/jezek/xgbutil"
 
 	"github.com/sadewm/sadewm/wm/internal/config"
 	"github.com/sadewm/sadewm/wm/internal/ipc"

@@ -1,7 +1,7 @@
 package config
 
 import (
-	"github.com/BurntSushi/xgb/xproto"
+	"github.com/jezek/xgb/xproto"
 )
 
 const (

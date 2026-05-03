@@ -1,7 +1,7 @@
 package wm
 
 import (
-	"github.com/BurntSushi/xgb/xproto"
+	"github.com/jezek/xgb/xproto"
 	"github.com/sadewm/sadewm/wm/internal/config"
 	"github.com/sadewm/sadewm/wm/internal/util"
 )

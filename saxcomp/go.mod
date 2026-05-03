@@ -2,4 +2,4 @@ module github.com/sadewm/sadewm/saxcomp
 
 go 1.22
 
-require github.com/BurntSushi/xgb v0.0.0-20210121224620-deaf085860bc
+require github.com/jezek/xgb v1.3.1

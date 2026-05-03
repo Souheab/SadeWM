@@ -1,7 +1,7 @@
 package wm
 
 import (
-	"github.com/BurntSushi/xgb/xproto"
+	"github.com/jezek/xgb/xproto"
 )
 
 // updateGeom discovers monitors via Xinerama or falls back to root geometry.

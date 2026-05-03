@@ -197,7 +197,7 @@ import (
 	"os"
 	"unsafe"
 
-	"github.com/BurntSushi/xgb/xproto"
+	"github.com/jezek/xgb/xproto"
 
 	"github.com/sadewm/sadewm/wm/internal/config"
 )

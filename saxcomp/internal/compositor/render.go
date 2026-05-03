@@ -3,8 +3,8 @@ package compositor
 import (
 	"log"
 
-	"github.com/BurntSushi/xgb/render"
-	"github.com/BurntSushi/xgb/xproto"
+	"github.com/jezek/xgb/render"
+	"github.com/jezek/xgb/xproto"
 )
 
 // repaint composites all mapped windows onto the overlay in stack order.

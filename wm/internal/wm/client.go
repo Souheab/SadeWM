@@ -3,9 +3,9 @@ package wm
 import (
 	"unsafe"
 
-	"github.com/BurntSushi/xgb"
-	"github.com/BurntSushi/xgb/xproto"
-	"github.com/BurntSushi/xgbutil"
+	"github.com/jezek/xgb"
+	"github.com/jezek/xgb/xproto"
+	"github.com/jezek/xgbutil"
 
 	"github.com/sadewm/sadewm/wm/internal/config"
 )

@@ -138,23 +138,22 @@ func (wm *WM) handleConfigureRequest(e xproto.ConfigureRequestEvent) {
 		if c.IsDock {
 			return
 		}
-		if e.ValueMask&xproto.ConfigWindowBorderWidth != 0 {
-			c.BW = int(e.BorderWidth)
-		} else if c.IsFloating || wm.SelMon.Lt.Arrange == nil {
+		valueMask := e.ValueMask &^ xproto.ConfigWindowBorderWidth
+		if c.IsFloating || wm.SelMon.Lt.Arrange == nil {
 			m := c.Mon
-			if e.ValueMask&xproto.ConfigWindowX != 0 {
+			if valueMask&xproto.ConfigWindowX != 0 {
 				c.OldX = c.X
 				c.X = m.MX + int(e.X)
 			}
-			if e.ValueMask&xproto.ConfigWindowY != 0 {
+			if valueMask&xproto.ConfigWindowY != 0 {
 				c.OldY = c.Y
 				c.Y = m.MY + int(e.Y)
 			}
-			if e.ValueMask&xproto.ConfigWindowWidth != 0 {
+			if valueMask&xproto.ConfigWindowWidth != 0 {
 				c.OldW = c.W
 				c.W = int(e.Width)
 			}
-			if e.ValueMask&xproto.ConfigWindowHeight != 0 {
+			if valueMask&xproto.ConfigWindowHeight != 0 {
 				c.OldH = c.H
 				c.H = int(e.Height)
 			}
@@ -164,8 +163,8 @@ func (wm *WM) handleConfigureRequest(e xproto.ConfigureRequestEvent) {
 			if (c.Y+c.H) > m.MY+m.MH && c.IsFloating {
 				c.Y = m.MY + (m.MH/2 - c.Height()/2)
 			}
-			if (e.ValueMask&(xproto.ConfigWindowX|xproto.ConfigWindowY)) != 0 &&
-				(e.ValueMask&(xproto.ConfigWindowWidth|xproto.ConfigWindowHeight)) == 0 {
+			if (valueMask&(xproto.ConfigWindowX|xproto.ConfigWindowY)) != 0 &&
+				(valueMask&(xproto.ConfigWindowWidth|xproto.ConfigWindowHeight)) == 0 {
 				wm.configure(c)
 			}
 			if c.IsVisible() {
@@ -488,7 +487,7 @@ func (wm *WM) manage(w xproto.Window, wa *xproto.GetWindowAttributesReply) {
 	}
 
 	xproto.ConfigureWindow(wm.Conn, w,
-		xproto.ConfigWindowBorderWidth, []uint32{uint32(c.BW)})
+		xproto.ConfigWindowBorderWidth, []uint32{0})
 	xproto.ChangeWindowAttributes(wm.Conn, w,
 		xproto.CwBorderPixel, []uint32{wm.BorderNorm})
 	wm.configure(c)
@@ -545,6 +544,7 @@ func (wm *WM) unmanage(c *Client, destroyed bool) {
 	m := c.Mon
 
 	wm.destroyTitlebar(c)
+	wm.destroyBorderWindow(c)
 	wm.detach(c)
 	wm.detachStack(c)
 

@@ -171,6 +171,7 @@ func (wm *WM) ToggleFloating(arg *config.Arg) {
 	wasFloating := c.IsFloating
 	c.IsFloating = !c.IsFloating || c.IsFixed
 	if c.IsFloating {
+		wm.destroyBorderWindow(c)
 		wm.Resize(c, c.X, c.Y, c.W, c.H, false)
 		if !wasFloating {
 			wm.createTitlebar(c)
@@ -385,16 +386,18 @@ func (wm *WM) ReloadConfig(arg *config.Arg) {
 		}
 
 		for c := m.Clients; c != nil; c = c.Next {
-			if c.TitleWin != 0 {
-				// Client has a titlebar — keep border at 0 and redraw.
+			switch {
+			case c.TitleWin != 0 || c.IsFloating || c.IsFullscreen || c.IsDock || m.Lt.Arrange == nil:
 				c.BW = 0
 				xproto.ConfigureWindow(wm.Conn, c.Win,
 					xproto.ConfigWindowBorderWidth, []uint32{0})
+				wm.destroyBorderWindow(c)
 				wm.drawTitlebar(c)
-			} else {
+			default:
 				c.BW = int(config.BorderPx)
 				xproto.ConfigureWindow(wm.Conn, c.Win,
-					xproto.ConfigWindowBorderWidth, []uint32{uint32(c.BW)})
+					xproto.ConfigWindowBorderWidth, []uint32{0})
+				wm.ensureBorderWindow(c)
 			}
 		}
 

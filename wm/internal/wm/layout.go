@@ -118,7 +118,12 @@ func (wm *WM) Restack(m *Monitor) {
 						xproto.ConfigWindowStackMode,
 						[]uint32{uint32(xproto.StackModeBelow)})
 				}
-				sibling = c.Win
+				if c.BorderWin != 0 {
+					wm.restackBorderWindow(c)
+					sibling = c.BorderWin
+				} else {
+					sibling = c.Win
+				}
 			}
 		}
 	}
@@ -127,6 +132,7 @@ func (wm *WM) Restack(m *Monitor) {
 	for c := m.Stack; c != nil; c = c.SNext {
 		if c.IsVisible() && (c.IsFloating || c.IsAbove) {
 			wm.raiseWindow(c.Win)
+			wm.restackBorderWindow(c)
 			wm.raiseTitlebar(c)
 		}
 	}
@@ -147,18 +153,21 @@ func (wm *WM) showHide(head *Client) {
 			if (c.Mon.Lt.Arrange == nil || c.IsFloating) && !c.IsFullscreen {
 				wm.Resize(c, c.X, c.Y, c.W, c.H, false)
 			}
-			// Ensure titlebar existence matches current layout/floating state.
 			if (c.IsFloating || c.Mon.Lt.Arrange == nil) && !c.IsFullscreen && !c.IsDock {
-				wm.createTitlebar(c) // no-op if TitleWin already set
-			} else if !c.IsFloating {
-				wm.destroyTitlebar(c) // no-op if TitleWin is 0
+				wm.destroyBorderWindow(c)
+				wm.createTitlebar(c)
+				wm.showTitlebar(c)
+			} else {
+				wm.destroyTitlebar(c)
+				wm.ensureBorderWindow(c)
+				wm.showBorderWindow(c)
 			}
-			wm.showTitlebar(c)
 		} else {
 			xproto.ConfigureWindow(wm.Conn, c.Win,
 				xproto.ConfigWindowX,
 				[]uint32{uint32(c.Width() * -2)})
 			wm.hideTitlebar(c)
+			wm.hideBorderWindow(c)
 		}
 	}
 }
@@ -184,8 +193,9 @@ func (wm *WM) resizeClient(c *Client, x, y, w, h int) {
 		xproto.ConfigWindowX|xproto.ConfigWindowY|
 			xproto.ConfigWindowWidth|xproto.ConfigWindowHeight|
 			xproto.ConfigWindowBorderWidth,
-		[]uint32{uint32(x), uint32(y), uint32(w), uint32(h), uint32(c.BW)})
+		[]uint32{uint32(x), uint32(y), uint32(w), uint32(h), 0})
 	wm.configure(c)
+	wm.moveBorderWindow(c)
 	wm.moveTitlebar(c)
 }
 

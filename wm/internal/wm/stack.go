@@ -52,6 +52,7 @@ func (wm *WM) SetFullscreen(c *Client, fullscreen bool) {
 		c.OldBW = c.BW
 		c.BW = 0
 		c.IsFloating = true
+		wm.destroyBorderWindow(c)
 		wm.hideTitlebar(c)
 		// Grab pointer so EnterNotify events from the resize get Mode=WhileGrabbed
 		// and are ignored by handleEnterNotify, preventing focus-follows-mouse
@@ -100,6 +101,7 @@ func (wm *WM) SetAbove(c *Client, above bool) {
 			uint32ToBytes(uint32(wm.NetAtom[NetWMStateAbove])))
 		c.IsAbove = true
 		wm.raiseWindow(c.Win)
+		wm.restackBorderWindow(c)
 		wm.raiseTitlebar(c)
 	} else if !above && c.IsAbove {
 		xproto.ChangeProperty(wm.Conn, xproto.PropModeReplace, c.Win,

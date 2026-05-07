@@ -256,6 +256,7 @@ func (wm *WM) createTitlebar(c *Client) {
 	if c.TitleWin != 0 || c.IsDock || c.IsFullscreen {
 		return
 	}
+	wm.destroyBorderWindow(c)
 	if wm.XlibDpy == nil {
 		return
 	}
@@ -316,10 +317,13 @@ func (wm *WM) destroyTitlebar(c *Client) {
 	delete(wm.TitlebarMap, c.TitleWin)
 	xproto.DestroyWindow(wm.Conn, c.TitleWin)
 	c.TitleWin = 0
-	// Restore the client border.
-	c.BW = int(config.BorderPx)
+	if !c.IsDock && !c.IsFloating && !c.IsFullscreen && c.Mon != nil && c.Mon.Lt.Arrange != nil {
+		c.BW = int(config.BorderPx)
+	} else {
+		c.BW = 0
+	}
 	xproto.ConfigureWindow(wm.Conn, c.Win,
-		xproto.ConfigWindowBorderWidth, []uint32{uint32(c.BW)})
+		xproto.ConfigWindowBorderWidth, []uint32{0})
 }
 
 // ── Geometry helpers ──────────────────────────────────────────────────────────

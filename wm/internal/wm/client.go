@@ -45,6 +45,7 @@ type Client struct {
 	Win   xproto.Window
 
 	// Titlebar (non-zero only for floating windows)
+	BorderWin  xproto.Window
 	TitleWin   xproto.Window
 	TitleHover titleButton // button currently hovered (tbNone when none)
 }

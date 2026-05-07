@@ -30,6 +30,7 @@ func (wm *WM) Focus(c *Client) {
 		wm.GrabButtons(c, true)
 		xproto.ChangeWindowAttributes(wm.Conn, c.Win,
 			xproto.CwBorderPixel, []uint32{wm.BorderSel})
+		wm.setBorderWindowColor(c, wm.BorderSel)
 		wm.setFocus(c)
 		wm.drawTitlebar(c)
 	} else {
@@ -49,6 +50,7 @@ func (wm *WM) Unfocus(c *Client, setFocusToRoot bool) {
 	wm.GrabButtons(c, false)
 	xproto.ChangeWindowAttributes(wm.Conn, c.Win,
 		xproto.CwBorderPixel, []uint32{wm.BorderNorm})
+	wm.setBorderWindowColor(c, wm.BorderNorm)
 	if setFocusToRoot {
 		xproto.SetInputFocus(wm.Conn, xproto.InputFocusPointerRoot,
 			wm.Root, xproto.TimeCurrentTime)

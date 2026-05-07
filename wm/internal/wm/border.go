@@ -1,6 +1,9 @@
 package wm
 
-import "github.com/jezek/xgb/xproto"
+import (
+	"github.com/jezek/xgb/shape"
+	"github.com/jezek/xgb/xproto"
+)
 
 func (wm *WM) usesBorderFrame(c *Client) bool {
 	return c != nil && c.BW > 0 && !c.IsDock && !c.IsFloating && !c.IsFullscreen &&
@@ -26,6 +29,27 @@ func (wm *WM) borderPixelFor(c *Client) uint32 {
 		return wm.BorderSel
 	}
 	return wm.BorderNorm
+}
+
+func (wm *WM) applyBorderShape(c *Client, w, h int) {
+	if c == nil || c.BorderWin == 0 || !wm.ShapeAvailable {
+		return
+	}
+	bw := c.BW
+	if bw <= 0 || w <= 0 || h <= 0 {
+		return
+	}
+	rects := []xproto.Rectangle{{X: 0, Y: 0, Width: uint16(w), Height: uint16(h)}}
+	if w > 2*bw && h > 2*bw {
+		innerH := h - 2*bw
+		rects = []xproto.Rectangle{
+			{X: 0, Y: 0, Width: uint16(w), Height: uint16(bw)},
+			{X: 0, Y: int16(h - bw), Width: uint16(w), Height: uint16(bw)},
+			{X: 0, Y: int16(bw), Width: uint16(bw), Height: uint16(innerH)},
+			{X: int16(w - bw), Y: int16(bw), Width: uint16(bw), Height: uint16(innerH)},
+		}
+	}
+	_ = shape.RectanglesChecked(wm.Conn, shape.SoSet, shape.SkBounding, 0, c.BorderWin, 0, 0, rects).Check()
 }
 
 func (wm *WM) paintBorderWindow(c *Client) {
@@ -98,6 +122,7 @@ func (wm *WM) moveBorderWindow(c *Client) {
 		return
 	}
 	x, y, w, h := wm.borderGeom(c)
+	wm.applyBorderShape(c, w, h)
 	xproto.ConfigureWindow(wm.Conn, c.BorderWin,
 		xproto.ConfigWindowX|xproto.ConfigWindowY|
 			xproto.ConfigWindowWidth|xproto.ConfigWindowHeight,

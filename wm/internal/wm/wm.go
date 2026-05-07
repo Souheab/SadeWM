@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/jezek/xgb"
+	"github.com/jezek/xgb/shape"
 	"github.com/jezek/xgb/xproto"
 	"github.com/jezek/xgbutil"
 
@@ -41,6 +42,9 @@ func (wm *WM) Setup() {
 		util.Die("sadewm: cannot open display: %v", err)
 	}
 	wm.Conn = wm.X.Conn()
+	if err := shape.Init(wm.Conn); err == nil {
+		wm.ShapeAvailable = true
+	}
 
 	// Check for another WM
 	wm.checkOtherWM()

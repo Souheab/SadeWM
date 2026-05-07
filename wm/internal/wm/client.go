@@ -144,8 +144,9 @@ type WM struct {
 	Actions map[string]config.ActionFunc
 
 	// Cairo titlebar support
-	XlibDpy     unsafe.Pointer            // *C.Display – opened once for Cairo
-	TitlebarMap map[xproto.Window]*Client // titlebar win → owning client
+	XlibDpy        unsafe.Pointer // *C.Display – opened once for Cairo
+	ShapeAvailable bool
+	TitlebarMap    map[xproto.Window]*Client // titlebar win → owning client
 }
 
 // Atom enums

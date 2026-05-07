@@ -531,6 +531,8 @@ func (wm *WM) manage(w xproto.Window, wa *xproto.GetWindowAttributesReply) {
 	c.Mon.Sel = c
 	wm.Arrange(c.Mon)
 	xproto.MapWindow(wm.Conn, c.Win)
+	c.HasMapped = true
+	wm.showBorderWindow(c)
 	wm.Focus(nil)
 
 	// Create titlebar for floating windows.

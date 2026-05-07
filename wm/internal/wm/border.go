@@ -67,8 +67,6 @@ func (wm *WM) createBorderWindow(c *Client) {
 		xproto.ConfigWindowBorderWidth, []uint32{0})
 	wm.moveBorderWindow(c)
 	wm.restackBorderWindow(c)
-	xproto.MapWindow(wm.Conn, c.BorderWin)
-	wm.paintBorderWindow(c)
 }
 
 func (wm *WM) destroyBorderWindow(c *Client) {
@@ -93,7 +91,6 @@ func (wm *WM) ensureBorderWindow(c *Client) {
 	wm.moveBorderWindow(c)
 	wm.setBorderWindowColor(c, wm.borderPixelFor(c))
 	wm.restackBorderWindow(c)
-	wm.showBorderWindow(c)
 }
 
 func (wm *WM) moveBorderWindow(c *Client) {

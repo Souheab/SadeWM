@@ -160,7 +160,9 @@ func (wm *WM) showHide(head *Client) {
 			} else {
 				wm.destroyTitlebar(c)
 				wm.ensureBorderWindow(c)
-				wm.showBorderWindow(c)
+				if c.HasMapped {
+					wm.showBorderWindow(c)
+				}
 			}
 		} else {
 			xproto.ConfigureWindow(wm.Conn, c.Win,

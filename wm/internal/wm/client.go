@@ -37,6 +37,7 @@ type Client struct {
 	Minimized                                 bool
 	IsAbove                                   bool
 	IsDock                                    bool
+	HasMapped                                 bool
 
 	// Linked list pointers
 	Next  *Client

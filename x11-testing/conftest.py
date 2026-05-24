@@ -77,3 +77,41 @@ def xd():
             wm_proc.wait()
         log_fh.close()
         vd.stop()
+
+
+@pytest.fixture
+def isolated_wm_proc(monkeypatch):
+    """Function-scoped sadewm process for tests that intentionally exit the WM."""
+    wm_bin = os.environ.get("SADEWM_BIN")
+    if not wm_bin:
+        pytest.skip("SADEWM_BIN is required for isolated WM lifecycle tests")
+
+    log_path = os.environ.get("SADEWM_LOG", "/tmp/sadewm_isolated.log")
+    vd = VirtualDisplay(width=1280, height=800)
+    vd.start()
+
+    env = os.environ.copy()
+    env["DISPLAY"] = vd.name
+    monkeypatch.setenv("DISPLAY", vd.name)
+
+    log_fh = open(log_path, "w")
+    proc = subprocess.Popen(
+        [wm_bin, "-d"],
+        env=env,
+        stdout=log_fh,
+        stderr=subprocess.STDOUT,
+    )
+    time.sleep(1.0)
+
+    try:
+        yield proc
+    finally:
+        if proc.poll() is None:
+            proc.terminate()
+            try:
+                proc.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+                proc.wait()
+        log_fh.close()
+        vd.stop()

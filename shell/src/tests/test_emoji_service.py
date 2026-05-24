@@ -44,7 +44,7 @@ if "PySide6" not in sys.modules:
 # Now we can import the service (emoji lib must already be in sys.path)
 # ---------------------------------------------------------------------------
 # Add the shell/src tree so the import works without pip install
-_src = os.path.join(os.path.dirname(__file__), "..", "..", "..")
+_src = os.path.join(os.path.dirname(__file__), "..")
 sys.path.insert(0, os.path.abspath(_src))
 
 from services.shared.emoji_service import (  # noqa: E402

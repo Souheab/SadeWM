@@ -6,6 +6,7 @@ Tests:
   2. test_tags_state_structure   — tags_state returns 9 entries with valid state chars
   3. test_ipc_view_switches_tag  — view command updates tag_mask in get_state
   4. test_ipc_focus_window       — focus_window switches tag and focuses the target window
+  5. test_ipc_quit_exits_wm      — quit returns ok and exits the WM process
 """
 
 import time
@@ -131,3 +132,20 @@ def test_ipc_focus_window(xd):
         time.sleep(0.1)
         win2.kill()
         time.sleep(0.2)
+
+
+# ── Test 5: quit exits WM cleanly ─────────────────────────────────────────────
+
+
+def test_ipc_quit_exits_wm(isolated_wm_proc):
+    """IPC quit returns ok and causes the sadewm process to exit."""
+    resp = helpers.ipc_request("quit")
+    assert resp.get("ok") is True, f"quit failed: {resp}"
+
+    deadline = time.time() + 3
+    while time.time() < deadline:
+        if isolated_wm_proc.poll() is not None:
+            return
+        time.sleep(0.05)
+
+    assert isolated_wm_proc.poll() is not None, "sadewm did not exit after IPC quit"

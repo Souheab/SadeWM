@@ -57,10 +57,24 @@ def _handle_open_minimized_picker():
         sys.exit(1)
 
 
+def _handle_confirm_exit():
+    """Handle --confirm-exit before loading PySide6."""
+    if "--confirm-exit" not in sys.argv:
+        return
+    from sadeshell.services.shared.ipc_client import send_ipc_command
+    result = send_ipc_command("confirm-exit")
+    if result == "ok":
+        sys.exit(0)
+    else:
+        print(result, file=sys.stderr)
+        sys.exit(1)
+
+
 _handle_open_launcher()
 _handle_open_emoji_picker()
 _handle_open_window_picker()
 _handle_open_minimized_picker()
+_handle_confirm_exit()
 
 from PySide6.QtWidgets import QApplication
 from PySide6.QtQml import QQmlApplicationEngine, qmlRegisterSingletonInstance
@@ -174,6 +188,7 @@ from sadeshell.services.shared.app_service import AppService
 from sadeshell.services.shared.emoji_service import EmojiService
 from sadeshell.services.shared.window_helper import WindowHelper
 from sadeshell.services.shared.ipc_service import IPCService
+from sadeshell.services.shared.wm_ipc_service import WMIPCService
 from sadeshell.services.shared.window_picker_service import WindowPickerService
 
 
@@ -198,6 +213,7 @@ def main():
     bluetooth_service = BluetoothService()
     systray_service = SystrayService()
     ipc_service = IPCService()
+    wm_ipc_service = WMIPCService()
     window_picker_service = WindowPickerService()
 
     # Register singletons for QML access
@@ -215,6 +231,7 @@ def main():
     qmlRegisterSingletonInstance(BluetoothService, "PyShell.Services", 1, 0, "BluetoothService", bluetooth_service)
     qmlRegisterSingletonInstance(SystrayService, "PyShell.Services", 1, 0, "SystrayService", systray_service)
     qmlRegisterSingletonInstance(IPCService, "PyShell.Services", 1, 0, "IPCService", ipc_service)
+    qmlRegisterSingletonInstance(WMIPCService, "PyShell.Services", 1, 0, "WMIPCService", wm_ipc_service)
     qmlRegisterSingletonInstance(WindowPickerService, "PyShell.Services", 1, 0, "WindowPickerService", window_picker_service)
 
     engine = QQmlApplicationEngine()
@@ -252,6 +269,10 @@ def main():
     # Load the minimized window picker overlay
     minimized_picker_qml = os.path.join(qml_dir, "launcher", "MinimizedWindowPicker.qml")
     engine.load(QUrl.fromLocalFile(minimized_picker_qml))
+
+    # Load the exit confirmation overlay
+    exit_confirmation_qml = os.path.join(qml_dir, "launcher", "ExitConfirmation.qml")
+    engine.load(QUrl.fromLocalFile(exit_confirmation_qml))
 
     # Start the IPC server so sadeshell --open-launcher works
     ipc_service.start()

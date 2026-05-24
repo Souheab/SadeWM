@@ -164,7 +164,8 @@ func DefaultKeys() []Key {
 		{Mod: mod, KeyStr: "equal", Action: "setgaps", Arg: Arg{I: +1}},
 		{Mod: mod | shift, KeyStr: "equal", Action: "setgaps", Arg: Arg{I: 0}},
 		{Mod: mod | shift, KeyStr: "r", Action: "reloadconfig"},
-		{Mod: mod | shift, KeyStr: "q", Action: "quit"},
+		{Mod: mod | shift, KeyStr: "q", Action: "spawn", Arg: Arg{V: []string{"sadeshell", "--confirm-exit"}}},
+		{Mod: mod | ctrl | shift, KeyStr: "q", Action: "quit"},
 	}
 
 	// TAGKEYS: for each tag 1-9, add view/toggleview/tag/toggletag bindings

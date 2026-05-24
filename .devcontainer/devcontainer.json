@@ -1,7 +1,13 @@
 {
   "name": "sadewm",
-  "image": "mcr.microsoft.com/devcontainers/base:ubuntu",
+  "image": "mcr.microsoft.com/devcontainers/base:ubuntu-24.04",
   "features": {
+    "ghcr.io/devcontainers/features/go:1": {
+      "version": "1.26.1"
+    },
+    "ghcr.io/devcontainers/features/python:1": {
+      "version": "3"
+    },
     "ghcr.io/devcontainers/features/nix:1": {
       "multiUser": true,
       "extraNixConfig": "experimental-features = nix-command flakes"
@@ -11,10 +17,11 @@
       "configureZshAsDefaultShell": true
     }
   },
-  "postCreateCommand": "sudo apt-get update && sudo apt-get install -y gcc make libx11-dev libxft-dev libxinerama-dev libfontconfig1-dev libfreetype6-dev xserver-xephyr gdb xvfb scrot mesa-utils libgl1-mesa-dri libglx-mesa0 xserver-xorg-video-dummy dbus dbus-x11 bluez python3-dbus libdbus-1-dev && nix-env -iA nixpkgs.shellcheck nixpkgs.qt6Packages.qtdeclarative nixpkgs.qtcreator",
+  "postCreateCommand": "sudo apt-get update && sudo apt-get install -y build-essential pkg-config gdb make libx11-dev libxext-dev libxft-dev libxinerama-dev libxcursor-dev libxi-dev libxtst-dev libfontconfig1-dev libfreetype6-dev libcairo2-dev xserver-xephyr xvfb xauth x11-utils x11-xserver-utils scrot mesa-utils libgl1-mesa-dri libglx-mesa0 xserver-xorg-video-dummy dbus dbus-x11 bluez python3-dbus python3-xlib libdbus-1-dev && nix-env -iA nixpkgs.shellcheck nixpkgs.qt6Packages.qtdeclarative nixpkgs.qtcreator",
   "customizations": {
     "vscode": {
       "extensions": [
+        "golang.go",
         "jnoortheen.nix-ide",
         "ms-vscode.cpptools",
         "ms-vscode.makefile-tools",
@@ -25,6 +32,19 @@
         "ms-python.python"
       ],
       "settings": {
+        "go.toolsManagement.autoUpdate": true,
+        "go.testOnSave": false,
+        "gopls": {
+          "build.directoryFilters": [
+            "-wm/vendor",
+            "-saxcomp/vendor"
+          ],
+          "formatting.gofumpt": true,
+          "ui.semanticTokens": true
+        },
+        "go.testEnvVars": {
+          "GOFLAGS": "-mod=vendor"
+        },
         "C_Cpp.default.cStandard": "c99",
         "C_Cpp.default.compilerPath": "/usr/bin/cc",
         "C_Cpp.default.includePath": [

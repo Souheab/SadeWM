@@ -17,14 +17,15 @@ import (
 // New creates a new WM instance but does not connect to X yet.
 func New() *WM {
 	wm := &WM{
-		Running:       true,
 		ActiveRules:   config.DefaultRules,
 		ActiveKeys:    config.DefaultKeys(),
 		Layouts:       make([]config.Layout, len(config.DefaultLayouts)),
 		MinimizeStack: make([]*Client, 0),
 		Actions:       make(map[string]config.ActionFunc),
 		TitlebarMap:   make(map[xproto.Window]*Client),
+		QuitCh:        make(chan struct{}),
 	}
+	wm.Running.Store(true)
 	copy(wm.Layouts, config.DefaultLayouts)
 	// Set tile arrange function
 	wm.Layouts[config.LayoutTile].Arrange = func(m any) {
@@ -240,6 +241,9 @@ func (wm *WM) startEventPump() {
 // Run is the main event loop.
 func (wm *WM) Run(ipcServer *ipc.Server) {
 	var ipcCh <-chan *ipc.IPCRequest
+	if wm.QuitCh == nil {
+		wm.QuitCh = make(chan struct{})
+	}
 
 	if ipcServer != nil {
 		go ipcServer.Run()
@@ -248,11 +252,14 @@ func (wm *WM) Run(ipcServer *ipc.Server) {
 
 	wm.startEventPump()
 
-	for wm.Running {
+	for wm.Running.Load() {
 		// Drain all immediately-available X events before blocking.
 	drainX:
 		for {
 			select {
+			case <-wm.QuitCh:
+				wm.Running.Store(false)
+				return
 			case xev := <-wm.XEvCh:
 				wm.dispatchXEv(xev)
 			default:
@@ -263,6 +270,9 @@ func (wm *WM) Run(ipcServer *ipc.Server) {
 		// Block until either an X event or an IPC request arrives.
 		if ipcCh != nil {
 			select {
+			case <-wm.QuitCh:
+				wm.Running.Store(false)
+				return
 			case xev := <-wm.XEvCh:
 				wm.dispatchXEv(xev)
 			case req := <-ipcCh:
@@ -270,8 +280,13 @@ func (wm *WM) Run(ipcServer *ipc.Server) {
 				req.ResponseCh <- resp
 			}
 		} else {
-			xev := <-wm.XEvCh
-			wm.dispatchXEv(xev)
+			select {
+			case <-wm.QuitCh:
+				wm.Running.Store(false)
+				return
+			case xev := <-wm.XEvCh:
+				wm.dispatchXEv(xev)
+			}
 		}
 
 		// After each event, drain any remaining IPC requests (non-blocking).
@@ -279,6 +294,9 @@ func (wm *WM) Run(ipcServer *ipc.Server) {
 		drainIPC:
 			for {
 				select {
+				case <-wm.QuitCh:
+					wm.Running.Store(false)
+					return
 				case req := <-ipcCh:
 					resp := wm.handleIPCRequest(req)
 					req.ResponseCh <- resp
@@ -288,6 +306,17 @@ func (wm *WM) Run(ipcServer *ipc.Server) {
 			}
 		}
 	}
+}
+
+// RequestQuit asks the WM event loop to stop exactly once.
+func (wm *WM) RequestQuit() {
+	if wm.QuitCh == nil {
+		wm.QuitCh = make(chan struct{})
+	}
+	wm.quitOnce.Do(func() {
+		wm.Running.Store(false)
+		close(wm.QuitCh)
+	})
 }
 
 func (wm *WM) dispatchXEv(xev xgbEvent) {
@@ -407,19 +436,34 @@ func (wm *WM) Cleanup() {
 
 // SetTopOffset adjusts the working area of all monitors.
 func (wm *WM) SetTopOffset(offset uint) {
-	for m := wm.Mons; m != nil; m = m.Next {
-		m.WH -= int(offset)
-		m.WY += int(offset)
-	}
+	wm.TopOffset = offset
+	wm.recomputeWorkAreas()
 	wm.Arrange(nil)
 }
 
 // SetBottomOffset adjusts the working area of all monitors.
 func (wm *WM) SetBottomOffset(offset uint) {
-	for m := wm.Mons; m != nil; m = m.Next {
-		m.WH -= int(offset)
-	}
+	wm.BottomOffset = offset
+	wm.recomputeWorkAreas()
 	wm.Arrange(nil)
+}
+
+func (wm *WM) recomputeWorkAreas() {
+	for m := wm.Mons; m != nil; m = m.Next {
+		wm.recomputeWorkArea(m)
+	}
+}
+
+func (wm *WM) recomputeWorkArea(m *Monitor) {
+	if m == nil {
+		return
+	}
+	top := min(int(wm.TopOffset), m.MH)
+	bottom := min(int(wm.BottomOffset), max(0, m.MH-top))
+	m.WX = m.MX
+	m.WY = m.MY + top
+	m.WW = m.MW
+	m.WH = max(1, m.MH-top-bottom)
 }
 
 // DebugInfo returns a multi-line string with a snapshot of WM internal state.
@@ -428,7 +472,7 @@ func (wm *WM) DebugInfo() string {
 	var b strings.Builder
 	b.WriteString("=== sadewm debug snapshot ===\n")
 	fmt.Fprintf(&b, "dragging:     %v\n", wm.dragging)
-	fmt.Fprintf(&b, "running:      %v\n", wm.Running)
+	fmt.Fprintf(&b, "running:      %v\n", wm.Running.Load())
 	fmt.Fprintf(&b, "pendingEvts:  %d\n", len(wm.pendingEvts))
 	fmt.Fprintf(&b, "XEvCh len:    %d\n", len(wm.XEvCh))
 	monIdx := 0

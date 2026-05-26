@@ -398,20 +398,15 @@ func (wm *WM) handleUnmapNotify(e xproto.UnmapNotifyEvent) {
 // manage creates a Client for a newly-mapped window.
 func (wm *WM) manage(w xproto.Window, wa *xproto.GetWindowAttributesReply) {
 	// Check if this is a dock window
-	prop, err := xproto.GetProperty(wm.Conn, false, w,
-		wm.NetAtom[NetWMWindowType], xproto.AtomAtom, 0, 1).Reply()
-	if err == nil && prop.ValueLen > 0 {
-		wtype := xproto.Atom(getUint32(prop.Value))
-		if wtype == wm.NetAtom[NetWMWindowTypeDock] {
+	wtypes := wm.getWindowAtomProps(w, wm.NetAtom[NetWMWindowType], 32)
+	if len(wtypes) > 0 {
+		if atomListContains(wtypes, wm.NetAtom[NetWMWindowTypeDock]) {
 			// Check if it's ABOVE
 			isAbove := false
-			sp, err := xproto.GetProperty(wm.Conn, false, w,
-				wm.NetAtom[NetWMState], xproto.AtomAtom, 0, 1).Reply()
-			if err == nil && sp.ValueLen > 0 {
-				s := xproto.Atom(getUint32(sp.Value))
-				if s == wm.NetAtom[NetWMStateAbove] || s == wm.NetAtom[NetWMStateStaysOnTop] {
-					isAbove = true
-				}
+			states := wm.getWindowAtomProps(w, wm.NetAtom[NetWMState], 32)
+			if atomListContains(states, wm.NetAtom[NetWMStateAbove]) ||
+				atomListContains(states, wm.NetAtom[NetWMStateStaysOnTop]) {
+				isAbove = true
 			}
 			if !isAbove {
 				xproto.MapWindow(wm.Conn, w)
@@ -457,11 +452,9 @@ func (wm *WM) manage(w xproto.Window, wa *xproto.GetWindowAttributesReply) {
 	}
 
 	// Check dock override
-	prop, err = xproto.GetProperty(wm.Conn, false, w,
-		wm.NetAtom[NetWMWindowType], xproto.AtomAtom, 0, 1).Reply()
-	if err == nil && prop.ValueLen > 0 {
-		wtype := xproto.Atom(getUint32(prop.Value))
-		if wtype == wm.NetAtom[NetWMWindowTypeDock] {
+	wtypes = wm.getWindowAtomProps(w, wm.NetAtom[NetWMWindowType], 32)
+	if len(wtypes) > 0 {
+		if atomListContains(wtypes, wm.NetAtom[NetWMWindowTypeDock]) {
 			c.BW = 0
 			c.OldBW = 0
 			c.IsAbove = true

@@ -1,6 +1,8 @@
 package wm
 
 import (
+	"sync"
+	"sync/atomic"
 	"unsafe"
 
 	"github.com/jezek/xgb"
@@ -116,8 +118,14 @@ type WM struct {
 	NumlockMask uint16
 
 	// Running state
-	Running bool
-	Debug   bool
+	Running  atomic.Bool
+	Debug    bool
+	QuitCh   chan struct{}
+	quitOnce sync.Once
+
+	// Work-area offsets
+	TopOffset    uint
+	BottomOffset uint
 
 	// Config
 	ActiveRules []config.Rule

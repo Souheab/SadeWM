@@ -3,13 +3,19 @@ package ipc
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"net"
 	"os"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/sadewm/sadewm/wm/internal/util"
 )
+
+const maxRequestBytes = 64 * 1024
+
+var ioTimeout = 2 * time.Second
 
 // GetSocketPath returns the Unix socket path for the current DISPLAY.
 // If SADEWM_SOCKET is set it is used as-is.
@@ -125,33 +131,50 @@ func (s *Server) Run() {
 func (s *Server) handleConn(conn net.Conn) {
 	defer conn.Close()
 
-	buf := make([]byte, 4096)
-	n, err := conn.Read(buf)
-	if err != nil || n == 0 {
+	_ = conn.SetReadDeadline(time.Now().Add(ioTimeout))
+	data, err := io.ReadAll(io.LimitReader(conn, maxRequestBytes+1))
+	if err != nil || len(data) == 0 {
+		return
+	}
+	if len(data) > maxRequestBytes {
+		s.writeResponse(conn, &Response{OK: false, Error: "request too large"})
 		return
 	}
 
 	var req IPCRequest
-	if err := json.Unmarshal(buf[:n], &req); err != nil {
-		resp := &Response{OK: false, Error: "invalid JSON"}
-		data, _ := json.Marshal(resp)
-		data = append(data, '\n')
-		conn.Write(data)
+	if err := json.Unmarshal(data, &req); err != nil {
+		s.writeResponse(conn, &Response{OK: false, Error: "invalid JSON"})
 		return
 	}
 
 	// Send request to the main event loop and wait for the response
 	req.ResponseCh = make(chan *Response, 1)
-	s.reqCh <- &req
+	select {
+	case s.reqCh <- &req:
+	case <-time.After(ioTimeout):
+		s.writeResponse(conn, &Response{OK: false, Error: "window manager busy"})
+		return
+	}
 
-	resp := <-req.ResponseCh
+	var resp *Response
+	select {
+	case resp = <-req.ResponseCh:
+	case <-time.After(ioTimeout):
+		s.writeResponse(conn, &Response{OK: false, Error: "window manager response timed out"})
+		return
+	}
 	if resp == nil {
 		resp = &Response{OK: false, Error: "unknown command"}
 	}
 
+	s.writeResponse(conn, resp)
+}
+
+func (s *Server) writeResponse(conn net.Conn, resp *Response) {
 	data, _ := json.Marshal(resp)
 	data = append(data, '\n')
-	conn.Write(data)
+	_ = conn.SetWriteDeadline(time.Now().Add(ioTimeout))
+	_, _ = conn.Write(data)
 }
 
 // Teardown closes the listener and removes the socket file.

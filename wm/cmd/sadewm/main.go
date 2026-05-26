@@ -91,7 +91,7 @@ func main() {
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM, syscall.SIGHUP)
 	go func() {
 		<-sigCh
-		wmgr.Running = false
+		wmgr.RequestQuit()
 	}()
 
 	// SIGUSR1: dump goroutine stacks + WM state to log and FIFO.

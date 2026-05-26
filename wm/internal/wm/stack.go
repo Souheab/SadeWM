@@ -44,9 +44,8 @@ func (wm *WM) Restore(arg *config.Arg) {
 // SetFullscreen toggles fullscreen state on a client.
 func (wm *WM) SetFullscreen(c *Client, fullscreen bool) {
 	if fullscreen && !c.IsFullscreen {
-		xproto.ChangeProperty(wm.Conn, xproto.PropModeReplace, c.Win,
-			wm.NetAtom[NetWMState], xproto.AtomAtom, 32, 1,
-			uint32ToBytes(uint32(wm.NetAtom[NetWMFullscreen])))
+		states := wm.getAtomProps(c, wm.NetAtom[NetWMState], 32)
+		wm.setNetWMState(c, atomListAdd(states, wm.NetAtom[NetWMFullscreen]))
 		c.IsFullscreen = true
 		c.OldState = c.IsFloating
 		c.OldBW = c.BW
@@ -68,8 +67,8 @@ func (wm *WM) SetFullscreen(c *Client, fullscreen bool) {
 			xproto.UngrabPointer(wm.Conn, xproto.TimeCurrentTime)
 		}
 	} else if !fullscreen && c.IsFullscreen {
-		xproto.ChangeProperty(wm.Conn, xproto.PropModeReplace, c.Win,
-			wm.NetAtom[NetWMState], xproto.AtomAtom, 32, 0, nil)
+		states := wm.getAtomProps(c, wm.NetAtom[NetWMState], 32)
+		wm.setNetWMState(c, atomListRemove(states, wm.NetAtom[NetWMFullscreen]))
 		c.IsFullscreen = false
 		c.IsFloating = c.OldState
 		c.BW = c.OldBW
@@ -96,16 +95,17 @@ func (wm *WM) SetFullscreen(c *Client, fullscreen bool) {
 // SetAbove toggles the above/always-on-top state.
 func (wm *WM) SetAbove(c *Client, above bool) {
 	if above && !c.IsAbove {
-		xproto.ChangeProperty(wm.Conn, xproto.PropModeReplace, c.Win,
-			wm.NetAtom[NetWMState], xproto.AtomAtom, 32, 1,
-			uint32ToBytes(uint32(wm.NetAtom[NetWMStateAbove])))
+		states := wm.getAtomProps(c, wm.NetAtom[NetWMState], 32)
+		wm.setNetWMState(c, atomListAdd(states, wm.NetAtom[NetWMStateAbove]))
 		c.IsAbove = true
 		wm.raiseWindow(c.Win)
 		wm.restackBorderWindow(c)
 		wm.raiseTitlebar(c)
 	} else if !above && c.IsAbove {
-		xproto.ChangeProperty(wm.Conn, xproto.PropModeReplace, c.Win,
-			wm.NetAtom[NetWMState], xproto.AtomAtom, 32, 0, nil)
+		states := wm.getAtomProps(c, wm.NetAtom[NetWMState], 32)
+		wm.setNetWMState(c, atomListRemove(states,
+			wm.NetAtom[NetWMStateAbove],
+			wm.NetAtom[NetWMStateStaysOnTop]))
 		c.IsAbove = false
 		wm.Arrange(c.Mon)
 	}

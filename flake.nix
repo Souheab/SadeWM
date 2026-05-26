@@ -25,6 +25,7 @@
           pytest
           xlib
           pillow
+          emoji
         ]);
 
         shellSrc = pkgs.lib.cleanSourceWith {

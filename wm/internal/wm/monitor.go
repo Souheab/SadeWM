@@ -32,9 +32,7 @@ func (wm *WM) updateGeom() bool {
 }
 
 func (wm *WM) updateBarPos(m *Monitor) {
-	m.WY = m.MY
-	m.WH = m.MH
-	// Offsets are applied separately via SetTopOffset/SetBottomOffset
+	wm.recomputeWorkArea(m)
 }
 
 // RectToMon returns the monitor with the largest intersection.

@@ -9,17 +9,20 @@ import (
 // EWMH and ICCCM property helpers
 
 func (wm *WM) getAtomProp(c *Client, prop xproto.Atom) xproto.Atom {
-	reply, err := xproto.GetProperty(wm.Conn, false, c.Win, prop,
-		xproto.AtomAtom, 0, 1).Reply()
-	if err != nil || reply.ValueLen == 0 {
+	atoms := wm.getWindowAtomProps(c.Win, prop, 1)
+	if len(atoms) == 0 {
 		return xproto.AtomNone
 	}
-	return xproto.Atom(getUint32(reply.Value))
+	return atoms[0]
 }
 
 // getAtomProps returns all atoms stored in a property (up to maxN).
 func (wm *WM) getAtomProps(c *Client, prop xproto.Atom, maxN uint32) []xproto.Atom {
-	reply, err := xproto.GetProperty(wm.Conn, false, c.Win, prop,
+	return wm.getWindowAtomProps(c.Win, prop, maxN)
+}
+
+func (wm *WM) getWindowAtomProps(w xproto.Window, prop xproto.Atom, maxN uint32) []xproto.Atom {
+	reply, err := xproto.GetProperty(wm.Conn, false, w, prop,
 		xproto.AtomAtom, 0, maxN).Reply()
 	if err != nil || reply.ValueLen == 0 {
 		return nil
@@ -29,6 +32,45 @@ func (wm *WM) getAtomProps(c *Client, prop xproto.Atom, maxN uint32) []xproto.At
 		atoms[i] = xproto.Atom(getUint32(reply.Value[i*4:]))
 	}
 	return atoms
+}
+
+func atomListContains(atoms []xproto.Atom, atom xproto.Atom) bool {
+	for _, a := range atoms {
+		if a == atom {
+			return true
+		}
+	}
+	return false
+}
+
+func atomListAdd(atoms []xproto.Atom, atom xproto.Atom) []xproto.Atom {
+	if atom == xproto.AtomNone || atomListContains(atoms, atom) {
+		return atoms
+	}
+	return append(atoms, atom)
+}
+
+func atomListRemove(atoms []xproto.Atom, remove ...xproto.Atom) []xproto.Atom {
+	out := atoms[:0]
+	for _, atom := range atoms {
+		if !atomListContains(remove, atom) {
+			out = append(out, atom)
+		}
+	}
+	return out
+}
+
+func atomsToBytes(atoms []xproto.Atom) []byte {
+	data := make([]byte, len(atoms)*4)
+	for i, atom := range atoms {
+		putUint32(data[i*4:], uint32(atom))
+	}
+	return data
+}
+
+func (wm *WM) setNetWMState(c *Client, states []xproto.Atom) {
+	xproto.ChangeProperty(wm.Conn, xproto.PropModeReplace, c.Win,
+		wm.NetAtom[NetWMState], xproto.AtomAtom, 32, uint32(len(states)), atomsToBytes(states))
 }
 
 func (wm *WM) getState(w xproto.Window) int {
@@ -101,8 +143,8 @@ func (wm *WM) updateWindowType(c *Client) {
 			wm.SetAbove(c, true)
 		}
 	}
-	wtype := wm.getAtomProp(c, wm.NetAtom[NetWMWindowType])
-	if wm.isFloatingWindowType(wtype) {
+	wtypes := wm.getAtomProps(c, wm.NetAtom[NetWMWindowType], 32)
+	if wm.hasFloatingWindowType(wtypes) {
 		c.IsFloating = true
 	}
 }
@@ -120,6 +162,15 @@ func (wm *WM) isFloatingWindowType(wtype xproto.Atom) bool {
 		wtype == wm.NetAtom[NetWMWindowTypeDropdownMenu] ||
 		wtype == wm.NetAtom[NetWMWindowTypeTooltip] ||
 		wtype == wm.NetAtom[NetWMWindowTypeNotification]
+}
+
+func (wm *WM) hasFloatingWindowType(wtypes []xproto.Atom) bool {
+	for _, wtype := range wtypes {
+		if wm.isFloatingWindowType(wtype) {
+			return true
+		}
+	}
+	return false
 }
 
 // updateSizeHints reads ICCCM size hints.

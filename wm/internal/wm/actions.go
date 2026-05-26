@@ -95,7 +95,7 @@ func (wm *WM) KillClient(arg *config.Arg) {
 
 // Quit stops the event loop.
 func (wm *WM) Quit(arg *config.Arg) {
-	wm.Running = false
+	wm.RequestQuit()
 }
 
 // SetGaps adjusts gap size.
@@ -401,12 +401,9 @@ func (wm *WM) ReloadConfig(arg *config.Arg) {
 			}
 		}
 
-		m.WX = m.MX
-		m.WY = m.MY
-		m.WW = m.MW
-		m.WH = m.MH
-		m.WY += int(config.TopOffset)
-		m.WH -= int(config.TopOffset) + int(config.BottomOffset)
+		wm.TopOffset = config.TopOffset
+		wm.BottomOffset = config.BottomOffset
+		wm.recomputeWorkArea(m)
 
 		wm.Arrange(m)
 	}

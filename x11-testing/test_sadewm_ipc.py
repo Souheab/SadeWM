@@ -9,9 +9,37 @@ Tests:
   5. test_ipc_quit_exits_wm      — quit returns ok and exits the WM process
 """
 
+import json
+import socket
 import time
 
 import helpers  # x11-testing/helpers.py
+
+
+def _open_tag_subscription():
+    sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    sock.settimeout(2.0)
+    sock.connect(helpers.get_socket_path())
+    sock.sendall(b'{"cmd":"subscribe_tags"}')
+    sock.shutdown(socket.SHUT_WR)
+    return sock, sock.makefile("rb")
+
+
+def _read_tag_event(sock, stream, timeout=2.0):
+    sock.settimeout(timeout)
+    line = stream.readline()
+    if not line:
+        raise AssertionError("tag subscription closed before event")
+    return json.loads(line.decode())
+
+
+def _read_until_tag_mask(sock, stream, expected_mask, timeout=2.0):
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        event = _read_tag_event(sock, stream, max(0.05, deadline - time.time()))
+        if event.get("event") == "tags_state" and event.get("tag_mask") == expected_mask:
+            return event
+    raise AssertionError(f"did not receive tag_mask={expected_mask}")
 
 
 # ── Test 1: get_state response structure ──────────────────────────────────────
@@ -59,6 +87,66 @@ def test_tags_state_structure(xd):
     valid = {"U", "A", "O", "I"}
     for i, s in enumerate(states):
         assert s in valid, f"Tag {i} has unexpected state {s!r} (valid: {valid})"
+
+
+def test_subscribe_tags_initial_and_ipc_update(xd):
+    """subscribe_tags streams an initial event and pushes IPC view updates."""
+    helpers.ipc_request("view", mask=1)
+    time.sleep(0.1)
+
+    sock, stream = _open_tag_subscription()
+    try:
+        initial = _read_tag_event(sock, stream)
+        assert initial.get("event") == "tags_state", f"unexpected event: {initial}"
+        assert initial.get("tag_mask") == 1, f"unexpected initial mask: {initial}"
+        assert "tags_state" in initial, f"missing tags_state: {initial}"
+
+        helpers.ipc_request("view", mask=8)
+        event = _read_until_tag_mask(sock, stream, 8)
+        assert event["tags_state"][3] == "A", f"tag 4 should be active: {event}"
+    finally:
+        sock.close()
+        helpers.ipc_request("view", mask=1)
+
+
+def test_subscribe_tags_keyboard_update(xd):
+    """subscribe_tags pushes tag changes caused by key bindings."""
+    helpers.ipc_request("view", mask=1)
+    time.sleep(0.1)
+
+    sock, stream = _open_tag_subscription()
+    try:
+        _read_tag_event(sock, stream)
+        xd.keyboard.press("super+4")
+        event = _read_until_tag_mask(sock, stream, 8)
+        assert event["tags_state"][3] == "A", f"tag 4 should be active: {event}"
+    finally:
+        sock.close()
+        helpers.ipc_request("view", mask=1)
+
+
+def test_subscribe_tags_occupied_update(xd):
+    """subscribe_tags pushes occupied-state changes after window/tag changes."""
+    helpers.ipc_request("view", mask=2)
+    time.sleep(0.1)
+
+    sock, stream = _open_tag_subscription()
+    win = None
+    try:
+        _read_tag_event(sock, stream)
+        win = xd.new_window(title="test-subscribe-occupied", size=(400, 300), type="dialog")
+        xd.wait_for_layout()
+
+        helpers.ipc_request("view", mask=1)
+        event = _read_until_tag_mask(sock, stream, 1)
+        assert event["tags_state"][1] == "O", f"tag 2 should be occupied: {event}"
+    finally:
+        sock.close()
+        helpers.ipc_request("view", mask=2)
+        time.sleep(0.1)
+        if win is not None:
+            win.kill()
+        helpers.ipc_request("view", mask=1)
 
 
 # ── Test 3: view command updates tag_mask ─────────────────────────────────────

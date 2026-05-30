@@ -266,6 +266,7 @@ func (wm *WM) Run(ipcServer *ipc.Server) {
 				break drainX
 			}
 		}
+		wm.publishTagsIfChanged(ipcServer)
 
 		// Block until either an X event or an IPC request arrives.
 		if ipcCh != nil {
@@ -305,6 +306,7 @@ func (wm *WM) Run(ipcServer *ipc.Server) {
 				}
 			}
 		}
+		wm.publishTagsIfChanged(ipcServer)
 	}
 }
 
@@ -517,6 +519,9 @@ func (wm *WM) handleIPCRequest(req *ipc.IPCRequest) *ipc.Response {
 		return wm.ipcGetState()
 	case "tags_state":
 		return wm.ipcTagsState()
+	case "subscribe_tags":
+		mask, states := wm.currentTagsState()
+		return &ipc.Response{OK: true, TagMask: mask, TagsState: states}
 	case "view":
 		wm.View(&config.Arg{UI: req.Mask})
 		return &ipc.Response{OK: true}
@@ -585,6 +590,11 @@ func (wm *WM) ipcGetState() *ipc.Response {
 }
 
 func (wm *WM) ipcTagsState() *ipc.Response {
+	_, states := wm.currentTagsState()
+	return &ipc.Response{OK: true, TagsState: states}
+}
+
+func (wm *WM) currentTagsState() (uint32, []string) {
 	var occ, urg uint32
 	for c := wm.SelMon.Clients; c != nil; c = c.Next {
 		if c.Tags&TagMask() != TagMask() {
@@ -610,7 +620,41 @@ func (wm *WM) ipcTagsState() *ipc.Response {
 		}
 	}
 
-	return &ipc.Response{OK: true, TagsState: states}
+	return wm.SelMon.TagSet[wm.SelMon.SelTags], states
+}
+
+func (wm *WM) publishTagsIfChanged(ipcServer *ipc.Server) {
+	if ipcServer == nil || wm.SelMon == nil {
+		return
+	}
+	mask, states := wm.currentTagsState()
+	if wm.lastTagsSnapshotValid &&
+		wm.lastTagMask == mask &&
+		stringSlicesEqual(wm.lastTagsState, states) {
+		return
+	}
+
+	wm.lastTagMask = mask
+	wm.lastTagsState = append(wm.lastTagsState[:0], states...)
+	wm.lastTagsSnapshotValid = true
+
+	ipcServer.BroadcastTags(ipc.TagEvent{
+		Event:     "tags_state",
+		TagMask:   mask,
+		TagsState: states,
+	})
+}
+
+func stringSlicesEqual(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
 }
 
 // ipcGetClients returns all managed clients across all tags (all monitors).

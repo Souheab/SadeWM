@@ -156,27 +156,9 @@
           };
         };
 
-        # ── saxcomp (Go / XRender compositor) ──────────────────────────────────
-        saxcomp = pkgs.buildGoModule {
-          pname   = "saxcomp";
-          version = "0.1";
-          src     = ./saxcomp;
-
-          vendorHash = null;  # uses go mod vendor
-
-          subPackages = [ "cmd/saxcomp" ];
-
-          meta = with pkgs.lib; {
-            description = "Simple XRender compositor for sadewm";
-            license     = licenses.mit;
-            platforms   = [ "x86_64-linux" "aarch64-linux" ];
-            mainProgram = "saxcomp";
-          };
-        };
-
         combined = pkgs.symlinkJoin {
           name  = "sadewm-with-sadeshell";
-          paths = [ sadewm sadeshell sadewm-greeter saxcomp ];
+            paths = [ sadewm sadeshell sadewm-greeter ];
         };
 
       in {
@@ -184,7 +166,6 @@
         packages.sadewm         = combined;
         packages.sadeshell      = sadeshell;
         packages.sadewm-greeter = sadewm-greeter;
-        packages.saxcomp        = saxcomp;
 
         apps.default = {
           type    = "app";
@@ -199,11 +180,6 @@
         apps.sadewm-greeter = {
           type    = "app";
           program = "${sadewm-greeter}/bin/sadewm-greeter";
-        };
-
-        apps.saxcomp = {
-          type    = "app";
-          program = "${saxcomp}/bin/saxcomp";
         };
 
         devShells.default = pkgs.mkShell {

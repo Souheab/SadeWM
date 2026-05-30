@@ -36,8 +36,7 @@
         "go.testOnSave": false,
         "gopls": {
           "build.directoryFilters": [
-            "-wm/vendor",
-            "-saxcomp/vendor"
+            "-wm/vendor"
           ],
           "formatting.gofumpt": true,
           "ui.semanticTokens": true

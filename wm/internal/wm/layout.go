@@ -98,7 +98,7 @@ func (wm *WM) Restack(m *Monitor) {
 	}
 
 	if m.Sel.IsFloating || m.Sel.IsAbove || m.Lt.Arrange == nil {
-		wm.raiseWindow(m.Sel.Win)
+		wm.raiseWindow(wm.stackWindow(m.Sel))
 	}
 
 	if m.Lt.Arrange != nil {
@@ -131,9 +131,8 @@ func (wm *WM) Restack(m *Monitor) {
 	// Raise all floating/above windows
 	for c := m.Stack; c != nil; c = c.SNext {
 		if c.IsVisible() && (c.IsFloating || c.IsAbove) {
-			wm.raiseWindow(c.Win)
+			wm.raiseWindow(wm.stackWindow(c))
 			wm.restackBorderWindow(c)
-			wm.raiseTitlebar(c)
 		}
 	}
 }
@@ -144,14 +143,27 @@ func (wm *WM) raiseWindow(win xproto.Window) {
 		[]uint32{uint32(xproto.StackModeAbove)})
 }
 
+func (wm *WM) stackWindow(c *Client) xproto.Window {
+	if c.FrameWin != 0 {
+		return c.FrameWin
+	}
+	return c.Win
+}
+
+func (wm *WM) moveClientOffscreen(c *Client) {
+	xproto.ConfigureWindow(wm.Conn, wm.stackWindow(c),
+		xproto.ConfigWindowX, []uint32{uint32(c.Width() * -2)})
+}
+
 func (wm *WM) showHide(head *Client) {
 	for c := head; c != nil; c = c.SNext {
 		if c.IsVisible() {
-			xproto.ConfigureWindow(wm.Conn, c.Win,
-				xproto.ConfigWindowX|xproto.ConfigWindowY,
-				[]uint32{uint32(c.X), uint32(c.Y)})
 			if (c.Mon.Lt.Arrange == nil || c.IsFloating) && !c.IsFullscreen {
 				wm.Resize(c, c.X, c.Y, c.W, c.H, false)
+			} else {
+				xproto.ConfigureWindow(wm.Conn, c.Win,
+					xproto.ConfigWindowX|xproto.ConfigWindowY,
+					[]uint32{uint32(c.X), uint32(c.Y)})
 			}
 			if (c.IsFloating || c.Mon.Lt.Arrange == nil) && !c.IsFullscreen && !c.IsDock {
 				wm.destroyBorderWindow(c)
@@ -165,9 +177,7 @@ func (wm *WM) showHide(head *Client) {
 				}
 			}
 		} else {
-			xproto.ConfigureWindow(wm.Conn, c.Win,
-				xproto.ConfigWindowX,
-				[]uint32{uint32(c.Width() * -2)})
+			wm.moveClientOffscreen(c)
 			wm.hideTitlebar(c)
 			wm.hideBorderWindow(c)
 		}
@@ -191,11 +201,24 @@ func (wm *WM) resizeClient(c *Client, x, y, w, h int) {
 	c.W = w
 	c.H = h
 
-	xproto.ConfigureWindow(wm.Conn, c.Win,
-		xproto.ConfigWindowX|xproto.ConfigWindowY|
-			xproto.ConfigWindowWidth|xproto.ConfigWindowHeight|
-			xproto.ConfigWindowBorderWidth,
-		[]uint32{uint32(x), uint32(y), uint32(w), uint32(h), 0})
+	if c.FrameWin != 0 {
+		frameX, frameY, frameW, frameH := wm.frameGeom(c)
+		xproto.ConfigureWindow(wm.Conn, c.FrameWin,
+			xproto.ConfigWindowX|xproto.ConfigWindowY|
+				xproto.ConfigWindowWidth|xproto.ConfigWindowHeight,
+			[]uint32{uint32(frameX), uint32(frameY), uint32(frameW), uint32(frameH)})
+		xproto.ConfigureWindow(wm.Conn, c.Win,
+			xproto.ConfigWindowX|xproto.ConfigWindowY|
+				xproto.ConfigWindowWidth|xproto.ConfigWindowHeight|
+				xproto.ConfigWindowBorderWidth,
+			[]uint32{0, titlebarHeight, uint32(w), uint32(h), 0})
+	} else {
+		xproto.ConfigureWindow(wm.Conn, c.Win,
+			xproto.ConfigWindowX|xproto.ConfigWindowY|
+				xproto.ConfigWindowWidth|xproto.ConfigWindowHeight|
+				xproto.ConfigWindowBorderWidth,
+			[]uint32{uint32(x), uint32(y), uint32(w), uint32(h), 0})
+	}
 	wm.configure(c)
 	wm.moveBorderWindow(c)
 	wm.moveTitlebar(c)

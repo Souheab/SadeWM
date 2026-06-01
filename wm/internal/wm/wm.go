@@ -23,6 +23,7 @@ func New() *WM {
 		MinimizeStack: make([]*Client, 0),
 		Actions:       make(map[string]config.ActionFunc),
 		TitlebarMap:   make(map[xproto.Window]*Client),
+		FrameMap:      make(map[xproto.Window]*Client),
 		QuitCh:        make(chan struct{}),
 	}
 	wm.Running.Store(true)
@@ -139,6 +140,7 @@ func (wm *WM) internAtoms() {
 		NetWMWindowTypeDropdownMenu: "_NET_WM_WINDOW_TYPE_DROPDOWN_MENU",
 		NetWMWindowTypeTooltip:      "_NET_WM_WINDOW_TYPE_TOOLTIP",
 		NetWMWindowTypeNotification: "_NET_WM_WINDOW_TYPE_NOTIFICATION",
+		NetFrameExtents:             "_NET_FRAME_EXTENTS",
 	}
 	for idx, name := range atomNames {
 		reply, err := xproto.InternAtom(wm.Conn, false, uint16(len(name)), name).Reply()
@@ -733,9 +735,6 @@ func (wm *WM) ipcFocusWindow(winID uint32) *ipc.Response {
 			}
 		}
 		found.Minimized = false
-		xproto.ConfigureWindow(wm.Conn, found.Win,
-			xproto.ConfigWindowX|xproto.ConfigWindowY,
-			[]uint32{uint32(found.X), uint32(found.Y)})
 		if found.IsFloating {
 			wm.showTitlebar(found)
 			wm.raiseTitlebar(found)

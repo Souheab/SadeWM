@@ -251,9 +251,9 @@ func (wm *WM) titlebarToClient(win xproto.Window) *Client {
 
 // ── Create / destroy ──────────────────────────────────────────────────────────
 
-// createTitlebar creates a companion titlebar window above a floating client.
+// createTitlebar creates a frame containing a titlebar and floating client.
 func (wm *WM) createTitlebar(c *Client) {
-	if c.TitleWin != 0 || c.IsDock || c.IsFullscreen {
+	if c.TitleWin != 0 || c.FrameWin != 0 || c.IsDock || c.IsFullscreen {
 		return
 	}
 	wm.destroyBorderWindow(c)
@@ -261,10 +261,38 @@ func (wm *WM) createTitlebar(c *Client) {
 		return
 	}
 
+	c.BW = 0
+	frameX, frameY, frameW, frameH := wm.frameGeom(c)
+	frame, err := xproto.NewWindowId(wm.Conn)
+	if err != nil {
+		return
+	}
+	frameMask := uint32(xproto.CwBackPixel | xproto.CwEventMask | xproto.CwOverrideRedirect)
+	frameVals := []uint32{
+		0x1a1b26,
+		1,
+		uint32(xproto.EventMaskSubstructureRedirect | xproto.EventMaskSubstructureNotify),
+	}
+	xproto.CreateWindow(wm.Conn, 0,
+		frame, wm.Root,
+		int16(frameX), int16(frameY), uint16(frameW), uint16(frameH),
+		0,
+		xproto.WindowClassInputOutput,
+		xproto.WindowNone,
+		frameMask, frameVals)
+	c.FrameWin = frame
+	if wm.FrameMap == nil {
+		wm.FrameMap = make(map[xproto.Window]*Client)
+	}
+	wm.FrameMap[frame] = c
+
 	tbX, tbY, tbW, tbH := wm.titlebarGeom(c)
 
 	win, err := xproto.NewWindowId(wm.Conn)
 	if err != nil {
+		delete(wm.FrameMap, frame)
+		xproto.DestroyWindow(wm.Conn, frame)
+		c.FrameWin = 0
 		return
 	}
 
@@ -278,45 +306,54 @@ func (wm *WM) createTitlebar(c *Client) {
 	}
 	// CreateWindow: depth=0 means copy-from-parent; border-width=0 (no border)
 	xproto.CreateWindow(wm.Conn, 0,
-		win, wm.Root,
+		win, frame,
 		int16(tbX), int16(tbY), uint16(tbW), uint16(tbH),
 		0,
 		xproto.WindowClassInputOutput,
 		xproto.WindowNone,
 		mask, vals)
 
-	xproto.MapWindow(wm.Conn, win)
 	c.TitleWin = win
 
-	// Remove the client window's X11 border — the titlebar acts as the frame.
-	c.BW = 0
+	// The application is the content child below the titlebar.
 	xproto.ConfigureWindow(wm.Conn, c.Win,
 		xproto.ConfigWindowBorderWidth, []uint32{0})
+	wm.expectReparentUnmap(c)
+	xproto.ReparentWindow(wm.Conn, c.Win, frame, 0, titlebarHeight)
 
 	if wm.TitlebarMap == nil {
 		wm.TitlebarMap = make(map[xproto.Window]*Client)
 	}
 	wm.TitlebarMap[win] = c
+	wm.setFrameExtents(c, titlebarHeight)
 
 	// Apply rounded top-corner shape before first draw.
 	wm.applyTitlebarShape(c)
 
-	// Raise above the application window so it's always visible.
-	xproto.ConfigureWindow(wm.Conn, win,
-		xproto.ConfigWindowSibling|xproto.ConfigWindowStackMode,
-		[]uint32{uint32(c.Win), uint32(xproto.StackModeAbove)})
-
+	xproto.MapWindow(wm.Conn, win)
+	xproto.MapWindow(wm.Conn, frame)
+	wm.raiseTitlebar(c)
 	wm.drawTitlebar(c)
 }
 
-// destroyTitlebar unmaps and destroys the titlebar window for client c.
+// destroyTitlebar reparents the client to root and destroys its floating frame.
 func (wm *WM) destroyTitlebar(c *Client) {
-	if c.TitleWin == 0 {
+	if c.TitleWin == 0 && c.FrameWin == 0 {
 		return
 	}
-	delete(wm.TitlebarMap, c.TitleWin)
-	xproto.DestroyWindow(wm.Conn, c.TitleWin)
-	c.TitleWin = 0
+	if c.TitleWin != 0 {
+		delete(wm.TitlebarMap, c.TitleWin)
+		xproto.DestroyWindow(wm.Conn, c.TitleWin)
+		c.TitleWin = 0
+	}
+	if c.FrameWin != 0 {
+		delete(wm.FrameMap, c.FrameWin)
+		wm.expectReparentUnmap(c)
+		xproto.ReparentWindow(wm.Conn, c.Win, wm.Root, int16(c.X), int16(c.Y))
+		xproto.DestroyWindow(wm.Conn, c.FrameWin)
+		c.FrameWin = 0
+	}
+	wm.setFrameExtents(c, 0)
 	if !c.IsDock && !c.IsFloating && !c.IsFullscreen && c.Mon != nil && c.Mon.Lt.Arrange != nil {
 		c.BW = int(config.BorderPx)
 	} else {
@@ -328,12 +365,25 @@ func (wm *WM) destroyTitlebar(c *Client) {
 
 // ── Geometry helpers ──────────────────────────────────────────────────────────
 
-// titlebarGeom returns the position and size for c's titlebar window.
-// The titlebar sits immediately above the client window (outside the border).
+func (wm *WM) expectReparentUnmap(c *Client) {
+	attrs, err := xproto.GetWindowAttributes(wm.Conn, c.Win).Reply()
+	if err == nil && attrs.MapState != xproto.MapStateUnmapped {
+		// Reparenting a mapped client reports the unmap both to the client
+		// (StructureNotify) and its old parent (SubstructureNotify).
+		c.IgnoreUnmap += 2
+	}
+}
+
+// frameGeom returns root-relative geometry for a floating client's frame.
+func (wm *WM) frameGeom(c *Client) (x, y, w, h int) {
+	return c.X, c.Y - titlebarHeight, max(c.W, 1), max(c.H+titlebarHeight, 1)
+}
+
+// titlebarGeom returns frame-relative geometry for c's titlebar window.
 func (wm *WM) titlebarGeom(c *Client) (x, y, w, h int) {
-	x = c.X - c.BW
-	y = c.Y - titlebarHeight - c.BW
-	w = c.W + 2*c.BW
+	x = 0
+	y = 0
+	w = c.W
 	h = titlebarHeight
 	if w < 1 {
 		w = 1
@@ -341,7 +391,7 @@ func (wm *WM) titlebarGeom(c *Client) (x, y, w, h int) {
 	return
 }
 
-// moveTitlebar repositions the titlebar to track the current client geometry.
+// moveTitlebar resizes the titlebar to track its floating frame.
 func (wm *WM) moveTitlebar(c *Client) {
 	if c.TitleWin == 0 {
 		return
@@ -351,41 +401,45 @@ func (wm *WM) moveTitlebar(c *Client) {
 		xproto.ConfigWindowX|xproto.ConfigWindowY|
 			xproto.ConfigWindowWidth|xproto.ConfigWindowHeight,
 		[]uint32{uint32(tbX), uint32(tbY), uint32(tbW), uint32(tbH)})
+	// Cairo draws through a separate Xlib connection. Wait until the XGB
+	// resize is visible to the server, then repaint immediately because expose
+	// events are buffered while ResizeMouse owns the drag loop.
+	wm.Conn.Sync()
 	// Reapply shape mask since width may have changed.
 	wm.applyTitlebarShape(c)
+	wm.drawTitlebar(c)
 }
 
-// showTitlebar maps the titlebar window (making it visible).
+// showTitlebar maps and positions the floating frame.
 func (wm *WM) showTitlebar(c *Client) {
-	if c.TitleWin == 0 {
+	if c.TitleWin == 0 || c.FrameWin == 0 {
 		return
 	}
-	tbX, tbY, tbW, _ := wm.titlebarGeom(c)
-	xproto.ConfigureWindow(wm.Conn, c.TitleWin,
-		xproto.ConfigWindowX|xproto.ConfigWindowY|xproto.ConfigWindowWidth,
-		[]uint32{uint32(tbX), uint32(tbY), uint32(tbW)})
+	frameX, frameY, frameW, frameH := wm.frameGeom(c)
+	xproto.ConfigureWindow(wm.Conn, c.FrameWin,
+		xproto.ConfigWindowX|xproto.ConfigWindowY|xproto.ConfigWindowWidth|xproto.ConfigWindowHeight,
+		[]uint32{uint32(frameX), uint32(frameY), uint32(frameW), uint32(frameH)})
 	xproto.MapWindow(wm.Conn, c.TitleWin)
+	xproto.MapWindow(wm.Conn, c.FrameWin)
 }
 
-// hideTitlebar moves the titlebar off-screen (same trick used for minimized
-// client windows) without destroying it.
+// hideTitlebar moves the whole floating frame off-screen without destroying it.
 func (wm *WM) hideTitlebar(c *Client) {
-	if c.TitleWin == 0 {
+	if c.FrameWin == 0 {
 		return
 	}
-	xproto.ConfigureWindow(wm.Conn, c.TitleWin,
+	xproto.ConfigureWindow(wm.Conn, c.FrameWin,
 		xproto.ConfigWindowX,
 		[]uint32{uint32(c.Width() * -2)})
 }
 
-// raiseTitlebar stacks the titlebar above its client window.
+// raiseTitlebar raises the floating frame as one unit.
 func (wm *WM) raiseTitlebar(c *Client) {
-	if c.TitleWin == 0 {
+	if c.FrameWin == 0 {
 		return
 	}
-	xproto.ConfigureWindow(wm.Conn, c.TitleWin,
-		xproto.ConfigWindowSibling|xproto.ConfigWindowStackMode,
-		[]uint32{uint32(c.Win), uint32(xproto.StackModeAbove)})
+	xproto.ConfigureWindow(wm.Conn, c.FrameWin,
+		xproto.ConfigWindowStackMode, []uint32{uint32(xproto.StackModeAbove)})
 }
 
 // ── Cairo rendering ───────────────────────────────────────────────────────────

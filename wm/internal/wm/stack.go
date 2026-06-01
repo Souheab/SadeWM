@@ -13,9 +13,7 @@ func (wm *WM) Minimize(arg *config.Arg) {
 	}
 	c.Minimized = true
 	wm.MinimizeStack = append(wm.MinimizeStack, c)
-	xproto.ConfigureWindow(wm.Conn, c.Win,
-		xproto.ConfigWindowX, []uint32{uint32(c.Width() * -2)})
-	wm.hideTitlebar(c)
+	wm.moveClientOffscreen(c)
 	wm.Focus(nil)
 	wm.Arrange(wm.SelMon)
 }
@@ -29,9 +27,6 @@ func (wm *WM) Restore(arg *config.Arg) {
 	c := wm.MinimizeStack[n-1]
 	wm.MinimizeStack = wm.MinimizeStack[:n-1]
 	c.Minimized = false
-	xproto.ConfigureWindow(wm.Conn, c.Win,
-		xproto.ConfigWindowX|xproto.ConfigWindowY,
-		[]uint32{uint32(c.X), uint32(c.Y)})
 	wm.Arrange(c.Mon)
 	wm.Focus(c)
 	wm.Restack(c.Mon)
@@ -52,7 +47,7 @@ func (wm *WM) SetFullscreen(c *Client, fullscreen bool) {
 		c.BW = 0
 		c.IsFloating = true
 		wm.destroyBorderWindow(c)
-		wm.hideTitlebar(c)
+		wm.destroyTitlebar(c)
 		// Grab pointer so EnterNotify events from the resize get Mode=WhileGrabbed
 		// and are ignored by handleEnterNotify, preventing focus-follows-mouse
 		// from stealing focus during the geometry change.
@@ -62,7 +57,7 @@ func (wm *WM) SetFullscreen(c *Client, fullscreen bool) {
 				xproto.WindowNone, xproto.CursorNone, xproto.TimeCurrentTime)
 		}
 		wm.resizeClient(c, c.Mon.MX, c.Mon.MY, c.Mon.MW, c.Mon.MH)
-		wm.raiseWindow(c.Win)
+		wm.raiseWindow(wm.stackWindow(c))
 		if !wm.dragging {
 			xproto.UngrabPointer(wm.Conn, xproto.TimeCurrentTime)
 		}
@@ -82,9 +77,6 @@ func (wm *WM) SetFullscreen(c *Client, fullscreen bool) {
 				xproto.WindowNone, xproto.CursorNone, xproto.TimeCurrentTime)
 		}
 		wm.resizeClient(c, c.X, c.Y, c.W, c.H)
-		if c.IsFloating {
-			wm.showTitlebar(c)
-		}
 		wm.Arrange(c.Mon)
 		if !wm.dragging {
 			xproto.UngrabPointer(wm.Conn, xproto.TimeCurrentTime)
@@ -98,9 +90,8 @@ func (wm *WM) SetAbove(c *Client, above bool) {
 		states := wm.getAtomProps(c, wm.NetAtom[NetWMState], 32)
 		wm.setNetWMState(c, atomListAdd(states, wm.NetAtom[NetWMStateAbove]))
 		c.IsAbove = true
-		wm.raiseWindow(c.Win)
+		wm.raiseWindow(wm.stackWindow(c))
 		wm.restackBorderWindow(c)
-		wm.raiseTitlebar(c)
 	} else if !above && c.IsAbove {
 		states := wm.getAtomProps(c, wm.NetAtom[NetWMState], 32)
 		wm.setNetWMState(c, atomListRemove(states,

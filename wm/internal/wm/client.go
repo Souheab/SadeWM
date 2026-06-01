@@ -48,9 +48,11 @@ type Client struct {
 	Win   xproto.Window
 
 	// Titlebar (non-zero only for floating windows)
-	BorderWin  xproto.Window
-	TitleWin   xproto.Window
-	TitleHover titleButton // button currently hovered (tbNone when none)
+	BorderWin   xproto.Window
+	FrameWin    xproto.Window
+	TitleWin    xproto.Window
+	TitleHover  titleButton // button currently hovered (tbNone when none)
+	IgnoreUnmap int         // WM-initiated reparent notifications to discard
 }
 
 // Tag stores per-tag state.
@@ -159,6 +161,7 @@ type WM struct {
 	XlibDpy        unsafe.Pointer // *C.Display – opened once for Cairo
 	ShapeAvailable bool
 	TitlebarMap    map[xproto.Window]*Client // titlebar win → owning client
+	FrameMap       map[xproto.Window]*Client // floating frame win → owning client
 }
 
 // Atom enums
@@ -182,6 +185,7 @@ const (
 	NetWMWindowTypeDropdownMenu
 	NetWMWindowTypeTooltip
 	NetWMWindowTypeNotification
+	NetFrameExtents
 	NetLast
 )
 

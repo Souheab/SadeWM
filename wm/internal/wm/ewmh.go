@@ -73,6 +73,13 @@ func (wm *WM) setNetWMState(c *Client, states []xproto.Atom) {
 		wm.NetAtom[NetWMState], xproto.AtomAtom, 32, uint32(len(states)), atomsToBytes(states))
 }
 
+func (wm *WM) setFrameExtents(c *Client, top uint32) {
+	data := make([]byte, 16)
+	putUint32(data[8:], top)
+	xproto.ChangeProperty(wm.Conn, xproto.PropModeReplace, c.Win,
+		wm.NetAtom[NetFrameExtents], xproto.AtomCardinal, 32, 4, data)
+}
+
 func (wm *WM) getState(w xproto.Window) int {
 	reply, err := xproto.GetProperty(wm.Conn, false, w,
 		wm.WMAtom[WMState], wm.WMAtom[WMState], 0, 2).Reply()

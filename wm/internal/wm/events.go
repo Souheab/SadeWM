@@ -141,37 +141,31 @@ func (wm *WM) handleConfigureRequest(e xproto.ConfigureRequestEvent) {
 		valueMask := e.ValueMask &^ xproto.ConfigWindowBorderWidth
 		if c.IsFloating || wm.SelMon.Lt.Arrange == nil {
 			m := c.Mon
+			x, y, w, h := c.X, c.Y, c.W, c.H
 			if valueMask&xproto.ConfigWindowX != 0 {
-				c.OldX = c.X
-				c.X = m.MX + int(e.X)
+				x = m.MX + int(e.X)
 			}
 			if valueMask&xproto.ConfigWindowY != 0 {
-				c.OldY = c.Y
-				c.Y = m.MY + int(e.Y)
+				y = m.MY + int(e.Y)
 			}
 			if valueMask&xproto.ConfigWindowWidth != 0 {
-				c.OldW = c.W
-				c.W = int(e.Width)
+				w = int(e.Width)
 			}
 			if valueMask&xproto.ConfigWindowHeight != 0 {
-				c.OldH = c.H
-				c.H = int(e.Height)
+				h = int(e.Height)
 			}
-			if (c.X+c.W) > m.MX+m.MW && c.IsFloating {
-				c.X = m.MX + (m.MW/2 - c.Width()/2)
+			if (x+w) > m.MX+m.MW && c.IsFloating {
+				x = m.MX + (m.MW/2 - w/2)
 			}
-			if (c.Y+c.H) > m.MY+m.MH && c.IsFloating {
-				c.Y = m.MY + (m.MH/2 - c.Height()/2)
-			}
-			if (valueMask&(xproto.ConfigWindowX|xproto.ConfigWindowY)) != 0 &&
-				(valueMask&(xproto.ConfigWindowWidth|xproto.ConfigWindowHeight)) == 0 {
-				wm.configure(c)
+			if (y+h) > m.MY+m.MH && c.IsFloating {
+				y = m.MY + (m.MH/2 - h/2)
 			}
 			if c.IsVisible() {
-				xproto.ConfigureWindow(wm.Conn, c.Win,
-					xproto.ConfigWindowX|xproto.ConfigWindowY|
-						xproto.ConfigWindowWidth|xproto.ConfigWindowHeight,
-					[]uint32{uint32(c.X), uint32(c.Y), uint32(c.W), uint32(c.H)})
+				wm.resizeClient(c, x, y, w, h)
+			} else {
+				c.OldX, c.OldY, c.OldW, c.OldH = c.X, c.Y, c.W, c.H
+				c.X, c.Y, c.W, c.H = x, y, w, h
+				wm.configure(c)
 			}
 		} else {
 			wm.configure(c)
@@ -356,7 +350,6 @@ func (wm *WM) handlePropertyNotify(e xproto.PropertyNotifyEvent) {
 	if c == nil {
 		return
 	}
-
 	switch e.Atom {
 	case xproto.AtomWmTransientFor:
 		prop, err := xproto.GetProperty(wm.Conn, false, c.Win,
@@ -385,6 +378,10 @@ func (wm *WM) handlePropertyNotify(e xproto.PropertyNotifyEvent) {
 func (wm *WM) handleUnmapNotify(e xproto.UnmapNotifyEvent) {
 	c := wm.winToClient(e.Window)
 	if c == nil {
+		return
+	}
+	if c.IgnoreUnmap > 0 {
+		c.IgnoreUnmap--
 		return
 	}
 	if e.Event == wm.Root {
@@ -483,6 +480,7 @@ func (wm *WM) manage(w xproto.Window, wa *xproto.GetWindowAttributesReply) {
 		xproto.ConfigWindowBorderWidth, []uint32{0})
 	xproto.ChangeWindowAttributes(wm.Conn, w,
 		xproto.CwBorderPixel, []uint32{wm.BorderNorm})
+	wm.setFrameExtents(c, 0)
 	wm.configure(c)
 	wm.updateWindowType(c)
 	wm.updateSizeHints(c)

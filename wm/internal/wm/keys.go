@@ -37,11 +37,16 @@ func (wm *WM) GrabButtons(c *Client, focused bool) {
 
 	xproto.UngrabButton(wm.Conn, xproto.ButtonIndexAny, c.Win, xproto.ModMaskAny)
 
-	if !focused {
+	grabAllButtons := !focused || wm.isFreeform(c)
+	if grabAllButtons {
 		xproto.GrabButton(wm.Conn, false, c.Win,
 			xproto.EventMaskButtonPress|xproto.EventMaskButtonRelease,
 			xproto.GrabModeSync, xproto.GrabModeSync,
 			xproto.WindowNone, xproto.CursorNone, xproto.ButtonIndexAny, xproto.ModMaskAny)
+	}
+
+	if grabAllButtons {
+		return
 	}
 
 	buttons := config.DefaultButtons()

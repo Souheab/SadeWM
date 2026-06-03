@@ -576,13 +576,13 @@ func (wm *WM) handleTitlebarButtonPress(e xproto.ButtonPressEvent, c *Client) {
 	// Focus the underlying client first.
 	if c != wm.SelMon.Sel {
 		wm.Focus(c)
-		wm.Restack(wm.SelMon)
 	}
 
 	// Only handle button 1 (left click).
 	if e.Detail != xproto.ButtonIndex1 {
 		return
 	}
+	wm.Restack(wm.SelMon)
 
 	btn := hitTestTitlebar(int(e.EventX), int(e.EventY))
 	switch btn {

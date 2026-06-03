@@ -496,10 +496,6 @@ func (wm *WM) manage(w xproto.Window, wa *xproto.GetWindowAttributesReply) {
 		c.IsFloating = isTransient || c.IsFixed
 		c.OldState = c.IsFloating
 	}
-	if c.IsFloating {
-		wm.raiseWindow(c.Win)
-	}
-
 	wm.attachBottom(c)
 	wm.attachStack(c)
 
@@ -524,12 +520,13 @@ func (wm *WM) manage(w xproto.Window, wa *xproto.GetWindowAttributesReply) {
 	xproto.MapWindow(wm.Conn, c.Win)
 	c.HasMapped = true
 	wm.showBorderWindow(c)
-	wm.Focus(nil)
 
 	// Create titlebar for floating windows.
 	if c.IsFloating && !c.IsDock && !c.IsFullscreen {
 		wm.createTitlebar(c)
 	}
+	wm.Focus(c)
+	wm.Restack(c.Mon)
 }
 
 // unmanage removes a client.

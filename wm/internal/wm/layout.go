@@ -97,10 +97,6 @@ func (wm *WM) Restack(m *Monitor) {
 		return
 	}
 
-	if m.Sel.IsFloating || m.Sel.IsAbove || m.Lt.Arrange == nil {
-		wm.raiseWindow(wm.stackWindow(m.Sel))
-	}
-
 	if m.Lt.Arrange != nil {
 		// Stack tiled windows below each other.  Dwm uses the bar
 		// window as the initial sibling, but sadewm has no bar window
@@ -128,13 +124,42 @@ func (wm *WM) Restack(m *Monitor) {
 		}
 	}
 
-	// Raise all floating/above windows
+	// Raise floating windows from oldest to newest stack position. Focus()
+	// moves the selected client to the head of m.Stack, and the last X raise
+	// wins, so walking the stack backwards keeps the focused floating window
+	// above older floating peers. Above windows are a separate top layer.
+	var floats []*Client
+	var aboves []*Client
 	for c := m.Stack; c != nil; c = c.SNext {
-		if c.IsVisible() && (c.IsFloating || c.IsAbove) {
-			wm.raiseWindow(wm.stackWindow(c))
-			wm.restackBorderWindow(c)
+		if !c.IsVisible() {
+			continue
+		}
+		if c.IsAbove {
+			aboves = append(aboves, c)
+		} else if wm.isFreeform(c) {
+			floats = append(floats, c)
 		}
 	}
+	wm.raiseStackLayer(floats)
+	wm.raiseStackLayer(aboves)
+}
+
+func (wm *WM) raiseStackLayer(clients []*Client) {
+	for i := len(clients) - 1; i >= 0; i-- {
+		wm.raiseClient(clients[i])
+	}
+}
+
+func (wm *WM) isFreeform(c *Client) bool {
+	return c != nil && c.Mon != nil && (c.IsFloating || c.Mon.Lt.Arrange == nil)
+}
+
+func (wm *WM) raiseClient(c *Client) {
+	if c == nil {
+		return
+	}
+	wm.raiseWindow(wm.stackWindow(c))
+	wm.restackBorderWindow(c)
 }
 
 func (wm *WM) raiseWindow(win xproto.Window) {

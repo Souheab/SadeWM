@@ -67,23 +67,11 @@ Window {
                     spacing: Theme.spacingSM
                     layoutDirection: Qt.RightToLeft
 
-                    NotificationButton {
+                    SettingsButton {
                         anchors.verticalCenter: parent.verticalCenter
                     }
 
                     SystrayWidget {
-                        anchors.verticalCenter: parent.verticalCenter
-                    }
-
-                    NetworkWidget {
-                        anchors.verticalCenter: parent.verticalCenter
-                    }
-
-                    BrightnessWidget {
-                        anchors.verticalCenter: parent.verticalCenter
-                    }
-
-                    AudioWidget {
                         anchors.verticalCenter: parent.verticalCenter
                     }
                 }

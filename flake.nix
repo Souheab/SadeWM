@@ -272,11 +272,18 @@
                 start = ''
                   ${wmPkg}/bin/sadewm &
                   waitPID=$!
+
+                  systemctl --user start sade.target
+                  trap 'systemctl --user stop sade.target' EXIT
                 '';
               }
             ];
 
             environment.systemPackages = [ wmPkg ];
+
+            systemd.user.targets.sade = {
+              description = "SADE desktop session";
+            };
 
             services.sadeshell.enable = lib.mkDefault true;
           };
@@ -296,9 +303,9 @@
 
             systemd.user.services.sadeshell = {
               description = "sadeshell X11 status bar";
-              wantedBy    = [ "graphical-session.target" ];
-              partOf      = [ "graphical-session.target" ];
-              after       = [ "graphical-session.target" ];
+              wantedBy    = [ "sade.target" ];
+              partOf      = [ "sade.target" ];
+              after       = [ "sade.target" ];
               serviceConfig = {
                 ExecStart       = lib.getExe pkg;
                 Restart         = "on-failure";

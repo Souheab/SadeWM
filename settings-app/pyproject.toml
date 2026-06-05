@@ -11,6 +11,9 @@ dependencies = [
 [project.scripts]
 sadesettings = "sadesettings.main:main"
 
+[tool.setuptools.package-data]
+sadesettings = ["assets/*.qss"]
+
 [build-system]
 requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"

@@ -2,14 +2,17 @@ from __future__ import annotations
 
 import argparse
 import sys
+from importlib import resources
 from pathlib import Path
 
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
     QApplication,
     QCheckBox,
     QColorDialog,
     QComboBox,
+    QDialog,
     QDoubleSpinBox,
     QFormLayout,
     QFrame,
@@ -44,14 +47,41 @@ class ColorButton(QPushButton):
         self._sync()
 
     def _choose(self) -> None:
-        color = QColorDialog.getColor()
+        dialog = QColorDialog(self)
+        dialog.setOption(QColorDialog.DontUseNativeDialog, True)
+        if self._value:
+            dialog.setCurrentColor(QColor(self._value))
+        if dialog.exec() != QDialog.Accepted:
+            return
+        color = dialog.selectedColor()
         if color.isValid():
             self.set_value(color.name())
 
     def _sync(self) -> None:
         self.setStyleSheet(
-            f"QPushButton {{ text-align: left; padding: 6px; border-left: 24px solid {self._value}; }}"
+            "QPushButton {"
+            " background-color: #323851;"
+            " color: #c0caf5;"
+            " border: 1px solid #3d4166;"
+            f" border-left: 24px solid {self._value};"
+            " border-radius: 8px;"
+            " padding: 6px 12px;"
+            " text-align: left;"
+            " min-height: 28px;"
+            "}"
+            "QPushButton:hover { background-color: #3b4166; }"
+            "QPushButton:focus { border-top-color: #7aa2f7; border-right-color: #7aa2f7; border-bottom-color: #7aa2f7; }"
         )
+
+
+def sade_stylesheet() -> str:
+    return resources.files("sadesettings.assets").joinpath("sadewm-qt6.qss").read_text()
+
+
+def apply_sade_appearance(app: QApplication) -> None:
+    app.setApplicationName("sadesettings")
+    app.setStyle("Fusion")
+    app.setStyleSheet(sade_stylesheet())
 
 
 class SettingsWindow(QMainWindow):
@@ -262,6 +292,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     app = QApplication(sys.argv if argv is None else ["sadesettings", *argv])
+    apply_sade_appearance(app)
     window = SettingsWindow(Path(args.config_dir).expanduser())
     window.show()
     return app.exec()

@@ -2,6 +2,8 @@ package wm
 
 import (
 	"fmt"
+	"os"
+	"os/exec"
 	"strings"
 
 	"github.com/jezek/xgb"
@@ -390,18 +392,53 @@ const (
 
 // Startup runs startup commands.
 func (wm *WM) Startup() {
-	home := util.HomePath()
-	if home == "" {
+	if wm.NoConfig || wm.StartupPath == "" {
+		return
+	}
+	if _, err := os.Stat(wm.StartupPath); err != nil {
+		return
+	}
+	wm.spawnCmd([]string{"sh", wm.StartupPath})
+}
+
+func (wm *WM) ApplyDisplaySettings() {
+	if wm.NoConfig || wm.SettingsPath == "" {
+		return
+	}
+	settings := config.LoadSettingsTOML(wm.SettingsPath)
+	if settings == nil || settings.Display == nil {
 		return
 	}
 
-	for _, cmd := range config.StartupCmds() {
-		resolved := make([]string, len(cmd))
-		for i, s := range cmd {
-			resolved[i] = strings.ReplaceAll(s, config.HomeSubStr, home)
-		}
-		wm.spawnCmd(resolved)
+	query, err := exec.Command("xrandr", "--query").Output()
+	if err != nil {
+		util.LogDebug("display settings: xrandr query failed: %v", err)
+		return
 	}
+	args, ok := config.BuildXrandrArgs(settings.Display, string(query))
+	if !ok {
+		return
+	}
+	if err := exec.Command("xrandr", args...).Run(); err != nil {
+		util.LogDebug("display settings: xrandr apply failed: %v", err)
+		return
+	}
+	wm.refreshRootGeometry()
+	wm.updateGeom()
+	wm.recomputeWorkAreas()
+	wm.Arrange(nil)
+}
+
+func (wm *WM) refreshRootGeometry() {
+	if wm.Conn == nil || wm.Root == 0 {
+		return
+	}
+	geom, err := xproto.GetGeometry(wm.Conn, xproto.Drawable(wm.Root)).Reply()
+	if err != nil {
+		return
+	}
+	wm.SW = int(geom.Width)
+	wm.SH = int(geom.Height)
 }
 
 // Cleanup tears down the WM.

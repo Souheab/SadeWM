@@ -21,6 +21,8 @@ func main() {
 	debugFlag := flag.Bool("d", false, "enable debug logging")
 	topBar := flag.Uint("t", 0, "top offset for status bar (pixels)")
 	configPath := flag.String("c", "", "path to TOML config file")
+	noConfig := flag.Bool("no-config", false, "skip all user config and startup scripts")
+	customConfig := flag.String("custom-config", "", "custom config directory")
 	flag.Parse()
 
 	if *version {
@@ -40,28 +42,23 @@ func main() {
 		util.LogInit("")
 	}
 
+	paths := resolveConfigPaths(util.HomePath(), *customConfig, *configPath, *noConfig)
+
 	// Load and apply TOML config
 	var tc *config.TOMLConfig
-	var cfgPath string
-	if *configPath != "" {
-		cfgPath = *configPath
-		tc = config.LoadTOML(cfgPath)
-	} else {
-		home := util.HomePath()
-		if home != "" {
-			defaultPath := home + "/.config/sadewm/config.toml"
-			if _, err := os.Stat(defaultPath); err == nil {
-				cfgPath = defaultPath
-				tc = config.LoadTOML(cfgPath)
-			}
-		}
+	if !paths.NoConfig && paths.WMPath != "" {
+		tc = config.LoadTOML(paths.WMPath)
 	}
 	config.ApplyTOML(tc)
 
 	// Create and set up WM
 	wmgr := wm.New()
-	wmgr.CfgPath = cfgPath
+	wmgr.CfgPath = paths.WMPath
+	wmgr.SettingsPath = paths.SettingsPath
+	wmgr.StartupPath = paths.StartupPath
+	wmgr.NoConfig = paths.NoConfig
 	wmgr.Setup()
+	wmgr.ApplyDisplaySettings()
 
 	// Set up IPC
 	ipcServer, err := ipc.Setup()

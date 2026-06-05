@@ -369,14 +369,18 @@ func (wm *WM) sendMon(c *Client, m *Monitor) {
 
 // ReloadConfig reloads the TOML config file.
 func (wm *WM) ReloadConfig(arg *config.Arg) {
-	if wm.CfgPath == "" {
+	if wm.NoConfig {
 		return
 	}
 
-	tc := config.LoadTOML(wm.CfgPath)
+	var tc *config.TOMLConfig
+	if wm.CfgPath != "" {
+		tc = config.LoadTOML(wm.CfgPath)
+	}
 	config.ApplyTOML(tc)
 	wm.ActiveRules = config.ApplyTOMLRules(tc)
 	wm.ActiveKeys = config.MergeKeys(tc, config.DefaultKeys())
+	wm.ApplyDisplaySettings()
 
 	for m := wm.Mons; m != nil; m = m.Next {
 		m.GapPx = int(config.GapPx)

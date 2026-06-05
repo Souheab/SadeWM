@@ -15,6 +15,7 @@
         # ── sadeshell (PySide6/QML status bar) ───────────────────────────────
         pythonEnv = python.withPackages (ps: with ps; [
           pyside6
+          tomlkit
           dbus-next
           pulsectl
           emoji
@@ -37,6 +38,15 @@
             ! pkgs.lib.hasInfix  "__pycache__"  rel &&
             ! pkgs.lib.hasSuffix ".pyc"         rel &&
             ! pkgs.lib.hasPrefix ".git"         rel;
+        };
+
+        settingsSrc = pkgs.lib.cleanSourceWith {
+          src    = ./settings-app;
+          filter = path: _type:
+            let rel = pkgs.lib.removePrefix (toString ./settings-app + "/") (toString path); in
+            ! pkgs.lib.hasInfix "__pycache__" rel &&
+            ! pkgs.lib.hasSuffix ".pyc"       rel &&
+            ! pkgs.lib.hasPrefix ".git"       rel;
         };
 
         sadeshell = pkgs.stdenv.mkDerivation {
@@ -94,6 +104,57 @@
           };
         };
 
+        # ── sadesettings (PySide6 settings app) ──────────────────────────────
+        sadesettings = pkgs.stdenv.mkDerivation {
+          pname   = "sadesettings";
+          version = "0.1.0";
+          src     = settingsSrc;
+
+          nativeBuildInputs = with pkgs; [
+            qt6.wrapQtAppsHook
+            makeWrapper
+          ];
+
+          buildInputs = with pkgs; [
+            qt6.qtbase
+            qt6.qtdeclarative
+            libx11
+            libxext
+            xcb-util-cursor
+          ];
+
+          dontBuild = true;
+          dontWrapQtApps = true;
+
+          installPhase = ''
+            runHook preInstall
+            mkdir -p $out/lib
+            cp -r sadesettings $out/lib/sadesettings
+            runHook postInstall
+          '';
+
+          postFixup = ''
+            mkdir -p $out/bin
+            makeWrapper ${pythonEnv}/bin/python3 $out/bin/sadesettings       \
+              --add-flags    "-m sadesettings.main"                         \
+              --unset        PYTHONPATH                                      \
+              --unset        PYTHONHOME                                      \
+              --set          PYTHONPATH "$out/lib"                          \
+              --prefix PATH : "${pkgs.xrandr}/bin"                          \
+              --prefix LD_LIBRARY_PATH : "${pkgs.libx11}/lib"               \
+              --prefix LD_LIBRARY_PATH : "${pkgs.libxext}/lib"              \
+              --prefix LD_LIBRARY_PATH : "${pkgs.xcb-util-cursor}/lib"      \
+              "''${qtWrapperArgs[@]}"
+          '';
+
+          meta = with pkgs.lib; {
+            description = "PySide6 settings app for SADE";
+            license     = licenses.mit;
+            platforms   = [ "x86_64-linux" "aarch64-linux" ];
+            mainProgram = "sadesettings";
+          };
+        };
+
         # ── sadewm (Go / X11 window manager) ─────────────────────────────────
         sadewm = pkgs.buildGoModule {
           pname   = "sadewm";
@@ -104,6 +165,7 @@
 
           nativeBuildInputs = with pkgs; [
             pkg-config
+            makeWrapper
           ];
 
           buildInputs = with pkgs; [
@@ -115,6 +177,11 @@
           ];
 
           subPackages = [ "cmd/sadewm" ];
+
+          postFixup = ''
+            wrapProgram $out/bin/sadewm \
+              --prefix PATH : "${pkgs.xrandr}/bin"
+          '';
 
           meta = with pkgs.lib; {
             description = "sadewm window manager";
@@ -158,13 +225,14 @@
 
         combined = pkgs.symlinkJoin {
           name  = "sadewm-with-sadeshell";
-            paths = [ sadewm sadeshell sadewm-greeter ];
+            paths = [ sadewm sadeshell sadesettings sadewm-greeter ];
         };
 
       in {
         packages.default        = combined;
         packages.sadewm         = combined;
         packages.sadeshell      = sadeshell;
+        packages.sadesettings   = sadesettings;
         packages.sadewm-greeter = sadewm-greeter;
 
         apps.default = {
@@ -175,6 +243,11 @@
         apps.sadeshell = {
           type    = "app";
           program = "${sadeshell}/bin/sadeshell";
+        };
+
+        apps.sadesettings = {
+          type    = "app";
+          program = "${sadesettings}/bin/sadesettings";
         };
 
         apps.sadewm-greeter = {
@@ -199,6 +272,7 @@
             libX11
             libXinerama
             xorgserver
+            xrandr
             xprop
             xwd
             imagemagick
@@ -220,11 +294,12 @@
           shellHook = ''
             # Make sadeshell importable during development
             ln -sfn src shell/sadeshell 2>/dev/null || true
-            export PYTHONPATH="$PWD/shell:$PWD/xdrive''${PYTHONPATH:+:$PYTHONPATH}"
+            export PYTHONPATH="$PWD/shell:$PWD/settings-app:$PWD/xdrive''${PYTHONPATH:+:$PYTHONPATH}"
 
             echo "sadewm + sadeshell dev shell ready"
             echo "  WM:    cd wm && make"
             echo "  Shell: python -m sadeshell.main"
+            echo "  Settings: python -m sadesettings.main"
           '';
         };
 

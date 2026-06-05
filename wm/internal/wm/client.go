@@ -130,10 +130,13 @@ type WM struct {
 	BottomOffset uint
 
 	// Config
-	ActiveRules []config.Rule
-	ActiveKeys  []config.Key
-	Layouts     []config.Layout
-	CfgPath     string
+	ActiveRules  []config.Rule
+	ActiveKeys   []config.Key
+	Layouts      []config.Layout
+	CfgPath      string
+	SettingsPath string
+	StartupPath  string
+	NoConfig     bool
 
 	// Minimize stack
 	MinimizeStack []*Client

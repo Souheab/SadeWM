@@ -5,8 +5,7 @@ import (
 )
 
 const (
-	Version    = "0.9"
-	HomeSubStr = "$HOME_PATH"
+	Version = "0.9"
 )
 
 // Layout indices
@@ -190,13 +189,6 @@ func DefaultButtons() []Button {
 		{Click: ClkClientWin, Mask: mod, Button: xproto.ButtonIndex1, Action: "movemouse"},
 		{Click: ClkClientWin, Mask: mod, Button: xproto.ButtonIndex2, Action: "togglefloating"},
 		{Click: ClkClientWin, Mask: mod, Button: xproto.ButtonIndex3, Action: "resizemouse"},
-	}
-}
-
-// StartupCmds returns the commands to run on startup.
-func StartupCmds() [][]string {
-	return [][]string{
-		{"sh", HomeSubStr + "/.config/sadewm/startup.sh"},
 	}
 }
 

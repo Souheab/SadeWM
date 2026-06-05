@@ -21,7 +21,9 @@ from PySide6.QtWidgets import (
     QListWidget,
     QListWidgetItem,
     QMainWindow,
+    QMessageBox,
     QPushButton,
+    QScrollArea,
     QSpinBox,
     QStackedWidget,
     QVBoxLayout,
@@ -97,6 +99,7 @@ class SettingsWindow(QMainWindow):
         self.wm_widgets: dict[str, QWidget] = {}
         self.outputs = display.query_outputs()
 
+        self.setWindowFlag(Qt.Dialog, True)
         self.setWindowTitle("SADE Settings")
         self.resize(860, 560)
         self._build_ui()
@@ -139,7 +142,18 @@ class SettingsWindow(QMainWindow):
 
     def _build_wm_page(self) -> QWidget:
         page = QWidget()
-        form = QFormLayout(page)
+        page_layout = QVBoxLayout(page)
+        page_layout.setContentsMargins(0, 0, 0, 0)
+
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.NoFrame)
+        page_layout.addWidget(scroll)
+
+        content = QWidget()
+        scroll.setWidget(content)
+
+        form = QFormLayout(content)
         specs = [
             ("appearance.borderpx", "Border width", "int", 0, 64),
             ("appearance.gappx", "Gaps", "int", 0, 128),
@@ -254,7 +268,27 @@ class SettingsWindow(QMainWindow):
             idx = combo.findText(text)
         combo.setCurrentIndex(idx)
 
+    def _confirm_apply(self) -> bool:
+        dialog = QMessageBox(self)
+        dialog.setWindowFlag(Qt.Dialog, True)
+        dialog.setWindowModality(Qt.WindowModal)
+        dialog.setIcon(QMessageBox.Question)
+        dialog.setWindowTitle("Apply Settings")
+        dialog.setText("Apply these settings?")
+        dialog.setInformativeText(
+            "This will save the current WM and display configuration, then reload sadewm."
+        )
+        dialog.setStandardButtons(
+            QMessageBox.StandardButton.Cancel | QMessageBox.StandardButton.Apply
+        )
+        dialog.setDefaultButton(QMessageBox.StandardButton.Apply)
+        return dialog.exec() == QMessageBox.StandardButton.Apply
+
     def apply(self) -> None:
+        if not self._confirm_apply():
+            self.status.setText("Apply canceled")
+            return
+
         wm_values = {}
         for key, widget in self.wm_widgets.items():
             if isinstance(widget, QSpinBox):

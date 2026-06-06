@@ -8,3 +8,4 @@ just my hobby project building a basic X11 desktop environment
 ### Bugs/Issues to Fix
 - Settings app scrolling on numerical selector causes numerical change
 - Weird floating window and titlebar behavior
+- Systray not working correctly for some apps (Qt apps)

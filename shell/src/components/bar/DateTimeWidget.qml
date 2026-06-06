@@ -133,11 +133,13 @@ Rectangle {
 
         Rectangle {
             Layout.preferredHeight: parent.height
-            Layout.preferredWidth: Math.min(mediaLabel.implicitWidth + Theme.spacingSM + Theme.containerPadding, 300)
+            Layout.preferredWidth: Math.min(mediaLabel.implicitWidth + mediaIcon.implicitWidth + Theme.spacingXS + Theme.containerPadding,
+                                            Theme.mediaLabelMaxWidth + mediaIcon.implicitWidth + Theme.spacingXS + Theme.containerPadding)
             Layout.fillHeight: true
             radius: parent.height / 2
             color: mediaArea.containsMouse ? Theme.menuHover : "transparent"
             visible: MediaService.hasMedia
+            clip: true
 
             Rectangle {
                 anchors.left: parent.left
@@ -162,10 +164,16 @@ Rectangle {
                 }
 
                 Row {
-                    anchors.centerIn: parent
+                    id: mediaRow
+                    anchors.verticalCenter: parent.verticalCenter
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.leftMargin: Theme.containerPadding / 2
+                    anchors.rightMargin: Theme.containerPadding / 2
                     spacing: Theme.spacingXS
 
                     Text {
+                        id: mediaIcon
                         text: "\uf001"
                         color: Theme.textColor
                         font.family: Theme.iconFont
@@ -181,7 +189,7 @@ Rectangle {
                         font.family: Theme.monoFont
                         font.pixelSize: Theme.textFontSize
                         elide: Text.ElideRight
-                        width: Math.min(implicitWidth, Theme.mediaLabelMaxWidth)
+                        width: Math.min(implicitWidth, Math.max(0, parent.width - mediaIcon.width - parent.spacing))
                         anchors.verticalCenter: parent.verticalCenter
                     }
                 }

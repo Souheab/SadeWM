@@ -76,7 +76,7 @@ QtObject {
     // ── Media ──
     readonly property int mediaCardHeight: 180
     readonly property int mediaCardWidth: 320
-    readonly property int mediaLabelMaxWidth: 800
+    readonly property int mediaLabelMaxWidth: 420
     readonly property color mediaProgressTrackBg: "#1f2237"
     readonly property color mediaProgressColor: "#7aa2f7"
     readonly property string iconPlay: "\uf04b"

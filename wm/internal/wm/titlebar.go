@@ -578,6 +578,17 @@ func (wm *WM) handleTitlebarButtonPress(e xproto.ButtonPressEvent, c *Client) {
 		wm.Focus(c)
 	}
 
+	for _, btn := range config.DefaultButtons() {
+		if btn.Click == config.ClkClientWin &&
+			btn.Button == xproto.Button(e.Detail) &&
+			wm.cleanMask(btn.Mask) == wm.cleanMask(e.State) {
+			if action, ok := wm.Actions[btn.Action]; ok {
+				action(&btn.Arg)
+			}
+			return
+		}
+	}
+
 	// Only handle button 1 (left click).
 	if e.Detail != xproto.ButtonIndex1 {
 		return

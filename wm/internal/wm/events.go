@@ -46,6 +46,7 @@ func (wm *WM) handleEvent(ev xgb.Event) {
 
 func (wm *WM) handleButtonPress(e xproto.ButtonPressEvent) {
 	click := config.ClkRootWin
+	var c *Client
 
 	util.LogDebug("buttonpress: win=0x%x button=%d state=0x%04x",
 		e.Event, e.Detail, e.State)
@@ -68,21 +69,11 @@ func (wm *WM) handleButtonPress(e xproto.ButtonPressEvent) {
 		wm.Focus(nil)
 	}
 
-	if c := wm.winToClient(e.Event); c != nil {
+	if c = wm.winToClient(e.Event); c != nil {
 		util.LogDebug("buttonpress: found client %q floating=%v focused=%v",
 			c.Name, c.IsFloating, c == wm.SelMon.Sel)
 		wm.Focus(c)
 		wm.Restack(wm.SelMon)
-		// The passive grab (GrabButton) uses GrabModeSync for the keyboard,
-		// which freezes the keyboard when the grab activates.  We must thaw
-		// both the pointer (ReplayPointer releases the sync-pointer passive
-		// grab) and the keyboard (AsyncKeyboard unfreezes keyboard events)
-		// before any action runs.  Without AsyncKeyboard the keyboard stays
-		// frozen for the duration of the drag, preventing the X server from
-		// delivering ButtonRelease events (the server withholds ALL device
-		// events when the frozen device's queue is full).
-		xproto.AllowEvents(wm.Conn, xproto.AllowReplayPointer, xproto.TimeCurrentTime)
-		xproto.AllowEvents(wm.Conn, xproto.AllowAsyncKeyboard, xproto.TimeCurrentTime)
 		click = config.ClkClientWin
 	} else {
 		util.LogDebug("buttonpress: no client found for win=0x%x (root=0x%x)",
@@ -96,9 +87,19 @@ func (wm *WM) handleButtonPress(e xproto.ButtonPressEvent) {
 			wm.cleanMask(btn.Mask) == wm.cleanMask(e.State) {
 			util.LogDebug("buttonpress: matched action=%q", btn.Action)
 			consumed = true
+			if c != nil {
+				// Floating clients use a broad synchronous passive grab so the
+				// WM can raise/replay normal clicks.  For modifier actions we
+				// must keep the press for the WM and release that passive grab
+				// before MoveMouse/ResizeMouse installs its active grab.
+				xproto.UngrabPointer(wm.Conn, xproto.TimeCurrentTime)
+				xproto.AllowEvents(wm.Conn, xproto.AllowAsyncKeyboard, xproto.TimeCurrentTime)
+				wm.Conn.Sync()
+			}
 			if action, ok := wm.Actions[btn.Action]; ok {
 				action(&btn.Arg)
 			}
+			return
 		}
 	}
 
@@ -106,8 +107,9 @@ func (wm *WM) handleButtonPress(e xproto.ButtonPressEvent) {
 		// No client action matched; replay so the click reaches the window.
 		util.LogInfo("buttonpress: no binding matched, replaying pointer")
 		xproto.AllowEvents(wm.Conn, xproto.AllowReplayPointer, xproto.TimeCurrentTime)
+		xproto.AllowEvents(wm.Conn, xproto.AllowAsyncKeyboard, xproto.TimeCurrentTime)
 	}
-	// For consumed clicks AllowEvents was already sent before the action loop.
+	// For consumed client clicks the passive grab is released before the action runs.
 }
 
 func (wm *WM) handleClientMessage(e xproto.ClientMessageEvent) {

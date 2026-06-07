@@ -183,3 +183,73 @@ def test_titlebar_is_repainted_during_super_resize(xd):
     finally:
         win.kill()
         time.sleep(0.2)
+
+
+def test_super_resize_from_titlebar(xd):
+    helpers.ipc_request("view", mask=32)
+    time.sleep(0.2)
+
+    win = xd.new_window(
+        title="test-titlebar-super-resize", size=(400, 300), position=(100, 100), type="dialog"
+    )
+    xd.wait_for_layout()
+
+    try:
+        geo = win.geometry
+        frame_geo = win.frame.geometry
+        sx = frame_geo.x + frame_geo.width // 2
+        sy = frame_geo.y + TITLEBAR_HEIGHT // 2
+        ex = geo.x + geo.width + 100
+        ey = geo.y + geo.height + 80
+
+        with xd.keyboard.held("super"):
+            xd.mouse.drag(sx, sy, ex, ey, steps=15, step_delay=0.015, button=3)
+
+        xd.wait_for_layout()
+
+        geo_after = win.geometry
+        assert geo_after.width > geo.width, (
+            f"Width should increase after Super+Button3 resize from titlebar: "
+            f"before={geo.width}, after={geo_after.width}"
+        )
+        assert geo_after.height > geo.height, (
+            f"Height should increase after Super+Button3 resize from titlebar: "
+            f"before={geo.height}, after={geo_after.height}"
+        )
+    finally:
+        win.kill()
+        time.sleep(0.2)
+
+
+def test_super_move_from_titlebar(xd):
+    helpers.ipc_request("view", mask=64)
+    time.sleep(0.2)
+
+    win = xd.new_window(
+        title="test-titlebar-super-move", size=(400, 300), position=(100, 100), type="dialog"
+    )
+    xd.wait_for_layout()
+
+    try:
+        geo = win.geometry
+        frame_geo = win.frame.geometry
+        sx = frame_geo.x + frame_geo.width // 2
+        sy = frame_geo.y + TITLEBAR_HEIGHT // 2
+
+        with xd.keyboard.held("super"):
+            xd.mouse.drag(sx, sy, sx + 100, sy + 80, steps=15, step_delay=0.015)
+
+        xd.wait_for_layout()
+
+        geo_after = win.geometry
+        assert abs((geo_after.x - geo.x) - 100) < 30, (
+            f"Horizontal displacement off after Super+Button1 titlebar move: "
+            f"got dx={geo_after.x - geo.x}, expected ~100"
+        )
+        assert abs((geo_after.y - geo.y) - 80) < 30, (
+            f"Vertical displacement off after Super+Button1 titlebar move: "
+            f"got dy={geo_after.y - geo.y}, expected ~80"
+        )
+    finally:
+        win.kill()
+        time.sleep(0.2)

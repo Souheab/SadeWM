@@ -72,6 +72,7 @@ Window {
                     }
 
                     SystrayWidget {
+                        popupLayer: popupLayer
                         anchors.verticalCenter: parent.verticalCenter
                     }
                 }
@@ -89,6 +90,8 @@ Window {
         onClicked: {
             popupLayer.popupVisible = false;
             popupLayer.mediaVisible = false;
+            popupLayer.systrayMenuVisible = false;
+            SystrayService.closeMenu();
         }
     }
 
@@ -101,6 +104,7 @@ Window {
         objectName: "popupLayer"
         property bool popupVisible: false
         property bool mediaVisible: false
+        property bool systrayMenuVisible: false
         property bool toastsActive: NotificationService.popupQueue.length > 0
         property bool maskActive: false
         anchors.fill: parent
@@ -114,6 +118,13 @@ Window {
             // Only claim input on the bar strip when it is actually visible.
             if (barArea.visible) {
                 rects.push({x: 0, y: 0, width: Screen.width, height: Theme.barHeight})
+            }
+
+            if (systrayMenuVisible) {
+                rects.push({
+                    x: 0, y: Theme.barHeight,
+                    width: Screen.width, height: Screen.height - Theme.barHeight
+                })
             }
 
             // Panel popups are reparented into popupLayer at runtime.
@@ -143,7 +154,7 @@ Window {
         }
 
         onPopupVisibleChanged: {
-            if (popupVisible || mediaVisible) {
+            if (popupVisible || mediaVisible || systrayMenuVisible) {
                 maskCollapseTimer.stop();
                 maskActive = true;
             } else {
@@ -153,12 +164,24 @@ Window {
         }
 
         onMediaVisibleChanged: {
-            if (popupVisible || mediaVisible) {
+            if (popupVisible || mediaVisible || systrayMenuVisible) {
                 maskCollapseTimer.stop();
                 maskActive = true;
             } else {
                 maskCollapseTimer.restart();
             }
+            Qt.callLater(updateInputRegion)
+        }
+
+        onSystrayMenuVisibleChanged: {
+            if (popupVisible || mediaVisible || systrayMenuVisible) {
+                maskCollapseTimer.stop();
+                maskActive = true;
+            } else {
+                maskCollapseTimer.restart();
+            }
+            if (!systrayMenuVisible)
+                SystrayService.closeMenu();
             Qt.callLater(updateInputRegion)
         }
 
@@ -194,7 +217,7 @@ Window {
         Timer {
             id: maskCollapseTimer
             interval: Theme.popupAnimDuration
-            onTriggered: popupLayer.maskActive = (popupLayer.popupVisible || popupLayer.mediaVisible)
+            onTriggered: popupLayer.maskActive = (popupLayer.popupVisible || popupLayer.mediaVisible || popupLayer.systrayMenuVisible)
         }
     }
 

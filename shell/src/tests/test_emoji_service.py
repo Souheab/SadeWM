@@ -22,6 +22,33 @@ if "PySide6" not in sys.modules:
         def __init__(self, parent=None):
             pass
 
+    class _Signal:
+        def __init__(self, *args):
+            self._handlers = []
+
+        def connect(self, handler):
+            self._handlers.append(handler)
+
+        def emit(self, *args):
+            for handler in list(self._handlers):
+                handler(*args)
+
+    class _QTimer:
+        def __init__(self, parent=None):
+            self.interval = 0
+            self.timeout = _Signal()
+
+        def setInterval(self, interval):
+            self.interval = interval
+
+        def start(self):
+            pass
+
+    def _Property(*args, **kwargs):
+        def decorator(fn):
+            return property(fn)
+        return decorator
+
     def _Slot(*args, **kwargs):
         """Stub decorator — returns the function unchanged."""
         def decorator(fn):
@@ -33,6 +60,9 @@ if "PySide6" not in sys.modules:
         return decorator
 
     qtcore.QObject = _QObject
+    qtcore.Property = _Property
+    qtcore.QTimer = _QTimer
+    qtcore.Signal = _Signal
     qtcore.Slot = _Slot
 
     pyside6.QtCore = qtcore

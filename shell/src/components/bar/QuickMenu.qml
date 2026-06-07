@@ -66,7 +66,6 @@ Rectangle {
         Repeater {
             model: [
                 { label: "NixOS Config",      icon: "\uf313", cmd: ["wezterm", "start", "--", "nvim", "/home/suller/Documents/nixos/flake.nix"],    color: "#7aa2f7", sep: false },
-                { label: "Quickshell Config", icon: "\uf120", cmd: ["wezterm", "start", "--", "nvim", "/home/suller/.config/quickshell/shell.qml"], color: "#bb9af7", sep: true  },
                 { label: "Terminal",          icon: "\uf489", cmd: ["wezterm", "start"],                                        color: "#7dcfff", sep: false },
                 { label: "Files",             icon: "\uf413", cmd: ["wezterm", "start", "--", "yazi"],                         color: "#e0af68", sep: false },
                 { label: "Firefox",           icon: "\uf269", cmd: ["firefox"],                                                 color: "#ff9e64", sep: true  }

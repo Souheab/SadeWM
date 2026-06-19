@@ -2,8 +2,11 @@ package wm
 
 import (
 	"fmt"
+	"image"
+	_ "image/jpeg"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 
 	"github.com/jezek/xgb"
@@ -392,6 +395,8 @@ const (
 
 // Startup runs startup commands.
 func (wm *WM) Startup() {
+	wm.SetDefaultWallpaper()
+
 	if wm.NoConfig || wm.StartupPath == "" {
 		return
 	}
@@ -399,6 +404,236 @@ func (wm *WM) Startup() {
 		return
 	}
 	wm.spawnCmd([]string{"sh", wm.StartupPath})
+}
+
+// SetDefaultWallpaper sets ~/.config/sade/wp.jpg as the root background when present.
+func (wm *WM) SetDefaultWallpaper() {
+	if wm.Conn == nil || wm.Screen == nil || wm.Root == 0 {
+		return
+	}
+	home := util.HomePath()
+	if home == "" {
+		return
+	}
+	path := filepath.Join(home, ".config", "sade", "wp.jpg")
+	file, err := os.Open(path)
+	if err != nil {
+		return
+	}
+	defer file.Close()
+
+	src, _, err := image.Decode(file)
+	if err != nil {
+		util.LogDebug("wallpaper: decode %s failed: %v", path, err)
+		return
+	}
+	w, h := int(wm.Screen.WidthInPixels), int(wm.Screen.HeightInPixels)
+	if w <= 0 || h <= 0 {
+		return
+	}
+
+	visual, ok := wm.rootVisual()
+	if !ok {
+		util.LogDebug("wallpaper: root visual not found")
+		return
+	}
+	format, ok := wm.pixmapFormat(wm.Screen.RootDepth)
+	if !ok {
+		util.LogDebug("wallpaper: pixmap format for depth %d not found", wm.Screen.RootDepth)
+		return
+	}
+
+	pixmap, err := xproto.NewPixmapId(wm.Conn)
+	if err != nil {
+		util.LogDebug("wallpaper: create pixmap id failed: %v", err)
+		return
+	}
+	if err := xproto.CreatePixmapChecked(wm.Conn, wm.Screen.RootDepth, pixmap,
+		xproto.Drawable(wm.Root), uint16(w), uint16(h)).Check(); err != nil {
+		util.LogDebug("wallpaper: create pixmap failed: %v", err)
+		return
+	}
+
+	gc, err := xproto.NewGcontextId(wm.Conn)
+	if err != nil {
+		xproto.FreePixmap(wm.Conn, pixmap)
+		util.LogDebug("wallpaper: create gc id failed: %v", err)
+		return
+	}
+	if err := xproto.CreateGCChecked(wm.Conn, gc, xproto.Drawable(pixmap), 0, nil).Check(); err != nil {
+		xproto.FreePixmap(wm.Conn, pixmap)
+		util.LogDebug("wallpaper: create gc failed: %v", err)
+		return
+	}
+	defer xproto.FreeGC(wm.Conn, gc)
+
+	img := coverImage(src, w, h)
+	if err := wm.putWallpaperImage(pixmap, gc, img, visual, format); err != nil {
+		xproto.FreePixmap(wm.Conn, pixmap)
+		util.LogDebug("wallpaper: upload failed: %v", err)
+		return
+	}
+
+	if err := xproto.ChangeWindowAttributesChecked(wm.Conn, wm.Root, xproto.CwBackPixmap,
+		[]uint32{uint32(pixmap)}).Check(); err != nil {
+		xproto.FreePixmap(wm.Conn, pixmap)
+		util.LogDebug("wallpaper: set root background failed: %v", err)
+		return
+	}
+	xproto.ClearArea(wm.Conn, false, wm.Root, 0, 0, 0, 0)
+	xproto.FreePixmap(wm.Conn, pixmap)
+	wm.Conn.Sync()
+}
+
+func coverImage(src image.Image, width, height int) *image.RGBA {
+	dst := image.NewRGBA(image.Rect(0, 0, width, height))
+	sb := src.Bounds()
+	sw, sh := sb.Dx(), sb.Dy()
+	if sw <= 0 || sh <= 0 {
+		return dst
+	}
+
+	scaleX := float64(sw) / float64(width)
+	scaleY := float64(sh) / float64(height)
+	scale := scaleX
+	if scaleY < scale {
+		scale = scaleY
+	}
+	sampleW := float64(width) * scale
+	sampleH := float64(height) * scale
+	offsetX := (float64(sw) - sampleW) / 2
+	offsetY := (float64(sh) - sampleH) / 2
+
+	for y := 0; y < height; y++ {
+		sy := sb.Min.Y + int(offsetY+(float64(y)+0.5)*scale)
+		if sy >= sb.Max.Y {
+			sy = sb.Max.Y - 1
+		}
+		for x := 0; x < width; x++ {
+			sx := sb.Min.X + int(offsetX+(float64(x)+0.5)*scale)
+			if sx >= sb.Max.X {
+				sx = sb.Max.X - 1
+			}
+			dst.Set(x, y, src.At(sx, sy))
+		}
+	}
+
+	return dst
+}
+
+func (wm *WM) putWallpaperImage(pixmap xproto.Pixmap, gc xproto.Gcontext, img *image.RGBA, visual xproto.VisualInfo, format xproto.Format) error {
+	b := img.Bounds()
+	width, height := b.Dx(), b.Dy()
+	bytesPerPixel := int(format.BitsPerPixel) / 8
+	if bytesPerPixel <= 0 {
+		return fmt.Errorf("invalid bits per pixel %d", format.BitsPerPixel)
+	}
+	scanlinePadBytes := int(format.ScanlinePad) / 8
+	if scanlinePadBytes <= 0 {
+		scanlinePadBytes = 4
+	}
+	bytesPerLine := align(width*bytesPerPixel, scanlinePadBytes)
+	if bytesPerLine <= 0 {
+		return fmt.Errorf("invalid bytes per line")
+	}
+
+	setup := xproto.Setup(wm.Conn)
+	maxRequestBytes := int(setup.MaximumRequestLength)*4 - 24
+	if maxRequestBytes <= 0 {
+		maxRequestBytes = 262140 - 24
+	}
+	rowsPerChunk := maxRequestBytes / bytesPerLine
+	if rowsPerChunk < 1 {
+		return fmt.Errorf("wallpaper row is too wide for one X request")
+	}
+
+	for y := 0; y < height; y += rowsPerChunk {
+		rows := rowsPerChunk
+		if y+rows > height {
+			rows = height - y
+		}
+		data := make([]byte, bytesPerLine*rows)
+		for row := 0; row < rows; row++ {
+			srcY := y + row
+			for x := 0; x < width; x++ {
+				i := img.PixOffset(x, srcY)
+				pixel := packPixel(img.Pix[i], img.Pix[i+1], img.Pix[i+2], visual)
+				writePixel(data[row*bytesPerLine+x*bytesPerPixel:], pixel, bytesPerPixel, setup.ImageByteOrder)
+			}
+		}
+		err := xproto.PutImageChecked(wm.Conn, xproto.ImageFormatZPixmap, xproto.Drawable(pixmap), gc,
+			uint16(width), uint16(rows), 0, int16(y), 0, wm.Screen.RootDepth, data).Check()
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (wm *WM) rootVisual() (xproto.VisualInfo, bool) {
+	for _, depth := range wm.Screen.AllowedDepths {
+		for _, visual := range depth.Visuals {
+			if visual.VisualId == wm.Screen.RootVisual {
+				return visual, true
+			}
+		}
+	}
+	return xproto.VisualInfo{}, false
+}
+
+func (wm *WM) pixmapFormat(depth byte) (xproto.Format, bool) {
+	for _, format := range xproto.Setup(wm.Conn).PixmapFormats {
+		if format.Depth == depth {
+			return format, true
+		}
+	}
+	return xproto.Format{}, false
+}
+
+func packPixel(r, g, b byte, visual xproto.VisualInfo) uint32 {
+	return scaleToMask(r, visual.RedMask) |
+		scaleToMask(g, visual.GreenMask) |
+		scaleToMask(b, visual.BlueMask)
+}
+
+func scaleToMask(value byte, mask uint32) uint32 {
+	if mask == 0 {
+		return 0
+	}
+	shift := 0
+	for ((mask >> shift) & 1) == 0 {
+		shift++
+	}
+	bits := 0
+	for ((mask >> (shift + bits)) & 1) == 1 {
+		bits++
+	}
+	max := uint32((1 << bits) - 1)
+	return ((uint32(value)*max + 127) / 255) << shift
+}
+
+func writePixel(dst []byte, pixel uint32, bytesPerPixel int, byteOrder byte) {
+	if byteOrder == xproto.ImageOrderMSBFirst {
+		for i := 0; i < bytesPerPixel; i++ {
+			shift := uint((bytesPerPixel - 1 - i) * 8)
+			dst[i] = byte(pixel >> shift)
+		}
+		return
+	}
+	for i := 0; i < bytesPerPixel; i++ {
+		dst[i] = byte(pixel >> uint(i*8))
+	}
+}
+
+func align(n, alignment int) int {
+	if alignment <= 1 {
+		return n
+	}
+	remainder := n % alignment
+	if remainder == 0 {
+		return n
+	}
+	return n + alignment - remainder
 }
 
 func (wm *WM) ApplyDisplaySettings() {

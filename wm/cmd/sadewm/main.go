@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/signal"
 	"runtime"
+	"runtime/debug"
 	"syscall"
 
 	"github.com/sadewm/sadewm/wm/internal/config"
@@ -13,6 +14,24 @@ import (
 	"github.com/sadewm/sadewm/wm/internal/util"
 	"github.com/sadewm/sadewm/wm/internal/wm"
 )
+
+var gitCommit = "unknown"
+
+func commitHash() string {
+	if gitCommit != "" && gitCommit != "unknown" {
+		return gitCommit
+	}
+
+	if info, ok := debug.ReadBuildInfo(); ok {
+		for _, setting := range info.Settings {
+			if setting.Key == "vcs.revision" && setting.Value != "" {
+				return setting.Value
+			}
+		}
+	}
+
+	return "unknown"
+}
 
 func main() {
 	defer util.CrashHandler()
@@ -26,7 +45,7 @@ func main() {
 	flag.Parse()
 
 	if *version {
-		fmt.Println("sadewm (Go) 0.1")
+		fmt.Printf("sadewm (Go) 0.1 (%s)\n", commitHash())
 		os.Exit(0)
 	}
 

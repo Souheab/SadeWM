@@ -11,6 +11,7 @@
       let
         pkgs   = nixpkgs.legacyPackages.${system};
         python = pkgs.python3;
+        gitRevision = self.rev or (self.dirtyRev or "unknown");
 
         # ── sadeshell (PySide6/QML status bar) ───────────────────────────────
         pythonEnv = python.withPackages (ps: with ps; [
@@ -162,6 +163,7 @@
           src     = ./wm;
 
           vendorHash = null;  # uses go mod vendor or set to actual hash
+          ldflags = [ "-X main.gitCommit=${gitRevision}" ];
 
           nativeBuildInputs = with pkgs; [
             pkg-config

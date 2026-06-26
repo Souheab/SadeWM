@@ -116,6 +116,11 @@ type WM struct {
 	BorderNorm uint32
 	BorderSel  uint32
 
+	// Root wallpaper pixmap advertised through _XROOTPMAP_ID/ESETROOT_PMAP_ID
+	// for compositors such as picom. Keep this pixmap alive while it is
+	// referenced by the root window and root pixmap properties.
+	WallpaperPixmap xproto.Pixmap
+
 	// Numlock
 	NumlockMask uint16
 

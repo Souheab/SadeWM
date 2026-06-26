@@ -427,7 +427,10 @@ func (wm *WM) SetDefaultWallpaper() {
 		util.LogDebug("wallpaper: decode %s failed: %v", path, err)
 		return
 	}
-	w, h := int(wm.Screen.WidthInPixels), int(wm.Screen.HeightInPixels)
+	w, h := wm.SW, wm.SH
+	if w <= 0 || h <= 0 {
+		w, h = int(wm.Screen.WidthInPixels), int(wm.Screen.HeightInPixels)
+	}
 	if w <= 0 || h <= 0 {
 		return
 	}
@@ -480,9 +483,33 @@ func (wm *WM) SetDefaultWallpaper() {
 		util.LogDebug("wallpaper: set root background failed: %v", err)
 		return
 	}
+	if err := wm.publishRootPixmap(pixmap); err != nil {
+		xproto.FreePixmap(wm.Conn, pixmap)
+		util.LogDebug("wallpaper: publish root pixmap failed: %v", err)
+		return
+	}
+
+	oldPixmap := wm.WallpaperPixmap
+	wm.WallpaperPixmap = pixmap
 	xproto.ClearArea(wm.Conn, false, wm.Root, 0, 0, 0, 0)
-	xproto.FreePixmap(wm.Conn, pixmap)
+	if oldPixmap != 0 {
+		xproto.FreePixmap(wm.Conn, oldPixmap)
+	}
 	wm.Conn.Sync()
+}
+
+func (wm *WM) publishRootPixmap(pixmap xproto.Pixmap) error {
+	for _, name := range []string{"_XROOTPMAP_ID", "ESETROOT_PMAP_ID"} {
+		reply, err := xproto.InternAtom(wm.Conn, false, uint16(len(name)), name).Reply()
+		if err != nil {
+			return err
+		}
+		if err := xproto.ChangePropertyChecked(wm.Conn, xproto.PropModeReplace, wm.Root,
+			reply.Atom, xproto.AtomPixmap, 32, 1, uint32ToBytes(uint32(pixmap))).Check(); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func coverImage(src image.Image, width, height int) *image.RGBA {
@@ -705,6 +732,17 @@ func (wm *WM) Cleanup() {
 
 	// Destroy check window
 	xproto.DestroyWindow(wm.Conn, wm.WMCheckWin)
+
+	if wm.WallpaperPixmap != 0 {
+		for _, name := range []string{"_XROOTPMAP_ID", "ESETROOT_PMAP_ID"} {
+			if reply, err := xproto.InternAtom(wm.Conn, true, uint16(len(name)), name).Reply(); err == nil && reply.Atom != xproto.AtomNone {
+				xproto.DeleteProperty(wm.Conn, wm.Root, reply.Atom)
+			}
+		}
+		xproto.ChangeWindowAttributes(wm.Conn, wm.Root, xproto.CwBackPixmap, []uint32{xproto.BackPixmapNone})
+		xproto.FreePixmap(wm.Conn, wm.WallpaperPixmap)
+		wm.WallpaperPixmap = 0
+	}
 
 	xproto.SetInputFocus(wm.Conn, xproto.InputFocusPointerRoot, xproto.InputFocusPointerRoot, xproto.TimeCurrentTime)
 	xproto.DeleteProperty(wm.Conn, wm.Root, wm.NetAtom[NetActiveWindow])

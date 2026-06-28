@@ -220,6 +220,9 @@ class _FakeBus:
         self.owners = {}
         self.fail_methods = set()
         self.menu_layout = None
+        self.watcher_items = {
+            ("org.kde.StatusNotifierWatcher", "org.kde.StatusNotifierWatcher"): ["org.startup.App"]
+        }
 
     def set_prop(self, service, path, iface, prop, value):
         self.properties[(service, path, iface, prop)] = value
@@ -231,11 +234,11 @@ class _FakeBus:
         if message.destination == "org.freedesktop.DBus" and message.member == "AddMatch":
             return _Reply([])
         if (
-            message.destination == "org.kde.StatusNotifierWatcher"
+            message.destination in systray_service.WATCHER_BUS_NAMES
             and message.interface == "org.freedesktop.DBus.Properties"
             and message.member == "Get"
         ):
-            return _Reply([_Variant("as", ["org.startup.App"])])
+            return _Reply([_Variant("as", self.watcher_items.get((message.destination, message.body[0]), []))])
         if message.interface == "org.freedesktop.DBus.Properties" and message.member == "Get":
             iface, prop = message.body
             key = (message.destination, message.path, iface, prop)
@@ -361,6 +364,36 @@ class TestSystrayService(unittest.IsolatedAsyncioTestCase):
 
         self.assertIn("org.startup.App", svc._tray_items)
         self.assertEqual(svc.items[0]["title"], "Startup")
+
+    async def test_existing_items_are_loaded_from_freedesktop_watcher_name(self):
+        bus = _FakeBus()
+        bus.watcher_items = {
+            ("org.kde.StatusNotifierWatcher", "org.kde.StatusNotifierWatcher"): [],
+            ("org.freedesktop.StatusNotifierWatcher", "org.freedesktop.StatusNotifierWatcher"): ["org.compat.App"],
+        }
+        bus.set_prop("org.compat.App", "/StatusNotifierItem", "org.freedesktop.StatusNotifierItem", "Title", "Compat")
+        svc = _make_service(bus)
+
+        await svc._fetch_existing_items()
+        await asyncio.sleep(0.01)
+
+        self.assertIn("org.compat.App", svc._tray_items)
+        self.assertEqual(svc.items[0]["title"], "Compat")
+
+    async def test_registers_host_with_requested_watcher_destination(self):
+        bus = _FakeBus()
+        svc = _make_service(bus)
+
+        await svc._call_watcher(
+            "RegisterStatusNotifierHost",
+            "s",
+            ["org.freedesktop.StatusNotifierHost-test"],
+            "org.freedesktop.StatusNotifierWatcher",
+            "org.freedesktop.StatusNotifierWatcher",
+        )
+
+        self.assertEqual(bus.calls[-1].destination, "org.freedesktop.StatusNotifierWatcher")
+        self.assertEqual(bus.calls[-1].interface, "org.freedesktop.StatusNotifierWatcher")
 
     async def test_update_signal_refreshes_item(self):
         bus = _FakeBus()

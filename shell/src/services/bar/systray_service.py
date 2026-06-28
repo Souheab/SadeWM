@@ -34,6 +34,7 @@ except ImportError:
             self.value = value
 
 
+WATCHER_BUS_NAMES = ("org.kde.StatusNotifierWatcher", "org.freedesktop.StatusNotifierWatcher")
 WATCHER_IFACES = ("org.kde.StatusNotifierWatcher", "org.freedesktop.StatusNotifierWatcher")
 ITEM_IFACES = ("org.freedesktop.StatusNotifierItem", "org.kde.StatusNotifierItem")
 DBUS_MENU_IFACE = "com.canonical.dbusmenu"
@@ -205,9 +206,9 @@ class TrayItem:
 
 
 class _WatcherInterface(ServiceInterface if HAS_DBUS else object):
-    def __init__(self, service: "SystrayService"):
+    def __init__(self, service: "SystrayService", interface_name: str = "org.kde.StatusNotifierWatcher"):
         if HAS_DBUS:
-            super().__init__("org.kde.StatusNotifierWatcher")
+            super().__init__(interface_name)
         self._svc = service
 
     if HAS_DBUS:
@@ -349,7 +350,7 @@ class SystrayService(QObject):
         self._owns_watcher = False
         self._loop: asyncio.AbstractEventLoop | None = None
         self._bus = None
-        self._watcher_iface: _WatcherInterface | None = None
+        self._watcher_ifaces: list[_WatcherInterface] = []
         self._menu = DBusMenuClient(self)
         self._host_name = f"org.freedesktop.StatusNotifierHost-sadeshell-{os.getpid()}"
 
@@ -373,16 +374,17 @@ class SystrayService(QObject):
 
     async def _serve(self):
         self._bus = await MessageBus(bus_type=BusType.SESSION).connect()
-        self._watcher_iface = _WatcherInterface(self)
-        self._bus.export(WATCHER_PATH, self._watcher_iface)
+        self._watcher_ifaces = [_WatcherInterface(self, watcher_iface) for watcher_iface in WATCHER_IFACES]
+        for watcher_iface in self._watcher_ifaces:
+            self._bus.export(WATCHER_PATH, watcher_iface)
 
-        try:
-            await self._bus.request_name("org.kde.StatusNotifierWatcher")
-            self._owns_watcher = True
-            log.info("SystrayService: registered as StatusNotifierWatcher")
-        except DBusError:
-            self._owns_watcher = False
-            log.info("SystrayService: using existing StatusNotifierWatcher")
+        for watcher_name in WATCHER_BUS_NAMES:
+            try:
+                await self._bus.request_name(watcher_name)
+                self._owns_watcher = True
+                log.info("SystrayService: registered as %s", watcher_name)
+            except DBusError:
+                log.info("SystrayService: using existing %s", watcher_name)
 
         try:
             await self._bus.request_name(self._host_name)
@@ -394,8 +396,15 @@ class SystrayService(QObject):
         await self._add_match("type='signal',interface='org.freedesktop.StatusNotifierWatcher'")
         await self._add_match("type='signal',sender='org.freedesktop.DBus',member='NameOwnerChanged'")
 
-        for watcher_iface in WATCHER_IFACES:
-            await self._call_watcher("RegisterStatusNotifierHost", "s", [self._host_name], watcher_iface)
+        for watcher_name in WATCHER_BUS_NAMES:
+            for watcher_iface in WATCHER_IFACES:
+                await self._call_watcher(
+                    "RegisterStatusNotifierHost",
+                    "s",
+                    [self._host_name],
+                    watcher_iface,
+                    watcher_name,
+                )
 
         await self._fetch_existing_items()
         await self._bus.wait_for_disconnect()
@@ -413,30 +422,42 @@ class SystrayService(QObject):
         )
 
     async def _fetch_existing_items(self):
-        for watcher_iface in WATCHER_IFACES:
-            try:
-                reply = await self._bus.call(
-                    Message(
-                        destination="org.kde.StatusNotifierWatcher",
-                        path=WATCHER_PATH,
-                        interface="org.freedesktop.DBus.Properties",
-                        member="Get",
-                        signature="ss",
-                        body=[watcher_iface, "RegisteredStatusNotifierItems"],
+        seen: set[str] = set()
+        for watcher_name in WATCHER_BUS_NAMES:
+            for watcher_iface in WATCHER_IFACES:
+                try:
+                    reply = await self._bus.call(
+                        Message(
+                            destination=watcher_name,
+                            path=WATCHER_PATH,
+                            interface="org.freedesktop.DBus.Properties",
+                            member="Get",
+                            signature="ss",
+                            body=[watcher_iface, "RegisteredStatusNotifierItems"],
+                        )
                     )
-                )
-                if reply and reply.body:
+                    if not reply or not reply.body:
+                        continue
                     for service_id in _variant_value(reply.body[0]) or []:
+                        if service_id in seen:
+                            continue
+                        seen.add(service_id)
                         asyncio.ensure_future(self._register_item(service_id))
-                    return
-            except Exception:
-                pass
+                except Exception:
+                    pass
 
-    async def _call_watcher(self, member: str, signature: str, body: list[Any], iface: str):
+    async def _call_watcher(
+        self,
+        member: str,
+        signature: str,
+        body: list[Any],
+        iface: str,
+        destination: str = "org.kde.StatusNotifierWatcher",
+    ):
         try:
             return await self._bus.call(
                 Message(
-                    destination="org.kde.StatusNotifierWatcher",
+                    destination=destination,
                     path=WATCHER_PATH,
                     interface=iface,
                     member=member,
@@ -445,7 +466,7 @@ class SystrayService(QObject):
                 )
             )
         except Exception as e:
-            log.debug("Watcher call %s/%s failed: %s", iface, member, e)
+            log.debug("Watcher call %s/%s on %s failed: %s", iface, member, destination, e)
             return None
 
     def _handle_message(self, message) -> bool:
@@ -498,8 +519,8 @@ class SystrayService(QObject):
 
         if message.member == "RegisterStatusNotifierHost":
             self._host_registered = True
-            if self._watcher_iface:
-                self._watcher_iface.StatusNotifierHostRegistered()
+            for watcher_iface in self._watcher_ifaces:
+                watcher_iface.StatusNotifierHostRegistered()
             if self._bus:
                 self._bus.send(Message.new_method_return(message))
             return True
@@ -627,8 +648,9 @@ class SystrayService(QObject):
                 await self._add_match(
                     f"type='signal',sender='{owner}',path='{item.menu_path}',interface='{DBUS_MENU_IFACE}'"
                 )
-            if is_new and self._owns_watcher and self._watcher_iface:
-                self._watcher_iface.StatusNotifierItemRegistered(service_id)
+            if is_new and self._owns_watcher:
+                for watcher_iface in self._watcher_ifaces:
+                    watcher_iface.StatusNotifierItemRegistered(service_id)
         except Exception as e:
             log.debug("Failed to register SNI item %s: %s", service_id, e)
 
@@ -660,8 +682,9 @@ class SystrayService(QObject):
                 ids.discard(item_id)
             if self._menu_open_for == item_id:
                 self._menuReady.emit("", [])
-            if self._owns_watcher and self._watcher_iface:
-                self._watcher_iface.StatusNotifierItemUnregistered(registered_arg)
+            if self._owns_watcher:
+                for watcher_iface in self._watcher_ifaces:
+                    watcher_iface.StatusNotifierItemUnregistered(registered_arg)
             self._publish_items()
 
     def _publish_items(self):

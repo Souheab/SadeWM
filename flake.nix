@@ -20,6 +20,7 @@
           dbus-next
           pulsectl
           emoji
+          xlib
         ]);
 
         # ── dev/testing Python env (not shipped in sadeshell) ─────────────────

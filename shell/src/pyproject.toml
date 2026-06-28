@@ -8,6 +8,7 @@ dependencies = [
     "dbus-next>=0.2.3",
     "pulsectl>=24.1.0",
     "emoji>=2.0",
+    "python-xlib>=0.33",
 ]
 
 [project.scripts]

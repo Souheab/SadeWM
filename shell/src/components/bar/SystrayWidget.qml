@@ -75,6 +75,13 @@ Rectangle {
         }
     }
 
+    Connections {
+        target: FullscreenService
+        function onHasFullscreenChanged() {
+            SystrayService.setXEmbedVisible(!FullscreenService.hasFullscreen)
+        }
+    }
+
     Row {
         id: systrayRow
         anchors.centerIn: parent
@@ -92,6 +99,35 @@ Rectangle {
                 height: Theme.containerHeight
                 radius: Theme.containerRadius
                 color: iconArea.containsMouse ? Theme.menuHover : "transparent"
+                opacity: iconBtn.modelData && iconBtn.modelData.passive ? 0.52 : 1.0
+
+                function syncXEmbedGeometry() {
+                    if (!iconBtn.modelData || iconBtn.modelData.source !== "xembed")
+                        return
+                    if (!iconBtn.visible || FullscreenService.hasFullscreen) {
+                        SystrayService.setXEmbedGeometry(iconBtn.modelData.id, 0, 0, 0, 0)
+                        return
+                    }
+                    var pos = iconBtn.mapToGlobal(0, 0)
+                    SystrayService.setXEmbedGeometry(
+                        iconBtn.modelData.id,
+                        Math.round(pos.x),
+                        Math.round(pos.y),
+                        Math.round(iconBtn.width),
+                        Math.round(iconBtn.height)
+                    )
+                }
+
+                Component.onCompleted: Qt.callLater(syncXEmbedGeometry)
+                Component.onDestruction: {
+                    if (iconBtn.modelData && iconBtn.modelData.source === "xembed")
+                        SystrayService.setXEmbedGeometry(iconBtn.modelData.id, 0, 0, 0, 0)
+                }
+                onXChanged: Qt.callLater(syncXEmbedGeometry)
+                onYChanged: Qt.callLater(syncXEmbedGeometry)
+                onWidthChanged: Qt.callLater(syncXEmbedGeometry)
+                onHeightChanged: Qt.callLater(syncXEmbedGeometry)
+                onVisibleChanged: Qt.callLater(syncXEmbedGeometry)
 
                 Rectangle {
                     visible: iconBtn.modelData && iconBtn.modelData.attention
@@ -116,7 +152,7 @@ Rectangle {
                     visible: source !== ""
                     source: {
                         var item = iconBtn.modelData
-                        if (!item || !item.iconBase64)
+                        if (!item || item.source === "xembed" || !item.iconBase64)
                             return ""
                         return "data:image/png;base64," + item.iconBase64
                     }
@@ -124,7 +160,8 @@ Rectangle {
 
                 Text {
                     anchors.centerIn: parent
-                    visible: !iconImage.visible || iconImage.status !== Image.Ready
+                    visible: iconBtn.modelData && iconBtn.modelData.source !== "xembed"
+                             && (!iconImage.visible || iconImage.status !== Image.Ready)
                     text: "\uf2d0"
                     font.family: Theme.iconFont
                     font.pixelSize: Theme.iconFontSize
@@ -163,6 +200,7 @@ Rectangle {
                     id: iconArea
                     anchors.fill: parent
                     hoverEnabled: true
+                    enabled: !iconBtn.modelData || iconBtn.modelData.source !== "xembed"
                     cursorShape: Qt.PointingHandCursor
                     acceptedButtons: Qt.LeftButton | Qt.RightButton | Qt.MiddleButton
 

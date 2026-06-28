@@ -6,6 +6,7 @@ import asyncio
 import base64
 import logging
 import os
+import select
 import threading
 import time
 from dataclasses import dataclass, field
@@ -33,6 +34,19 @@ except ImportError:
             self.signature = signature
             self.value = value
 
+try:
+    from Xlib import X, display
+    from Xlib.error import XError
+    from Xlib.protocol import event as xevent
+
+    HAS_XLIB = True
+except ImportError:
+    HAS_XLIB = False
+    X = None  # type: ignore[assignment]
+    display = None  # type: ignore[assignment]
+    XError = Exception  # type: ignore[assignment,misc]
+    xevent = None  # type: ignore[assignment]
+
 
 WATCHER_BUS_NAMES = ("org.kde.StatusNotifierWatcher", "org.freedesktop.StatusNotifierWatcher")
 WATCHER_IFACES = ("org.kde.StatusNotifierWatcher", "org.freedesktop.StatusNotifierWatcher")
@@ -40,6 +54,9 @@ ITEM_IFACES = ("org.freedesktop.StatusNotifierItem", "org.kde.StatusNotifierItem
 DBUS_MENU_IFACE = "com.canonical.dbusmenu"
 DEFAULT_ITEM_PATH = "/StatusNotifierItem"
 WATCHER_PATH = "/StatusNotifierWatcher"
+XEMBED_VERSION = 0
+XEMBED_EMBEDDED_NOTIFY = 0
+SYSTEM_TRAY_REQUEST_DOCK = 0
 MENU_PROPS = [
     "type",
     "label",
@@ -198,11 +215,287 @@ class TrayItem:
             "iconName": icon_name,
             "iconBase64": icon_b64,
             "attention": attention,
+            "passive": self.status == "Passive",
             "itemIsMenu": self.item_is_menu,
             "hasMenu": bool(self.menu_path),
             "serviceName": self.service_name,
             "objectPath": self.object_path,
+            "source": "sni",
+            "xWindowId": 0,
         }
+
+
+@dataclass
+class XEmbedTrayItem:
+    id: str
+    window_id: int
+    container_id: int
+    title: str = ""
+
+    def to_qml(self) -> dict[str, Any]:
+        return {
+            "id": self.id,
+            "title": self.title,
+            "status": "Active",
+            "category": "XEmbed",
+            "tooltipTitle": self.title,
+            "tooltipText": "",
+            "iconName": "",
+            "iconBase64": "",
+            "attention": False,
+            "passive": False,
+            "itemIsMenu": False,
+            "hasMenu": False,
+            "serviceName": "",
+            "objectPath": "",
+            "source": "xembed",
+            "xWindowId": self.window_id,
+        }
+
+
+def _xevent_data32(ev: Any) -> list[int]:
+    data = getattr(ev, "data", None)
+    if isinstance(data, tuple) and len(data) > 1:
+        return [int(v) for v in data[1]]
+    if hasattr(data, "data32"):
+        return [int(v) for v in data.data32]
+    return []
+
+
+class XEmbedTrayHost:
+    def __init__(self, service: "SystrayService"):
+        self._svc = service
+        self._display = None
+        self._screen = None
+        self._root = None
+        self._owner = None
+        self._selection_atom = None
+        self._opcode_atom = None
+        self._manager_atom = None
+        self._xembed_atom = None
+        self._xembed_info_atom = None
+        self._items: dict[int, XEmbedTrayItem] = {}
+        self._geometries: dict[str, tuple[int, int, int, int]] = {}
+        self._running = False
+        self._visible = True
+        self._thread: threading.Thread | None = None
+        self._lock = threading.RLock()
+
+    def start(self):
+        if not HAS_XLIB or self._running:
+            return
+        try:
+            self._display = display.Display()
+            self._screen = self._display.screen()
+            self._root = self._screen.root
+            screen_number = int(getattr(self._display, "get_default_screen", lambda: 0)())
+            self._selection_atom = self._display.intern_atom(f"_NET_SYSTEM_TRAY_S{screen_number}")
+            self._opcode_atom = self._display.intern_atom("_NET_SYSTEM_TRAY_OPCODE")
+            self._manager_atom = self._display.intern_atom("MANAGER")
+            self._xembed_atom = self._display.intern_atom("_XEMBED")
+            self._xembed_info_atom = self._display.intern_atom("_XEMBED_INFO")
+
+            self._owner = self._root.create_window(
+                0,
+                0,
+                1,
+                1,
+                0,
+                self._screen.root_depth,
+                X.InputOutput,
+                X.CopyFromParent,
+                override_redirect=1,
+                event_mask=X.StructureNotifyMask | X.PropertyChangeMask,
+            )
+            self._owner.set_wm_name("sadeshell-xembed-tray")
+            self._display.set_selection_owner(self._owner, self._selection_atom, X.CurrentTime)
+            owner = self._display.get_selection_owner(self._selection_atom)
+            if int(getattr(owner, "id", 0) or 0) != int(self._owner.id):
+                log.info("XEmbed tray selection is already owned")
+                self._owner.destroy()
+                self._display.close()
+                self._owner = None
+                self._display = None
+                return
+            self._send_manager_announcement()
+            self._display.flush()
+            self._running = True
+            self._thread = threading.Thread(target=self._run, daemon=True, name="systray-xembed")
+            self._thread.start()
+            log.info("SystrayService: registered as XEmbed tray manager")
+        except Exception as e:
+            log.debug("Failed to start XEmbed tray host: %s", e)
+            self.stop()
+
+    def stop(self):
+        self._running = False
+        with self._lock:
+            if not self._display:
+                return
+            try:
+                for item in list(self._items.values()):
+                    self._undock_item(item)
+                if self._owner:
+                    self._display.set_selection_owner(X.NONE, self._selection_atom, X.CurrentTime)
+                    self._owner.destroy()
+                self._display.flush()
+                self._display.close()
+            except Exception:
+                pass
+            self._items.clear()
+            self._geometries.clear()
+            self._display = None
+            self._owner = None
+
+    def set_visible(self, visible: bool):
+        with self._lock:
+            self._visible = visible
+            for item in self._items.values():
+                self._apply_geometry(item)
+
+    def set_geometry(self, item_id: str, x: int, y: int, width: int, height: int):
+        with self._lock:
+            self._geometries[item_id] = (x, y, width, height)
+            item = self._item_by_id(item_id)
+            if item:
+                self._apply_geometry(item)
+
+    def _run(self):
+        while self._running and self._display:
+            try:
+                if self._display.pending() == 0:
+                    readable, _, _ = select.select([self._display.fileno()], [], [], 0.25)
+                    if not readable:
+                        continue
+                while self._running and self._display and self._display.pending():
+                    self._handle_event(self._display.next_event())
+            except Exception as e:
+                log.debug("XEmbed tray event loop error: %s", e)
+
+    def _send_manager_announcement(self):
+        ev = xevent.ClientMessage(
+            window=self._root,
+            client_type=self._manager_atom,
+            data=(32, [X.CurrentTime, self._selection_atom, self._owner.id, 0, 0]),
+        )
+        self._root.send_event(ev, event_mask=X.StructureNotifyMask)
+
+    def _handle_event(self, ev: Any):
+        ev_type = getattr(ev, "type", None)
+        if ev_type == X.ClientMessage and getattr(ev, "client_type", None) == self._opcode_atom:
+            data = _xevent_data32(ev)
+            if len(data) >= 3 and data[1] == SYSTEM_TRAY_REQUEST_DOCK:
+                self._dock_window(int(data[2]))
+            return
+
+        window = int(getattr(getattr(ev, "window", None), "id", 0) or 0)
+        event_window = int(getattr(getattr(ev, "event", None), "id", 0) or 0)
+        affected = window or event_window
+        if ev_type in {X.DestroyNotify, X.UnmapNotify, X.ReparentNotify} and affected:
+            self._remove_window(affected)
+
+    def _dock_window(self, window_id: int):
+        if not window_id or window_id in self._items or not self._display:
+            return
+        with self._lock:
+            try:
+                tray_window = self._display.create_resource_object("window", window_id)
+                container = self._root.create_window(
+                    0,
+                    0,
+                    24,
+                    24,
+                    0,
+                    self._screen.root_depth,
+                    X.InputOutput,
+                    X.CopyFromParent,
+                    override_redirect=1,
+                    event_mask=X.StructureNotifyMask | X.ExposureMask,
+                )
+                tray_window.change_attributes(event_mask=X.StructureNotifyMask | X.PropertyChangeMask)
+                tray_window.reparent(container, 0, 0)
+                tray_window.map()
+                container.map()
+                item = XEmbedTrayItem(
+                    id=f"xembed:{window_id}",
+                    window_id=window_id,
+                    container_id=int(container.id),
+                    title=self._window_title(tray_window),
+                )
+                self._items[window_id] = item
+                self._send_xembed_notify(tray_window, container)
+                self._apply_geometry(item)
+                self._display.flush()
+                self._svc._xembedAdded.emit(item.to_qml())
+            except Exception as e:
+                log.debug("Failed to dock XEmbed tray window %s: %s", window_id, e)
+
+    def _remove_window(self, window_id: int):
+        with self._lock:
+            item = self._items.get(window_id)
+            if not item:
+                for candidate in self._items.values():
+                    if candidate.container_id == window_id:
+                        item = candidate
+                        break
+            if not item:
+                return
+            self._items.pop(item.window_id, None)
+            self._geometries.pop(item.id, None)
+            self._undock_item(item)
+            if self._display:
+                self._display.flush()
+            self._svc._xembedRemoved.emit(item.id)
+
+    def _undock_item(self, item: XEmbedTrayItem):
+        try:
+            container = self._display.create_resource_object("window", item.container_id)
+            tray_window = self._display.create_resource_object("window", item.window_id)
+            tray_window.unmap()
+            tray_window.reparent(self._root, 0, 0)
+            container.destroy()
+        except Exception:
+            pass
+
+    def _apply_geometry(self, item: XEmbedTrayItem):
+        if not self._display:
+            return
+        x, y, width, height = self._geometries.get(item.id, (0, 0, 0, 0))
+        try:
+            container = self._display.create_resource_object("window", item.container_id)
+            tray_window = self._display.create_resource_object("window", item.window_id)
+            if not self._visible or width <= 0 or height <= 0:
+                container.unmap()
+                self._display.flush()
+                return
+            container.configure(x=x, y=y, width=width, height=height, stack_mode=X.Above)
+            tray_window.configure(x=0, y=0, width=width, height=height)
+            container.map()
+            tray_window.map()
+            self._display.flush()
+        except Exception as e:
+            log.debug("Failed to position XEmbed tray item %s: %s", item.id, e)
+
+    def _send_xembed_notify(self, tray_window: Any, container: Any):
+        ev = xevent.ClientMessage(
+            window=tray_window,
+            client_type=self._xembed_atom,
+            data=(32, [X.CurrentTime, XEMBED_EMBEDDED_NOTIFY, 0, int(container.id), XEMBED_VERSION]),
+        )
+        tray_window.send_event(ev, event_mask=0)
+
+    def _window_title(self, tray_window: Any) -> str:
+        try:
+            name = tray_window.get_wm_name()
+            return str(name or "")
+        except Exception:
+            return ""
+
+    def _item_by_id(self, item_id: str) -> XEmbedTrayItem | None:
+        for item in self._items.values():
+            if item.id == item_id:
+                return item
+        return None
 
 
 class _WatcherInterface(ServiceInterface if HAS_DBUS else object):
@@ -337,6 +630,8 @@ class SystrayService(QObject):
     menuOpenForChanged = Signal()
     _itemsReady = Signal(list)
     _menuReady = Signal(str, list)
+    _xembedAdded = Signal(dict)
+    _xembedRemoved = Signal(str)
 
     def __init__(self, parent=None, start: bool = True):
         super().__init__(parent)
@@ -344,6 +639,7 @@ class SystrayService(QObject):
         self._menu_items: list[dict[str, Any]] = []
         self._menu_open_for = ""
         self._tray_items: dict[str, TrayItem] = {}
+        self._xembed_items: dict[str, dict[str, Any]] = {}
         self._owner_to_ids: dict[str, set[str]] = {}
         self._registered_args: dict[str, str] = {}
         self._host_registered = False
@@ -352,13 +648,18 @@ class SystrayService(QObject):
         self._bus = None
         self._watcher_ifaces: list[_WatcherInterface] = []
         self._menu = DBusMenuClient(self)
+        self._xembed_host = XEmbedTrayHost(self)
         self._host_name = f"org.freedesktop.StatusNotifierHost-sadeshell-{os.getpid()}"
 
         self._itemsReady.connect(self._apply_items)
         self._menuReady.connect(self._apply_menu)
+        self._xembedAdded.connect(self._add_xembed_item)
+        self._xembedRemoved.connect(self._remove_xembed_item)
 
-        if start and HAS_DBUS:
-            self._start_loop()
+        if start:
+            if HAS_DBUS:
+                self._start_loop()
+            self._xembed_host.start()
 
     def _start_loop(self):
         def run():
@@ -688,12 +989,19 @@ class SystrayService(QObject):
             self._publish_items()
 
     def _publish_items(self):
-        visible = [
-            item.to_qml()
-            for item in self._tray_items.values()
-            if item.status != "Passive"
-        ]
-        self._itemsReady.emit(visible)
+        items = [item.to_qml() for item in self._tray_items.values()]
+        items.extend(self._xembed_items.values())
+        self._itemsReady.emit(items)
+
+    def _add_xembed_item(self, item: dict[str, Any]):
+        self._xembed_items[item["id"]] = item
+        self._publish_items()
+
+    def _remove_xembed_item(self, item_id: str):
+        self._xembed_items.pop(item_id, None)
+        if self._menu_open_for == item_id:
+            self._menuReady.emit("", [])
+        self._publish_items()
 
     def _apply_items(self, items: list[dict[str, Any]]):
         self._items = items
@@ -790,3 +1098,15 @@ class SystrayService(QObject):
         self._menu_items = []
         self.menuOpenForChanged.emit()
         self.menuItemsChanged.emit()
+
+    @Slot(str, int, int, int, int)
+    def setXEmbedGeometry(self, item_id: str, x: int, y: int, width: int, height: int):
+        self._xembed_host.set_geometry(item_id, x, y, width, height)
+
+    @Slot(bool)
+    def setXEmbedVisible(self, visible: bool):
+        self._xembed_host.set_visible(visible)
+
+    @Slot()
+    def stop(self):
+        self._xembed_host.stop()

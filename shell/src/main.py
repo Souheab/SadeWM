@@ -278,6 +278,7 @@ def main():
     ipc_service.start()
 
     ret = app.exec()
+    systray_service.stop()
     ipc_service.stop()
     sys.exit(ret)
 

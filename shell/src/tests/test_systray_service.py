@@ -327,7 +327,7 @@ class TestSystrayService(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(item.interface_name, "org.kde.StatusNotifierItem")
         self.assertTrue(svc.items[0]["attention"])
 
-    async def test_passive_items_are_hidden(self):
+    async def test_passive_items_are_published_dimmed(self):
         bus = _FakeBus()
         bus.set_prop("org.hidden.App", "/StatusNotifierItem", "org.freedesktop.StatusNotifierItem", "Title", "Hidden")
         bus.set_prop("org.hidden.App", "/StatusNotifierItem", "org.freedesktop.StatusNotifierItem", "Status", "Passive")
@@ -336,7 +336,9 @@ class TestSystrayService(unittest.IsolatedAsyncioTestCase):
         await svc._register_item("org.hidden.App")
 
         self.assertIn("org.hidden.App", svc._tray_items)
-        self.assertEqual(svc.items, [])
+        self.assertEqual(svc.items[0]["title"], "Hidden")
+        self.assertEqual(svc.items[0]["source"], "sni")
+        self.assertTrue(svc.items[0]["passive"])
 
     async def test_owner_loss_removes_matching_item(self):
         bus = _FakeBus()
@@ -353,6 +355,49 @@ class TestSystrayService(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn("org.app.One", svc._tray_items)
         self.assertIn("org.app.Two", svc._tray_items)
         self.assertEqual([item["title"] for item in svc.items], ["Two"])
+
+    async def test_owner_loss_closes_open_menu_for_removed_item(self):
+        bus = _FakeBus()
+        bus.owners["org.app.One"] = ":1.1"
+        bus.set_prop("org.app.One", "/StatusNotifierItem", "org.freedesktop.StatusNotifierItem", "Title", "One")
+        svc = _make_service(bus)
+        await svc._register_item("org.app.One")
+        svc._menu_open_for = "org.app.One"
+        svc._menu_items = [{"id": 1}]
+
+        svc._handle_message(
+            _Message(
+                interface="org.freedesktop.DBus",
+                member="NameOwnerChanged",
+                message_type=_MessageType.SIGNAL,
+                body=["org.app.One", ":1.1", ""],
+            )
+        )
+
+        self.assertNotIn("org.app.One", svc._tray_items)
+        self.assertEqual(svc.menuOpenFor, "")
+        self.assertEqual(svc.menuItems, [])
+
+    async def test_unregister_signal_removes_item_and_closes_open_menu(self):
+        bus = _FakeBus()
+        bus.set_prop("org.app.One", "/StatusNotifierItem", "org.freedesktop.StatusNotifierItem", "Title", "One")
+        svc = _make_service(bus)
+        await svc._register_item("org.app.One")
+        svc._menu_open_for = "org.app.One"
+        svc._menu_items = [{"id": 1}]
+
+        svc._handle_message(
+            _Message(
+                interface="org.kde.StatusNotifierWatcher",
+                member="StatusNotifierItemUnregistered",
+                message_type=_MessageType.SIGNAL,
+                body=["org.app.One"],
+            )
+        )
+
+        self.assertNotIn("org.app.One", svc._tray_items)
+        self.assertEqual(svc.menuOpenFor, "")
+        self.assertEqual(svc.menuItems, [])
 
     async def test_existing_watcher_items_are_loaded(self):
         bus = _FakeBus()
@@ -510,6 +555,72 @@ class TestSystrayService(unittest.IsolatedAsyncioTestCase):
             )
 
             self.assertEqual(item.to_qml()["iconBase64"], "attention")
+
+    def test_xembed_item_is_published_and_removed(self):
+        svc = _make_service()
+        item = systray_service.XEmbedTrayItem(id="xembed:42", window_id=42, container_id=420)
+
+        svc._add_xembed_item(item.to_qml())
+
+        self.assertEqual(svc.items[0]["source"], "xembed")
+        self.assertEqual(svc.items[0]["xWindowId"], 42)
+
+        svc._remove_xembed_item("xembed:42")
+
+        self.assertEqual(svc.items, [])
+
+    def test_xembed_geometry_is_forwarded_to_host(self):
+        svc = _make_service()
+        host = mock.Mock()
+        svc._xembed_host = host
+
+        svc.setXEmbedGeometry("xembed:42", 1, 2, 24, 24)
+        svc.setXEmbedVisible(False)
+
+        host.set_geometry.assert_called_once_with("xembed:42", 1, 2, 24, 24)
+        host.set_visible.assert_called_once_with(False)
+
+    def test_xembed_host_duplicate_dock_is_ignored(self):
+        svc = _make_service()
+        host = systray_service.XEmbedTrayHost(svc)
+        host._items[42] = systray_service.XEmbedTrayItem(id="xembed:42", window_id=42, container_id=420)
+
+        host._dock_window(42)
+
+        self.assertEqual(list(host._items), [42])
+
+    def test_xembed_host_remove_window_emits_removal(self):
+        class _FakeWindow:
+            def unmap(self):
+                pass
+
+            def reparent(self, *args):
+                pass
+
+            def destroy(self):
+                pass
+
+        class _FakeDisplay:
+            def create_resource_object(self, *args):
+                return _FakeWindow()
+
+            def flush(self):
+                pass
+
+        svc = _make_service()
+        host = systray_service.XEmbedTrayHost(svc)
+        host._display = _FakeDisplay()
+        host._root = object()
+        item = systray_service.XEmbedTrayItem(id="xembed:42", window_id=42, container_id=420)
+        host._items[42] = item
+        host._geometries[item.id] = (1, 2, 24, 24)
+        svc._add_xembed_item(item.to_qml())
+
+        host._remove_window(42)
+
+        self.assertNotIn(42, host._items)
+        self.assertNotIn(item.id, host._geometries)
+        self.assertEqual(svc.items, [])
 
 
 if __name__ == "__main__":

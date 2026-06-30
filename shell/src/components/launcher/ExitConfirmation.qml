@@ -64,16 +64,6 @@ Window {
         onClicked: dialog.close()
     }
 
-    Keys.onPressed: (event) => {
-        if (event.key === Qt.Key_Escape) {
-            dialog.close()
-            event.accepted = true
-        } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
-            dialog.confirmExit()
-            event.accepted = true
-        }
-    }
-
     Rectangle {
         id: card
         width: Math.min(360, parent.width * 0.9)
@@ -155,6 +145,15 @@ Window {
                     border.color: Qt.alpha(Theme.textColor, 0.18)
                     border.width: 1
                     focus: true
+                    Keys.onPressed: (event) => {
+                        if (event.key === Qt.Key_Escape) {
+                            dialog.close()
+                            event.accepted = true
+                        } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
+                            dialog.confirmExit()
+                            event.accepted = true
+                        }
+                    }
 
                     Text {
                         anchors.centerIn: parent

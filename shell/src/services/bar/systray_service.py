@@ -443,7 +443,7 @@ class XEmbedTrayHost:
             self._items.pop(item.window_id, None)
             self._geometries.pop(item.id, None)
             self._undock_item(item)
-            if self._display:
+            if self._display and hasattr(self._display, "flush"):
                 self._display.flush()
             self._svc._xembedRemoved.emit(item.id)
 
@@ -475,6 +475,7 @@ class XEmbedTrayHost:
             self._display.flush()
         except Exception as e:
             log.debug("Failed to position XEmbed tray item %s: %s", item.id, e)
+            self._remove_window(item.window_id)
 
     def _send_xembed_notify(self, tray_window: Any, container: Any):
         ev = xevent.ClientMessage(
@@ -849,7 +850,7 @@ class SystrayService(QObject):
 
     async def _get_name_owner(self, service_name: str) -> str:
         if service_name.startswith(":"):
-            return service_name
+            return service_name if await self._name_has_owner(service_name) else ""
         try:
             reply = await self._bus.call(
                 Message(
@@ -865,7 +866,23 @@ class SystrayService(QObject):
                 return str(reply.body[0])
         except Exception:
             pass
-        return service_name
+        return ""
+
+    async def _name_has_owner(self, service_name: str) -> bool:
+        try:
+            reply = await self._bus.call(
+                Message(
+                    destination="org.freedesktop.DBus",
+                    path="/org/freedesktop/DBus",
+                    interface="org.freedesktop.DBus",
+                    member="NameHasOwner",
+                    signature="s",
+                    body=[service_name],
+                )
+            )
+            return bool(reply and reply.body and reply.body[0])
+        except Exception:
+            return False
 
     async def _get_property(self, service_name: str, object_path: str, prop: str, default: Any = None):
         for iface in ITEM_IFACES:
@@ -893,19 +910,44 @@ class SystrayService(QObject):
             return
 
         owner = await self._get_name_owner(service_name)
+        if not owner:
+            self._remove_item(item_id)
+            log.debug("Ignoring SNI registration for vanished service: %s", service_id)
+            return
         try:
             title, iface = await self._get_property(service_name, object_path, "Title", "")
+            status, status_iface = await self._get_property(service_name, object_path, "Status", "Active")
+            category, category_iface = await self._get_property(service_name, object_path, "Category", "ApplicationStatus")
+            icon_name, icon_name_iface = await self._get_property(service_name, object_path, "IconName", "")
+            icon_pixmap, icon_pixmap_iface = await self._get_property(service_name, object_path, "IconPixmap", [])
+            attention_icon_name, attention_name_iface = await self._get_property(service_name, object_path, "AttentionIconName", "")
+            attention_icon_pixmap, attention_pixmap_iface = await self._get_property(service_name, object_path, "AttentionIconPixmap", [])
+            tooltip, tooltip_iface = await self._get_property(service_name, object_path, "ToolTip", None)
+            menu_path, menu_iface = await self._get_property(service_name, object_path, "Menu", "")
+            item_is_menu, menu_flag_iface = await self._get_property(service_name, object_path, "ItemIsMenu", False)
+            iface = next(
+                (
+                    candidate
+                    for candidate in (
+                        iface,
+                        status_iface,
+                        category_iface,
+                        icon_name_iface,
+                        icon_pixmap_iface,
+                        attention_name_iface,
+                        attention_pixmap_iface,
+                        tooltip_iface,
+                        menu_iface,
+                        menu_flag_iface,
+                    )
+                    if candidate
+                ),
+                "",
+            )
             if not iface:
-                iface = ITEM_IFACES[0]
-            status, _ = await self._get_property(service_name, object_path, "Status", "Active")
-            category, _ = await self._get_property(service_name, object_path, "Category", "ApplicationStatus")
-            icon_name, _ = await self._get_property(service_name, object_path, "IconName", "")
-            icon_pixmap, _ = await self._get_property(service_name, object_path, "IconPixmap", [])
-            attention_icon_name, _ = await self._get_property(service_name, object_path, "AttentionIconName", "")
-            attention_icon_pixmap, _ = await self._get_property(service_name, object_path, "AttentionIconPixmap", [])
-            tooltip, _ = await self._get_property(service_name, object_path, "ToolTip", None)
-            menu_path, _ = await self._get_property(service_name, object_path, "Menu", "")
-            item_is_menu, _ = await self._get_property(service_name, object_path, "ItemIsMenu", False)
+                self._remove_item(item_id)
+                log.debug("Ignoring SNI registration with no reachable item interface: %s", service_id)
+                return
 
             tooltip_title = ""
             tooltip_text = ""

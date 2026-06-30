@@ -218,6 +218,7 @@ class _FakeBus:
         self.sent = []
         self.properties = {}
         self.owners = {}
+        self.missing_names = set()
         self.fail_methods = set()
         self.menu_layout = None
         self.watcher_items = {
@@ -230,7 +231,11 @@ class _FakeBus:
     async def call(self, message):
         self.calls.append(message)
         if message.destination == "org.freedesktop.DBus" and message.member == "GetNameOwner":
+            if message.body[0] in self.missing_names:
+                raise RuntimeError("name has no owner")
             return _Reply([self.owners.get(message.body[0], message.body[0])])
+        if message.destination == "org.freedesktop.DBus" and message.member == "NameHasOwner":
+            return _Reply([message.body[0] not in self.missing_names])
         if message.destination == "org.freedesktop.DBus" and message.member == "AddMatch":
             return _Reply([])
         if (
@@ -398,6 +403,27 @@ class TestSystrayService(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn("org.app.One", svc._tray_items)
         self.assertEqual(svc.menuOpenFor, "")
         self.assertEqual(svc.menuItems, [])
+
+    async def test_refresh_removes_item_when_dbus_owner_has_vanished(self):
+        bus = _FakeBus()
+        bus.set_prop("org.app.Gone", "/StatusNotifierItem", "org.freedesktop.StatusNotifierItem", "Title", "Gone")
+        svc = _make_service(bus)
+        await svc._register_item("org.app.Gone")
+        bus.missing_names.add("org.app.Gone")
+
+        await svc._refresh_item("org.app.Gone")
+
+        self.assertNotIn("org.app.Gone", svc._tray_items)
+        self.assertEqual(svc.items, [])
+
+    async def test_register_ignores_item_when_properties_are_unreachable(self):
+        bus = _FakeBus()
+        svc = _make_service(bus)
+
+        await svc._register_item("org.app.Empty")
+
+        self.assertNotIn("org.app.Empty", svc._tray_items)
+        self.assertEqual(svc.items, [])
 
     async def test_existing_watcher_items_are_loaded(self):
         bus = _FakeBus()
@@ -620,6 +646,24 @@ class TestSystrayService(unittest.IsolatedAsyncioTestCase):
 
         self.assertNotIn(42, host._items)
         self.assertNotIn(item.id, host._geometries)
+        self.assertEqual(svc.items, [])
+
+    def test_xembed_apply_geometry_failure_removes_item(self):
+        class _FailingDisplay:
+            def create_resource_object(self, *args):
+                raise RuntimeError("dead window")
+
+        svc = _make_service()
+        host = systray_service.XEmbedTrayHost(svc)
+        host._display = _FailingDisplay()
+        host._root = object()
+        item = systray_service.XEmbedTrayItem(id="xembed:42", window_id=42, container_id=420)
+        host._items[42] = item
+        svc._add_xembed_item(item.to_qml())
+
+        host._apply_geometry(item)
+
+        self.assertNotIn(42, host._items)
         self.assertEqual(svc.items, [])
 
 

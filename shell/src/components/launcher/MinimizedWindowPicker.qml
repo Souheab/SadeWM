@@ -108,21 +108,6 @@ Window {
         onClicked: picker.close()
     }
 
-    // Left/Right arrow navigation for grid columns
-    Keys.onPressed: (event) => {
-        if (event.key === Qt.Key_Right) {
-            picker.selectedIndex = Math.min(
-                picker.selectedIndex + 1,
-                picker.filteredWindows.length - 1)
-            gridView.positionViewAtIndex(picker.selectedIndex, GridView.Contain)
-            event.accepted = true
-        } else if (event.key === Qt.Key_Left) {
-            picker.selectedIndex = Math.max(picker.selectedIndex - 1, 0)
-            gridView.positionViewAtIndex(picker.selectedIndex, GridView.Contain)
-            event.accepted = true
-        }
-    }
-
     // ── Centered card ──────────────────────────────────────────────
     Rectangle {
         id: card

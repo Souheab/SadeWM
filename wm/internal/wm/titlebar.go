@@ -393,14 +393,28 @@ func (wm *WM) titlebarGeom(c *Client) (x, y, w, h int) {
 
 // moveTitlebar resizes the titlebar to track its floating frame.
 func (wm *WM) moveTitlebar(c *Client) {
-	if c.TitleWin == 0 {
+	if !wm.configureTitlebarGeometry(c) {
 		return
+	}
+	wm.repaintTitlebar(c)
+}
+
+func (wm *WM) configureTitlebarGeometry(c *Client) bool {
+	if c.TitleWin == 0 {
+		return false
 	}
 	tbX, tbY, tbW, tbH := wm.titlebarGeom(c)
 	xproto.ConfigureWindow(wm.Conn, c.TitleWin,
 		xproto.ConfigWindowX|xproto.ConfigWindowY|
 			xproto.ConfigWindowWidth|xproto.ConfigWindowHeight,
 		[]uint32{uint32(tbX), uint32(tbY), uint32(tbW), uint32(tbH)})
+	return true
+}
+
+func (wm *WM) repaintTitlebar(c *Client) {
+	if c.TitleWin == 0 {
+		return
+	}
 	// Cairo draws through a separate Xlib connection. Wait until the XGB
 	// resize is visible to the server, then repaint immediately because expose
 	// events are buffered while ResizeMouse owns the drag loop.

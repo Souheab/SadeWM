@@ -217,6 +217,8 @@ func (wm *WM) Resize(c *Client, x, y, w, h int, interact bool) {
 }
 
 func (wm *WM) resizeClient(c *Client, x, y, w, h int) {
+	growing := w > c.W || h > c.H
+
 	c.OldX = c.X
 	c.OldY = c.Y
 	c.OldW = c.W
@@ -228,15 +230,30 @@ func (wm *WM) resizeClient(c *Client, x, y, w, h int) {
 
 	if c.FrameWin != 0 {
 		frameX, frameY, frameW, frameH := wm.frameGeom(c)
-		xproto.ConfigureWindow(wm.Conn, c.FrameWin,
-			xproto.ConfigWindowX|xproto.ConfigWindowY|
-				xproto.ConfigWindowWidth|xproto.ConfigWindowHeight,
-			[]uint32{uint32(frameX), uint32(frameY), uint32(frameW), uint32(frameH)})
-		xproto.ConfigureWindow(wm.Conn, c.Win,
-			xproto.ConfigWindowX|xproto.ConfigWindowY|
-				xproto.ConfigWindowWidth|xproto.ConfigWindowHeight|
-				xproto.ConfigWindowBorderWidth,
-			[]uint32{0, titlebarHeight, uint32(w), uint32(h), 0})
+		configureFrame := func() {
+			xproto.ConfigureWindow(wm.Conn, c.FrameWin,
+				xproto.ConfigWindowX|xproto.ConfigWindowY|
+					xproto.ConfigWindowWidth|xproto.ConfigWindowHeight,
+				[]uint32{uint32(frameX), uint32(frameY), uint32(frameW), uint32(frameH)})
+		}
+		configureClient := func() {
+			xproto.ConfigureWindow(wm.Conn, c.Win,
+				xproto.ConfigWindowX|xproto.ConfigWindowY|
+					xproto.ConfigWindowWidth|xproto.ConfigWindowHeight|
+					xproto.ConfigWindowBorderWidth,
+				[]uint32{0, titlebarHeight, uint32(w), uint32(h), 0})
+		}
+		// When growing, resize clipped children before exposing more of the
+		// frame; otherwise the frame background flashes around the client.
+		if growing {
+			wm.configureTitlebarGeometry(c)
+			configureClient()
+			configureFrame()
+		} else {
+			configureFrame()
+			wm.configureTitlebarGeometry(c)
+			configureClient()
+		}
 	} else {
 		xproto.ConfigureWindow(wm.Conn, c.Win,
 			xproto.ConfigWindowX|xproto.ConfigWindowY|
@@ -246,7 +263,7 @@ func (wm *WM) resizeClient(c *Client, x, y, w, h int) {
 	}
 	wm.configure(c)
 	wm.moveBorderWindow(c)
-	wm.moveTitlebar(c)
+	wm.repaintTitlebar(c)
 }
 
 func (wm *WM) configure(c *Client) {

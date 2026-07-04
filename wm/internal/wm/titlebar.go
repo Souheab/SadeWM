@@ -403,6 +403,7 @@ func (wm *WM) configureTitlebarGeometry(c *Client) bool {
 	if c.TitleWin == 0 {
 		return false
 	}
+	wm.setTitlebarBackground(c)
 	tbX, tbY, tbW, tbH := wm.titlebarGeom(c)
 	xproto.ConfigureWindow(wm.Conn, c.TitleWin,
 		xproto.ConfigWindowX|xproto.ConfigWindowY|
@@ -415,12 +416,16 @@ func (wm *WM) repaintTitlebar(c *Client) {
 	if c.TitleWin == 0 {
 		return
 	}
+	wm.setTitlebarBackground(c)
 	// Cairo draws through a separate Xlib connection. Wait until the XGB
 	// resize is visible to the server, then repaint immediately because expose
 	// events are buffered while ResizeMouse owns the drag loop.
 	wm.Conn.Sync()
-	// Reapply shape mask since width may have changed.
-	wm.applyTitlebarShape(c)
+	// Reapply shape outside live drags. During resize the mask update itself can
+	// expose the titlebar background; the final resize refreshes it once.
+	if !wm.dragging {
+		wm.applyTitlebarShape(c)
+	}
 	wm.drawTitlebar(c)
 }
 
@@ -469,6 +474,44 @@ func hexToRGB(hex string) (r, g, b float64) {
 		return float64(ri) / 255.0, float64(gi) / 255.0, float64(bi) / 255.0
 	}
 	return 0, 0, 0
+}
+
+func hexToPixel(hex string) uint32 {
+	if len(hex) > 0 && hex[0] == '#' {
+		hex = hex[1:]
+	}
+	if len(hex) == 6 {
+		var pixel uint32
+		fmt.Sscanf(hex, "%06x", &pixel)
+		return pixel
+	}
+	return 0
+}
+
+func (wm *WM) setTitlebarBackground(c *Client) {
+	if c.TitleWin == 0 {
+		return
+	}
+	pixel := wm.titlebarBackgroundPixel(c)
+	xproto.ChangeWindowAttributes(wm.Conn, c.TitleWin,
+		xproto.CwBackPixel, []uint32{pixel})
+}
+
+func (wm *WM) setFrameBackground(c *Client) {
+	if c.FrameWin == 0 {
+		return
+	}
+	pixel := wm.titlebarBackgroundPixel(c)
+	xproto.ChangeWindowAttributes(wm.Conn, c.FrameWin,
+		xproto.CwBackPixel, []uint32{pixel})
+}
+
+func (wm *WM) titlebarBackgroundPixel(c *Client) uint32 {
+	hex := config.TitlebarBgNorm
+	if wm.SelMon != nil && c == wm.SelMon.Sel {
+		hex = config.TitlebarBgFocus
+	}
+	return hexToPixel(hex)
 }
 
 // tbColors builds a C.TBColors struct from the current config globals.
@@ -526,6 +569,7 @@ func (wm *WM) drawTitlebar(c *Client) {
 		return
 	}
 
+	wm.setTitlebarBackground(c)
 	_, _, tbW, tbH := wm.titlebarGeom(c)
 
 	focused := c == wm.SelMon.Sel

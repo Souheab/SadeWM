@@ -243,12 +243,14 @@ func (wm *WM) resizeClient(c *Client, x, y, w, h int) {
 					xproto.ConfigWindowBorderWidth,
 				[]uint32{0, titlebarHeight, uint32(w), uint32(h), 0})
 		}
-		// When growing, resize clipped children before exposing more of the
-		// frame; otherwise the frame background flashes around the client.
+		// When growing, resize the client before exposing more of the frame;
+		// configure the titlebar after the frame grows so the newly visible
+		// titlebar strip is painted by its own window rather than stale backing.
 		if growing {
-			wm.configureTitlebarGeometry(c)
 			configureClient()
+			wm.setFrameBackground(c)
 			configureFrame()
+			wm.configureTitlebarGeometry(c)
 		} else {
 			configureFrame()
 			wm.configureTitlebarGeometry(c)

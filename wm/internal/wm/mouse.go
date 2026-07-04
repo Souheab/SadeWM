@@ -325,6 +325,8 @@ done:
 	xproto.WarpPointer(wm.Conn, xproto.WindowNone, c.Win,
 		0, 0, 0, 0, int16(c.W+c.BW-1), int16(c.H+c.BW-1))
 	xproto.UngrabPointer(wm.Conn, xproto.TimeCurrentTime)
+	wm.applyTitlebarShape(c)
+	wm.drawTitlebar(c)
 
 	if m := wm.RectToMon(c.X, c.Y, c.W, c.H); m != wm.SelMon {
 		wm.sendMon(c, m)

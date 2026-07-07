@@ -233,3 +233,32 @@ def test_above_window_stays_above_clicked_normal_floating_window(xd):
         above.kill()
         normal.kill()
         time.sleep(0.2)
+
+
+def test_above_dock_does_not_stay_above_floating_window_by_default(xd):
+    helpers.ipc_request("view", mask=16)
+    time.sleep(0.2)
+
+    normal = _create_window(xd, "test-normal-over-dock", position=(120, 60))
+    dock = _create_window(
+        xd,
+        "test-dock-not-always-on-top",
+        size=(1280, 80),
+        position=(0, 0),
+        window_type="_NET_WM_WINDOW_TYPE_DOCK",
+        state_atoms=["_NET_WM_STATE_ABOVE"],
+    )
+
+    try:
+        _assert_above(xd, dock, normal)
+
+        geo = normal.geometry
+        xd.mouse.move(geo.x + 40, geo.y + geo.height - 40)
+        xd.mouse.click(button=1)
+        xd.wait_for_layout()
+
+        _assert_above(xd, normal, dock)
+    finally:
+        dock.kill()
+        normal.kill()
+        time.sleep(0.2)

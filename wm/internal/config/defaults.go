@@ -35,6 +35,7 @@ var (
 	LockFullscreen      = true
 	TopOffset      uint = 10
 	BottomOffset   uint = 10
+	BarAlwaysOnTop      = false
 )
 
 var SizeHintsWhitelist = []string{"mpv"}

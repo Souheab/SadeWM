@@ -12,12 +12,17 @@ import (
 // TOMLConfig mirrors the TOML file structure.
 type TOMLConfig struct {
 	Appearance *TOMLAppearance `toml:"appearance"`
+	Bar        *TOMLBar        `toml:"bar"`
 	Colors     *TOMLColors     `toml:"colors"`
 	Titlebar   *TOMLTitlebar   `toml:"titlebar"`
 	Layout     *TOMLLayout     `toml:"layout"`
 	Rules      []TOMLRule      `toml:"rules"`
 	Keys       []TOMLKey       `toml:"keys"`
 	TagKeys    []TOMLTagKey    `toml:"tagkeys"`
+}
+
+type TOMLBar struct {
+	AlwaysOnTop *bool `toml:"always_on_top"`
 }
 
 // TOMLTitlebar configures the floating-window titlebar colours.
@@ -112,6 +117,12 @@ func ApplyTOML(tc *TOMLConfig) {
 		}
 		if tc.Appearance.Snap != nil {
 			Snap = uint(*tc.Appearance.Snap)
+		}
+	}
+
+	if tc.Bar != nil {
+		if tc.Bar.AlwaysOnTop != nil {
+			BarAlwaysOnTop = *tc.Bar.AlwaysOnTop
 		}
 	}
 
@@ -309,6 +320,9 @@ func PrintConfig(rules []Rule, keys []Key) {
 	fmt.Printf("  borderpx      = %d\n", BorderPx)
 	fmt.Printf("  gappx         = %d\n", GapPx)
 	fmt.Printf("  snap          = %d\n", Snap)
+
+	fmt.Println("[bar]")
+	fmt.Printf("  always_on_top = %v\n", BarAlwaysOnTop)
 
 	fmt.Println("[colors.norm]")
 	fmt.Printf("  border        = \"%s\"\n", ColBorderNorm)

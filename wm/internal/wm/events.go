@@ -400,14 +400,7 @@ func (wm *WM) manage(w xproto.Window, wa *xproto.GetWindowAttributesReply) {
 	wtypes := wm.getWindowAtomProps(w, wm.NetAtom[NetWMWindowType], 32)
 	if len(wtypes) > 0 {
 		if atomListContains(wtypes, wm.NetAtom[NetWMWindowTypeDock]) {
-			// Check if it's ABOVE
-			isAbove := false
-			states := wm.getWindowAtomProps(w, wm.NetAtom[NetWMState], 32)
-			if atomListContains(states, wm.NetAtom[NetWMStateAbove]) ||
-				atomListContains(states, wm.NetAtom[NetWMStateStaysOnTop]) {
-				isAbove = true
-			}
-			if !isAbove {
+			if !config.BarAlwaysOnTop {
 				xproto.MapWindow(wm.Conn, w)
 				return
 			}

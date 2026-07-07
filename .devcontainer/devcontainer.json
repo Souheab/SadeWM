@@ -19,7 +19,7 @@
       "configureZshAsDefaultShell": true
     }
   },
-  "postCreateCommand": "cd ${containerWorkspaceFolder} && sudo apt-get update && sudo DEBIAN_FRONTEND=noninteractive apt-get install -y build-essential pkg-config gdb make libx11-dev libxext-dev libxft-dev libxinerama-dev libxcursor-dev libxi-dev libxtst-dev libfontconfig1-dev libfreetype6-dev libcairo2-dev xserver-xephyr xvfb xauth x11-utils x11-xserver-utils scrot mesa-utils libgl1-mesa-dri libglx-mesa0 xserver-xorg-video-dummy dbus dbus-x11 bluez python3-dbus python3-xlib libdbus-1-dev && python3 -m pip install --user --break-system-packages -e ./xdrive",
+  "postCreateCommand": "cd ${containerWorkspaceFolder} && sudo apt-get update && sudo DEBIAN_FRONTEND=noninteractive apt-get install -y build-essential pkg-config gdb make libx11-dev libxext-dev libxft-dev libxinerama-dev libxcursor-dev libxi-dev libxtst-dev libfontconfig1-dev libfreetype6-dev libcairo2-dev xserver-xephyr xvfb xauth x11-utils x11-xserver-utils scrot mesa-utils libgl1-mesa-dri libglx-mesa0 xserver-xorg-video-dummy dbus dbus-x11 bluez python3-dbus python3-xlib libdbus-1-dev && python3 -m pip install --user --break-system-packages tomlkit -e ./xdrive",
   "customizations": {
     "vscode": {
       "extensions": [

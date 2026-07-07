@@ -12,6 +12,8 @@ def test_wm_defaults_are_created():
 
     assert doc["appearance"]["gappx"] == 10
     assert doc["layout"]["mfact"] == 0.5
+    assert doc["layout"]["topoffset"] == 40
+    assert doc["layout"]["bottomoffset"] == 0
     assert doc["colors"]["sel"]["border"] == "#0099ff"
 
 

@@ -33,8 +33,8 @@ var (
 	NMaster             = 1
 	ResizeHints         = true
 	LockFullscreen      = true
-	TopOffset      uint = 10
-	BottomOffset   uint = 10
+	TopOffset      uint = 40
+	BottomOffset   uint = 0
 	BarAlwaysOnTop      = false
 )
 

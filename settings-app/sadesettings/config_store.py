@@ -19,8 +19,8 @@ WM_DEFAULTS: dict[str, dict[str, Any]] = {
     "layout": {
         "mfact": 0.5,
         "nmaster": 1,
-        "topoffset": 10,
-        "bottomoffset": 10,
+        "topoffset": 40,
+        "bottomoffset": 0,
         "resizehints": True,
         "lockfullscreen": True,
     },

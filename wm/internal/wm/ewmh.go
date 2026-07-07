@@ -182,6 +182,8 @@ func (wm *WM) hasFloatingWindowType(wtypes []xproto.Atom) bool {
 
 // updateSizeHints reads ICCCM size hints.
 func (wm *WM) updateSizeHints(c *Client) {
+	c.HasPositionHint = false
+
 	reply, err := xproto.GetProperty(wm.Conn, false, c.Win,
 		xproto.AtomWmNormalHints, xproto.AtomWmSizeHints, 0, 18).Reply()
 	if err != nil || reply.ValueLen < 18 {
@@ -192,12 +194,16 @@ func (wm *WM) updateSizeHints(c *Client) {
 	flags := getUint32(v[0:])
 
 	const (
+		usPosition = 1 << 0
+		pPosition  = 1 << 2
 		pMinSize   = 1 << 4
 		pMaxSize   = 1 << 5
 		pResizeInc = 1 << 6
 		pBaseSize  = 1 << 8
 		pAspect    = 1 << 7
 	)
+
+	c.HasPositionHint = flags&(usPosition|pPosition) != 0
 
 	if flags&pBaseSize != 0 {
 		c.BaseW = int(getUint32(v[60:]))

@@ -33,6 +33,7 @@ type Client struct {
 	Tags uint32
 	// State flags
 	IsFixed, IsFloating, IsUrgent, NeverFocus bool
+	HasPositionHint                           bool
 	OldState                                  bool // was floating before fullscreen
 	IsFullscreen                              bool
 	Maximized                                 bool

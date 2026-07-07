@@ -58,6 +58,7 @@ type TOMLLayout struct {
 	BottomOffset   *int     `toml:"bottomoffset"`
 	ResizeHints    *bool    `toml:"resizehints"`
 	LockFullscreen *bool    `toml:"lockfullscreen"`
+	CenterFloating *bool    `toml:"center_floating"`
 }
 
 type TOMLRule struct {
@@ -177,6 +178,9 @@ func ApplyTOML(tc *TOMLConfig) {
 		}
 		if tc.Layout.LockFullscreen != nil {
 			LockFullscreen = *tc.Layout.LockFullscreen
+		}
+		if tc.Layout.CenterFloating != nil {
+			CenterFloating = *tc.Layout.CenterFloating
 		}
 	}
 }
@@ -336,6 +340,7 @@ func PrintConfig(rules []Rule, keys []Key) {
 	fmt.Printf("  bottomoffset  = %d\n", BottomOffset)
 	fmt.Printf("  resizehints   = %v\n", ResizeHints)
 	fmt.Printf("  lockfullscreen= %v\n", LockFullscreen)
+	fmt.Printf("  center_floating = %v\n", CenterFloating)
 
 	fmt.Printf("[[rules]]  (%d active)\n", len(rules))
 	for _, r := range rules {

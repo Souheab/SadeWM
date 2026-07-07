@@ -491,6 +491,7 @@ func (wm *WM) manage(w xproto.Window, wa *xproto.GetWindowAttributesReply) {
 		c.IsFloating = isTransient || c.IsFixed
 		c.OldState = c.IsFloating
 	}
+	wm.placeFloatingOnManage(c)
 	wm.attachBottom(c)
 	wm.attachStack(c)
 

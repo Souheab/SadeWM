@@ -36,6 +36,7 @@ var (
 	TopOffset      uint = 40
 	BottomOffset   uint = 0
 	BarAlwaysOnTop      = false
+	CenterFloating      = true
 )
 
 var SizeHintsWhitelist = []string{"mpv"}

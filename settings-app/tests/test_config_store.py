@@ -14,6 +14,7 @@ def test_wm_defaults_are_created():
     assert doc["layout"]["mfact"] == 0.5
     assert doc["layout"]["topoffset"] == 40
     assert doc["layout"]["bottomoffset"] == 0
+    assert doc["layout"]["center_floating"] is True
     assert doc["colors"]["sel"]["border"] == "#0099ff"
 
 

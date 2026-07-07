@@ -23,6 +23,7 @@ WM_DEFAULTS: dict[str, dict[str, Any]] = {
         "bottomoffset": 0,
         "resizehints": True,
         "lockfullscreen": True,
+        "center_floating": True,
     },
     "titlebar": {
         "bg": "#24283b",

@@ -164,6 +164,7 @@ class SettingsWindow(QMainWindow):
             ("layout.bottomoffset", "Bottom offset", "int", 0, 512),
             ("layout.resizehints", "Resize hints", "bool", None, None),
             ("layout.lockfullscreen", "Lock fullscreen", "bool", None, None),
+            ("layout.center_floating", "Center floating windows", "bool", None, None),
             ("colors.norm.border", "Normal border", "color", None, None),
             ("colors.sel.border", "Selected border", "color", None, None),
             ("titlebar.bg", "Titlebar background", "color", None, None),

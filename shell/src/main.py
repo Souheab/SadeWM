@@ -18,6 +18,19 @@ def _handle_open_launcher():
         sys.exit(1)
 
 
+def _handle_open_keybinds():
+    """Handle --open-keybinds before loading PySide6."""
+    if "--open-keybinds" not in sys.argv:
+        return
+    from sadeshell.services.shared.ipc_client import send_ipc_command
+    result = send_ipc_command("open-keybinds")
+    if result == "ok":
+        sys.exit(0)
+    else:
+        print(result, file=sys.stderr)
+        sys.exit(1)
+
+
 def _handle_open_emoji_picker():
     """Handle --open-emoji-picker before loading PySide6."""
     if "--open-emoji-picker" not in sys.argv:
@@ -71,6 +84,7 @@ def _handle_confirm_exit():
 
 
 _handle_open_launcher()
+_handle_open_keybinds()
 _handle_open_emoji_picker()
 _handle_open_window_picker()
 _handle_open_minimized_picker()
@@ -190,6 +204,7 @@ from sadeshell.services.shared.window_helper import WindowHelper
 from sadeshell.services.shared.ipc_service import IPCService
 from sadeshell.services.shared.wm_ipc_service import WMIPCService
 from sadeshell.services.shared.window_picker_service import WindowPickerService
+from sadeshell.services.shared.keybind_service import KeybindService
 
 
 def main():
@@ -215,6 +230,7 @@ def main():
     ipc_service = IPCService()
     wm_ipc_service = WMIPCService()
     window_picker_service = WindowPickerService()
+    keybind_service = KeybindService()
 
     # Register singletons for QML access
     qmlRegisterSingletonInstance(TagService, "PyShell.Services", 1, 0, "TagService", tag_service)
@@ -233,6 +249,7 @@ def main():
     qmlRegisterSingletonInstance(IPCService, "PyShell.Services", 1, 0, "IPCService", ipc_service)
     qmlRegisterSingletonInstance(WMIPCService, "PyShell.Services", 1, 0, "WMIPCService", wm_ipc_service)
     qmlRegisterSingletonInstance(WindowPickerService, "PyShell.Services", 1, 0, "WindowPickerService", window_picker_service)
+    qmlRegisterSingletonInstance(KeybindService, "PyShell.Services", 1, 0, "KeybindService", keybind_service)
 
     engine = QQmlApplicationEngine()
 
@@ -257,6 +274,10 @@ def main():
     # Load the launcher overlay
     launcher_qml = os.path.join(qml_dir, "launcher", "AppLauncher.qml")
     engine.load(QUrl.fromLocalFile(launcher_qml))
+
+    # Load the keybind overlay
+    keybind_qml = os.path.join(qml_dir, "launcher", "KeybindOverlay.qml")
+    engine.load(QUrl.fromLocalFile(keybind_qml))
 
     # Load the emoji picker overlay
     emoji_qml = os.path.join(qml_dir, "launcher", "EmojiPicker.qml")

@@ -58,16 +58,17 @@ type TagEvent struct {
 
 // Response is the JSON reply written back to the client.
 type Response struct {
-	OK        bool        `json:"ok"`
-	Error     string      `json:"error,omitempty"`
-	TagMask   uint32      `json:"tag_mask,omitempty"`
-	Layout    string      `json:"layout,omitempty"`
-	MFact     float64     `json:"mfact,omitempty"`
-	NMaster   int         `json:"nmaster,omitempty"`
-	Gaps      int         `json:"gaps,omitempty"`
-	RightTile bool        `json:"isrighttiled,omitempty"`
-	Clients   []ClientDTO `json:"clients,omitempty"`
-	TagsState []string    `json:"tags_state,omitempty"`
+	OK        bool         `json:"ok"`
+	Error     string       `json:"error,omitempty"`
+	TagMask   uint32       `json:"tag_mask,omitempty"`
+	Layout    string       `json:"layout,omitempty"`
+	MFact     float64      `json:"mfact,omitempty"`
+	NMaster   int          `json:"nmaster,omitempty"`
+	Gaps      int          `json:"gaps,omitempty"`
+	RightTile bool         `json:"isrighttiled,omitempty"`
+	Clients   []ClientDTO  `json:"clients,omitempty"`
+	TagsState []string     `json:"tags_state,omitempty"`
+	Keybinds  []KeybindDTO `json:"keybinds,omitempty"`
 }
 
 // ClientDTO is the per-client info returned in get_state.
@@ -80,6 +81,14 @@ type ClientDTO struct {
 	Maximized bool   `json:"maximized"`
 	Focused   bool   `json:"focused"`
 	Minimized bool   `json:"minimized"`
+}
+
+// KeybindDTO is the per-keybinding info returned in keybinds.
+type KeybindDTO struct {
+	Mod         []string `json:"mod"`
+	Key         string   `json:"key"`
+	Action      string   `json:"action"`
+	Description string   `json:"description"`
 }
 
 // Server is the Unix-socket IPC listener.

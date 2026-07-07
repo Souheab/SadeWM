@@ -34,6 +34,7 @@ class IPCService(QObject):
     """
 
     openLauncherRequested = Signal()
+    openKeybindsRequested = Signal()
     openEmojiPickerRequested = Signal()
     openWindowPickerRequested = Signal()
     openMinimizedPickerRequested = Signal()
@@ -90,6 +91,11 @@ class IPCService(QObject):
                 self, "_emit_open_launcher", Qt.ConnectionType.QueuedConnection
             )
             conn.sendall(b"ok\n")
+        elif data == "open-keybinds":
+            QMetaObject.invokeMethod(
+                self, "_emit_open_keybinds", Qt.ConnectionType.QueuedConnection
+            )
+            conn.sendall(b"ok\n")
         elif data == "open-emoji-picker":
             QMetaObject.invokeMethod(
                 self, "_emit_open_emoji_picker", Qt.ConnectionType.QueuedConnection
@@ -116,6 +122,10 @@ class IPCService(QObject):
     @Slot()
     def _emit_open_launcher(self):
         self.openLauncherRequested.emit()
+
+    @Slot()
+    def _emit_open_keybinds(self):
+        self.openKeybindsRequested.emit()
 
     @Slot()
     def _emit_open_emoji_picker(self):

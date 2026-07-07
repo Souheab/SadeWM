@@ -831,6 +831,8 @@ func (wm *WM) handleIPCRequest(req *ipc.IPCRequest) *ipc.Response {
 		return wm.ipcGetState()
 	case "tags_state":
 		return wm.ipcTagsState()
+	case "keybinds":
+		return wm.ipcKeybinds()
 	case "subscribe_tags":
 		mask, states := wm.currentTagsState()
 		return &ipc.Response{OK: true, TagMask: mask, TagsState: states}
@@ -854,6 +856,9 @@ func (wm *WM) handleIPCRequest(req *ipc.IPCRequest) *ipc.Response {
 		return &ipc.Response{OK: true}
 	case "open-launcher":
 		wm.spawnCmd([]string{"sadeshell", "--open-launcher"})
+		return &ipc.Response{OK: true}
+	case "open-keybinds":
+		wm.spawnCmd([]string{"sadeshell", "--open-keybinds"})
 		return &ipc.Response{OK: true}
 	case "open-emoji-picker":
 		wm.spawnCmd([]string{"sadeshell", "--open-emoji-picker"})

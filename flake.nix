@@ -334,7 +334,7 @@
       nixosModules.default = { config, lib, pkgs, ... }:
         let
           cfg   = config.services.xserver.windowManager.sadewm;
-          wmPkg = self.packages.${pkgs.system}.sadewm;
+          wmPkg = self.packages.${pkgs.stdenv.hostPlatform.system}.sadewm;
         in {
           imports = [ self.nixosModules.sadeshell self.nixosModules.sadewm-greeter ];
 
@@ -371,7 +371,7 @@
       nixosModules.sadeshell = { config, lib, pkgs, ... }:
         let
           cfg = config.services.sadeshell;
-          pkg = self.packages.${pkgs.system}.sadeshell;
+          pkg = self.packages.${pkgs.stdenv.hostPlatform.system}.sadeshell;
         in {
           options.services.sadeshell.enable =
             lib.mkEnableOption "sadeshell X11 status bar";
@@ -420,9 +420,9 @@
 
             package = lib.mkOption {
               type        = lib.types.package;
-              default     = self.packages.${pkgs.system}.sadewm-greeter;
+              default     = self.packages.${pkgs.stdenv.hostPlatform.system}.sadewm-greeter;
               defaultText = lib.literalExpression
-                "sadewm.packages.\${pkgs.system}.sadewm-greeter";
+                "sadewm.packages.\${pkgs.stdenv.hostPlatform.system}.sadewm-greeter";
               description = ''
                 The sadewm-greeter package to use.  Override this if you are
                 building the greeter yourself or need a patched version.

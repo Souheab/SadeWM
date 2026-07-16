@@ -78,6 +78,7 @@ func main() {
 	wmgr.NoConfig = paths.NoConfig
 	wmgr.Setup()
 	wmgr.ApplyDisplaySettings()
+	wmgr.ApplyPowerSettings()
 
 	// Set up IPC
 	ipcServer, err := ipc.Setup()

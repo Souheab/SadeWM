@@ -48,6 +48,11 @@ DISPLAY_DEFAULTS: dict[str, Any] = {
     "refresh_rate": 60.0,
 }
 
+POWER_DEFAULTS: dict[str, int] = {
+    "monitor_timeout_minutes": 0,
+    "sleep_timeout_minutes": 0,
+}
+
 
 def config_paths(config_dir: Path) -> tuple[Path, Path]:
     return config_dir / "wm.toml", config_dir / "settings.toml"
@@ -91,6 +96,12 @@ def ensure_display_defaults(doc) -> None:
         display.setdefault(key, value)
 
 
+def ensure_power_defaults(doc) -> None:
+    power = ensure_table(doc, "power")
+    for key, value in POWER_DEFAULTS.items():
+        power.setdefault(key, value)
+
+
 def get_wm_values(doc) -> dict[str, Any]:
     ensure_wm_defaults(doc)
     colors = doc["colors"]
@@ -125,3 +136,17 @@ def set_display_values(doc, values: dict[str, Any]) -> None:
     for key in DISPLAY_DEFAULTS:
         if key in values:
             display[key] = values[key]
+
+
+def get_power_values(doc) -> dict[str, int]:
+    ensure_power_defaults(doc)
+    power = doc["power"]
+    return {key: int(power[key]) for key in POWER_DEFAULTS}
+
+
+def set_power_values(doc, values: dict[str, int]) -> None:
+    ensure_power_defaults(doc)
+    power = doc["power"]
+    for key in POWER_DEFAULTS:
+        if key in values:
+            power[key] = int(values[key])

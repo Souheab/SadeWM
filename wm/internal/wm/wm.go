@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/jezek/xgb"
 	"github.com/jezek/xgb/shape"
@@ -258,6 +259,8 @@ func (wm *WM) Run(ipcServer *ipc.Server) {
 	}
 
 	wm.startEventPump()
+	powerTicker := time.NewTicker(powerPollInterval)
+	defer powerTicker.Stop()
 
 	for wm.Running.Load() {
 		// Drain all immediately-available X events before blocking.
@@ -269,6 +272,8 @@ func (wm *WM) Run(ipcServer *ipc.Server) {
 				return
 			case xev := <-wm.XEvCh:
 				wm.dispatchXEv(xev)
+			case <-powerTicker.C:
+				wm.checkIdleSleep()
 			default:
 				break drainX
 			}
@@ -286,6 +291,8 @@ func (wm *WM) Run(ipcServer *ipc.Server) {
 			case req := <-ipcCh:
 				resp := wm.handleIPCRequest(req)
 				req.ResponseCh <- resp
+			case <-powerTicker.C:
+				wm.checkIdleSleep()
 			}
 		} else {
 			select {
@@ -294,6 +301,8 @@ func (wm *WM) Run(ipcServer *ipc.Server) {
 				return
 			case xev := <-wm.XEvCh:
 				wm.dispatchXEv(xev)
+			case <-powerTicker.C:
+				wm.checkIdleSleep()
 			}
 		}
 
@@ -308,6 +317,8 @@ func (wm *WM) Run(ipcServer *ipc.Server) {
 				case req := <-ipcCh:
 					resp := wm.handleIPCRequest(req)
 					req.ResponseCh <- resp
+				case <-powerTicker.C:
+					wm.checkIdleSleep()
 				default:
 					break drainIPC
 				}

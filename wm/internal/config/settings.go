@@ -10,6 +10,7 @@ import (
 
 type SettingsConfig struct {
 	Display *DisplaySettings `toml:"display"`
+	Power   *PowerSettings   `toml:"power"`
 }
 
 type DisplaySettings struct {
@@ -17,6 +18,11 @@ type DisplaySettings struct {
 	Output      string  `toml:"output"`
 	Resolution  string  `toml:"resolution"`
 	RefreshRate float64 `toml:"refresh_rate"`
+}
+
+type PowerSettings struct {
+	MonitorTimeoutMinutes int `toml:"monitor_timeout_minutes"`
+	SleepTimeoutMinutes   int `toml:"sleep_timeout_minutes"`
 }
 
 func LoadSettingsTOML(path string) *SettingsConfig {

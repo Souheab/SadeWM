@@ -381,6 +381,7 @@ func (wm *WM) ReloadConfig(arg *config.Arg) {
 	wm.ActiveRules = config.ApplyTOMLRules(tc)
 	wm.ActiveKeys = config.MergeKeys(tc, config.DefaultKeys())
 	wm.ApplyDisplaySettings()
+	wm.ApplyPowerSettings()
 
 	for m := wm.Mons; m != nil; m = m.Next {
 		m.GapPx = int(config.GapPx)

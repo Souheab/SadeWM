@@ -95,6 +95,7 @@ class SettingsWindow(QMainWindow):
         self.settings_doc = config_store.load_toml(self.settings_path)
         config_store.ensure_wm_defaults(self.wm_doc)
         config_store.ensure_display_defaults(self.settings_doc)
+        config_store.ensure_power_defaults(self.settings_doc)
 
         self.wm_widgets: dict[str, QWidget] = {}
         self.outputs = display.query_outputs()
@@ -113,7 +114,7 @@ class SettingsWindow(QMainWindow):
 
         self.nav = QListWidget()
         self.nav.setFixedWidth(160)
-        for name in ("WM", "Display"):
+        for name in ("WM", "Display", "Power"):
             item = QListWidgetItem(name)
             item.setTextAlignment(Qt.AlignVCenter)
             self.nav.addItem(item)
@@ -126,6 +127,7 @@ class SettingsWindow(QMainWindow):
         self.pages = QStackedWidget()
         self.pages.addWidget(self._build_wm_page())
         self.pages.addWidget(self._build_display_page())
+        self.pages.addWidget(self._build_power_page())
         body.addWidget(self.pages, 1)
         self.nav.currentRowChanged.connect(self.pages.setCurrentIndex)
         self.nav.setCurrentRow(0)
@@ -211,6 +213,30 @@ class SettingsWindow(QMainWindow):
         form.addRow("Refresh rate", self.display_refresh)
         return page
 
+    def _build_power_page(self) -> QWidget:
+        page = QWidget()
+        form = QFormLayout(page)
+
+        self.monitor_timeout = QSpinBox()
+        self.monitor_timeout.setRange(0, 720)
+        self.monitor_timeout.setSuffix(" min")
+        self.monitor_timeout.setSpecialValueText("Never")
+        self.monitor_timeout.setToolTip(
+            "Turn off connected monitors after this much X11 idle time."
+        )
+
+        self.sleep_timeout = QSpinBox()
+        self.sleep_timeout.setRange(0, 1440)
+        self.sleep_timeout.setSuffix(" min")
+        self.sleep_timeout.setSpecialValueText("Never")
+        self.sleep_timeout.setToolTip(
+            "Suspend the system after this much X11 idle time."
+        )
+
+        form.addRow("Turn monitors off after", self.monitor_timeout)
+        form.addRow("Suspend system after", self.sleep_timeout)
+        return page
+
     def _load_values(self) -> None:
         values = config_store.get_wm_values(self.wm_doc)
         for key, widget in self.wm_widgets.items():
@@ -238,6 +264,10 @@ class SettingsWindow(QMainWindow):
         self._sync_display_modes()
         self._set_combo_text(self.display_resolution, str(display_values["resolution"]))
         self._set_combo_text(self.display_refresh, str(display_values["refresh_rate"]))
+
+        power_values = config_store.get_power_values(self.settings_doc)
+        self.monitor_timeout.setValue(power_values["monitor_timeout_minutes"])
+        self.sleep_timeout.setValue(power_values["sleep_timeout_minutes"])
 
     def _sync_display_modes(self) -> None:
         output_name = self.display_output.currentText()
@@ -277,7 +307,7 @@ class SettingsWindow(QMainWindow):
         dialog.setWindowTitle("Apply Settings")
         dialog.setText("Apply these settings?")
         dialog.setInformativeText(
-            "This will save the current WM and display configuration, then reload sadewm."
+            "This will save the current WM, display, and power configuration, then reload sadewm."
         )
         dialog.setStandardButtons(
             QMessageBox.StandardButton.Cancel | QMessageBox.StandardButton.Apply
@@ -310,6 +340,13 @@ class SettingsWindow(QMainWindow):
             "refresh_rate": float(refresh) if refresh else 0.0,
         }
         config_store.set_display_values(self.settings_doc, display_values)
+        config_store.set_power_values(
+            self.settings_doc,
+            {
+                "monitor_timeout_minutes": self.monitor_timeout.value(),
+                "sleep_timeout_minutes": self.sleep_timeout.value(),
+            },
+        )
 
         config_store.save_toml(self.wm_path, self.wm_doc)
         config_store.save_toml(self.settings_path, self.settings_doc)

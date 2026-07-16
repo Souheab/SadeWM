@@ -59,3 +59,35 @@ name = "keep"
     assert doc["other"]["name"] == "keep"
     assert doc["display"]["enabled"] is True
     assert doc["display"]["output"] == "HDMI-1"
+
+
+def test_power_defaults_disable_idle_actions():
+    doc = tomlkit.document()
+
+    config_store.ensure_power_defaults(doc)
+
+    assert doc["power"]["monitor_timeout_minutes"] == 0
+    assert doc["power"]["sleep_timeout_minutes"] == 0
+
+
+def test_power_values_update_preserves_other_settings():
+    doc = tomlkit.parse(
+        """
+[other]
+name = "keep"
+"""
+    )
+
+    config_store.set_power_values(
+        doc,
+        {
+            "monitor_timeout_minutes": 10,
+            "sleep_timeout_minutes": 30,
+        },
+    )
+
+    assert doc["other"]["name"] == "keep"
+    assert config_store.get_power_values(doc) == {
+        "monitor_timeout_minutes": 10,
+        "sleep_timeout_minutes": 30,
+    }

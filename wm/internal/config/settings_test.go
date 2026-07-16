@@ -57,6 +57,10 @@ enabled = true
 output = "default"
 resolution = "1280x720"
 refresh_rate = 59.94
+
+[power]
+monitor_timeout_minutes = 10
+sleep_timeout_minutes = 30
 `), 0o644)
 	if err != nil {
 		t.Fatalf("write settings: %v", err)
@@ -68,5 +72,11 @@ refresh_rate = 59.94
 	}
 	if cfg.Display.Resolution != "1280x720" || cfg.Display.RefreshRate != 59.94 {
 		t.Fatalf("unexpected display config: %+v", cfg.Display)
+	}
+	if cfg.Power == nil {
+		t.Fatal("expected power config")
+	}
+	if cfg.Power.MonitorTimeoutMinutes != 10 || cfg.Power.SleepTimeoutMinutes != 30 {
+		t.Fatalf("unexpected power config: %+v", cfg.Power)
 	}
 }

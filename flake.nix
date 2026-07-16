@@ -177,13 +177,14 @@
             libxcursor
             cairo
             libxext
+            libxscrnsaver
           ];
 
           subPackages = [ "cmd/sadewm" ];
 
           postFixup = ''
             wrapProgram $out/bin/sadewm \
-              --prefix PATH : "${pkgs.xrandr}/bin"
+              --prefix PATH : "${pkgs.lib.makeBinPath [ pkgs.xrandr pkgs.systemd ]}"
           '';
 
           meta = with pkgs.lib; {
@@ -280,6 +281,7 @@
             xwd
             imagemagick
             cairo
+            libxscrnsaver
             python3
             # Shell libraries
             pythonEnv

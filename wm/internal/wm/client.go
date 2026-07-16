@@ -144,6 +144,10 @@ type WM struct {
 	StartupPath  string
 	NoConfig     bool
 
+	// X11 session power settings
+	sleepTimeoutMinutes int
+	sleepTriggered      bool
+
 	// Minimize stack
 	MinimizeStack []*Client
 

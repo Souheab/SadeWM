@@ -24,6 +24,10 @@ type Client struct {
 	X, Y, W, H int
 	// Saved geometry (for fullscreen/maximize restore)
 	OldX, OldY, OldW, OldH int
+	// Dedicated pre-fullscreen geometry. Old* is updated by every resize, so it
+	// cannot safely survive a root/display resize while the client is fullscreen.
+	FullscreenX, FullscreenY, FullscreenW, FullscreenH int
+	FullscreenRestoreValid                             bool
 	// Size hints
 	BaseW, BaseH, IncW, IncH, MaxW, MaxH, MinW, MinH int
 	HintsValid                                       bool
@@ -226,6 +230,21 @@ func TagMask() uint32 {
 // IsVisible returns whether a client is visible on its monitor's current tagset.
 func (c *Client) IsVisible() bool {
 	return (c.Tags&c.Mon.TagSet[c.Mon.SelTags]) != 0 && !c.Minimized
+}
+
+func (c *Client) rememberFullscreenGeometry() {
+	c.FullscreenX = c.X
+	c.FullscreenY = c.Y
+	c.FullscreenW = c.W
+	c.FullscreenH = c.H
+	c.FullscreenRestoreValid = true
+}
+
+func (c *Client) fullscreenRestoreGeometry() (x, y, width, height int) {
+	if c.FullscreenRestoreValid {
+		return c.FullscreenX, c.FullscreenY, c.FullscreenW, c.FullscreenH
+	}
+	return c.OldX, c.OldY, c.OldW, c.OldH
 }
 
 // Width returns the total width including borders.

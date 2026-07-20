@@ -41,6 +41,7 @@ func (wm *WM) SetFullscreen(c *Client, fullscreen bool) {
 	if fullscreen && !c.IsFullscreen {
 		states := wm.getAtomProps(c, wm.NetAtom[NetWMState], 32)
 		wm.setNetWMState(c, atomListAdd(states, wm.NetAtom[NetWMFullscreen]))
+		c.rememberFullscreenGeometry()
 		c.IsFullscreen = true
 		c.OldState = c.IsFloating
 		c.OldBW = c.BW
@@ -67,16 +68,14 @@ func (wm *WM) SetFullscreen(c *Client, fullscreen bool) {
 		c.IsFullscreen = false
 		c.IsFloating = c.OldState
 		c.BW = c.OldBW
-		c.X = c.OldX
-		c.Y = c.OldY
-		c.W = c.OldW
-		c.H = c.OldH
+		x, y, width, height := c.fullscreenRestoreGeometry()
 		if !wm.dragging {
 			xproto.GrabPointerUnchecked(wm.Conn, false, wm.Root, 0,
 				xproto.GrabModeAsync, xproto.GrabModeAsync,
 				xproto.WindowNone, xproto.CursorNone, xproto.TimeCurrentTime)
 		}
-		wm.resizeClient(c, c.X, c.Y, c.W, c.H)
+		wm.resizeClient(c, x, y, width, height)
+		c.FullscreenRestoreValid = false
 		wm.Arrange(c.Mon)
 		if !wm.dragging {
 			xproto.UngrabPointer(wm.Conn, xproto.TimeCurrentTime)

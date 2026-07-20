@@ -19,7 +19,6 @@ Window {
 
     function open() {
         KeybindService.refresh()
-        keybinds = KeybindService.keybinds
         overlay.visible = true
         overlay.raise()
         overlay.requestActivate()

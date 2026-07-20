@@ -395,6 +395,7 @@
               };
               environment = {
                 PYTHONUNBUFFERED = "1";
+                XDG_CURRENT_DESKTOP = "SADE";
                 PATH = lib.mkForce "/run/current-system/sw/bin:/etc/profiles/per-user/%u/bin:${lib.makeBinPath [ pkg ]}"; # TODO lib.makeBinPath doesn't do anything, app works fine though
               };
             };

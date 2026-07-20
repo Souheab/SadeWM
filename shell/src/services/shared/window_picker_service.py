@@ -17,7 +17,7 @@ import socket
 import threading
 from concurrent.futures import ThreadPoolExecutor
 
-from PySide6.QtCore import QObject, Property, Signal, Slot
+from PySide6.QtCore import QObject, Property, Signal, Slot, Qt
 
 # Cache dir for saved thumbnails and icons
 _CACHE_DIR = "/tmp/sadeshell-winpicker"
@@ -232,136 +232,216 @@ def _capture_thumbnail_file_uri(win_id: int) -> str:
 class WindowPickerService(QObject):
     """Provides the list of all WM windows with icons and thumbnails.
 
-    windowsChanged is emitted whenever the window list is refreshed.
+    Normal and minimized pickers have independent models and notifications.
     """
 
     windowsChanged = Signal()
+    minimizedWindowsChanged = Signal()
+    _windowsReady = Signal(int, object)
+    _windowsFinished = Signal(int)
+    _minimizedReady = Signal(int, object)
+    _minimizedFinished = Signal(int)
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self._windows: list[dict] = []
+        self._minimized_windows: list[dict] = []
+        self._refresh_generation = 0
+        self._refresh_running = False
+        self._refresh_pending = False
+        self._minimized_generation = 0
+        self._minimized_running = False
+        self._minimized_pending = False
+
+        self._windowsReady.connect(
+            self._apply_windows, Qt.ConnectionType.QueuedConnection
+        )
+        self._windowsFinished.connect(
+            self._finish_refresh, Qt.ConnectionType.QueuedConnection
+        )
+        self._minimizedReady.connect(
+            self._apply_minimized_windows, Qt.ConnectionType.QueuedConnection
+        )
+        self._minimizedFinished.connect(
+            self._finish_minimized_refresh, Qt.ConnectionType.QueuedConnection
+        )
 
     @Property("QVariantList", notify=windowsChanged)
     def windows(self) -> list:
         return self._windows
 
+    @Property("QVariantList", notify=minimizedWindowsChanged)
+    def minimizedWindows(self) -> list:
+        return self._minimized_windows
+
     @Slot()
     def refresh(self):
         """Re-query all windows from the WM, capture thumbnails and icons."""
-        threading.Thread(target=self._do_refresh, daemon=True).start()
-
-    def _do_refresh(self):
-        from PySide6.QtCore import QMetaObject, Qt
-
-        resp = _sadewm_request({"cmd": "get_clients"})
-        if not resp.get("ok"):
-            self._windows = []
-            QMetaObject.invokeMethod(self, "_emit_changed", Qt.ConnectionType.QueuedConnection)
+        self._refresh_generation += 1
+        if self._refresh_running:
+            self._refresh_pending = True
             return
+        self._start_refresh(self._refresh_generation)
 
-        clients = resp.get("clients", [])
+    def _start_refresh(self, generation):
+        self._refresh_running = True
+        threading.Thread(
+            target=self._do_refresh,
+            args=(generation,),
+            daemon=True,
+            name="sadeshell-window-picker",
+        ).start()
 
-        # Phase 1: emit window list immediately with metadata only (no thumbnails/icons)
-        result = []
-        for c in clients:
-            win_id = c.get("win_id", 0)
-            wm_class = c.get("class", "")
-            tags = c.get("tags", 0)
-            tag_num = (tags & -tags).bit_length() if tags else 0
-            result.append({
-                "winId": win_id,
-                "name": c.get("name", ""),
-                "wmClass": wm_class,
-                "tags": tags,
-                "tagNum": tag_num,
-                "focused": c.get("focused", False),
-                "minimized": c.get("minimized", False),
-                "iconUri": "",
-                "thumbnailUri": "",
-            })
+    def _do_refresh(self, generation):
+        try:
+            resp = _sadewm_request({"cmd": "get_clients"})
+            if not resp.get("ok"):
+                self._windowsReady.emit(generation, [])
+                return
 
-        self._windows = result
-        QMetaObject.invokeMethod(self, "_emit_changed", Qt.ConnectionType.QueuedConnection)
+            clients = resp.get("clients", [])
 
-        # Phase 2: capture thumbnails and icons in parallel, then re-emit
-        def _capture(entry):
-            win_id = entry["winId"]
-            wm_class = entry["wmClass"]
-            icon_uri = _net_wm_icon_file_uri(win_id, wm_class)
-            thumb_uri = _capture_thumbnail_file_uri(win_id)
-            return {**entry, "iconUri": icon_uri, "thumbnailUri": thumb_uri}
+            # Phase 1: emit metadata immediately, before thumbnail capture.
+            result = []
+            for c in clients:
+                win_id = c.get("win_id", 0)
+                wm_class = c.get("class", "")
+                tags = c.get("tags", 0)
+                tag_num = (tags & -tags).bit_length() if tags else 0
+                result.append({
+                    "winId": win_id,
+                    "name": c.get("name", ""),
+                    "wmClass": wm_class,
+                    "tags": tags,
+                    "tagNum": tag_num,
+                    "focused": c.get("focused", False),
+                    "minimized": c.get("minimized", False),
+                    "iconUri": "",
+                    "thumbnailUri": "",
+                })
 
-        with ThreadPoolExecutor(max_workers=4) as pool:
-            enriched = list(pool.map(_capture, result))
+            self._windowsReady.emit(generation, result)
 
-        self._windows = enriched
-        QMetaObject.invokeMethod(self, "_emit_changed", Qt.ConnectionType.QueuedConnection)
+            # Phase 2: capture thumbnails and icons in parallel, then re-emit.
+            def _capture(entry):
+                win_id = entry["winId"]
+                wm_class = entry["wmClass"]
+                icon_uri = _net_wm_icon_file_uri(win_id, wm_class)
+                thumb_uri = _capture_thumbnail_file_uri(win_id)
+                return {**entry, "iconUri": icon_uri, "thumbnailUri": thumb_uri}
 
-    @Slot()
-    def _emit_changed(self):
+            with ThreadPoolExecutor(max_workers=4) as pool:
+                enriched = list(pool.map(_capture, result))
+
+            self._windowsReady.emit(generation, enriched)
+        finally:
+            self._windowsFinished.emit(generation)
+
+    @Slot(int, object)
+    def _apply_windows(self, generation, windows):
+        if generation != self._refresh_generation:
+            return
+        self._windows = windows
         self.windowsChanged.emit()
+
+    @Slot(int)
+    def _finish_refresh(self, _generation):
+        self._refresh_running = False
+        if self._refresh_pending:
+            self._refresh_pending = False
+            self._start_refresh(self._refresh_generation)
 
     @Slot()
     def refreshMinimized(self):
         """Re-query minimized windows on currently selected tags."""
-        threading.Thread(target=self._do_refresh_minimized, daemon=True).start()
-
-    def _do_refresh_minimized(self):
-        from PySide6.QtCore import QMetaObject, Qt
-
-        # Get current tag mask from WM state
-        state_resp = _sadewm_request({"cmd": "get_state"})
-        current_tags = state_resp.get("tag_mask", 0) if state_resp.get("ok") else 0
-
-        resp = _sadewm_request({"cmd": "get_clients"})
-        if not resp.get("ok"):
-            self._windows = []
-            QMetaObject.invokeMethod(self, "_emit_changed", Qt.ConnectionType.QueuedConnection)
+        self._minimized_generation += 1
+        if self._minimized_running:
+            self._minimized_pending = True
             return
+        self._start_minimized_refresh(self._minimized_generation)
 
-        clients = resp.get("clients", [])
+    def _start_minimized_refresh(self, generation):
+        self._minimized_running = True
+        threading.Thread(
+            target=self._do_refresh_minimized,
+            args=(generation,),
+            daemon=True,
+            name="sadeshell-minimized-picker",
+        ).start()
 
-        # Filter: only minimized windows that share at least one tag with current view
-        result = []
-        for c in clients:
-            if not c.get("minimized", False):
-                continue
-            win_tags = c.get("tags", 0)
-            if current_tags != 0 and (win_tags & current_tags) == 0:
-                continue
-            win_id = c.get("win_id", 0)
-            wm_class = c.get("class", "")
-            tags = c.get("tags", 0)
-            tag_num = (tags & -tags).bit_length() if tags else 0
-            result.append({
-                "winId": win_id,
-                "name": c.get("name", ""),
-                "wmClass": wm_class,
-                "tags": tags,
-                "tagNum": tag_num,
-                "focused": False,
-                "minimized": True,
-                "iconUri": "",
-                "thumbnailUri": "",
-            })
+    def _do_refresh_minimized(self, generation):
+        try:
+            # Get current tag mask from WM state
+            state_resp = _sadewm_request({"cmd": "get_state"})
+            current_tags = state_resp.get("tag_mask", 0) if state_resp.get("ok") else 0
 
-        self._windows = result
-        QMetaObject.invokeMethod(self, "_emit_changed", Qt.ConnectionType.QueuedConnection)
+            resp = _sadewm_request({"cmd": "get_clients"})
+            if not resp.get("ok"):
+                self._minimizedReady.emit(generation, [])
+                return
 
-        # Phase 2: capture icons in parallel (thumbnails won't work for minimized windows)
-        def _capture(entry):
-            win_id = entry["winId"]
-            wm_class = entry["wmClass"]
-            icon_uri = _net_wm_icon_file_uri(win_id, wm_class)
-            return {**entry, "iconUri": icon_uri}
+            clients = resp.get("clients", [])
 
-        with ThreadPoolExecutor(max_workers=4) as pool:
-            enriched = list(pool.map(_capture, result))
+            # Filter minimized windows to the currently selected tags.
+            result = []
+            for c in clients:
+                if not c.get("minimized", False):
+                    continue
+                win_tags = c.get("tags", 0)
+                if current_tags != 0 and (win_tags & current_tags) == 0:
+                    continue
+                win_id = c.get("win_id", 0)
+                wm_class = c.get("class", "")
+                tags = c.get("tags", 0)
+                tag_num = (tags & -tags).bit_length() if tags else 0
+                result.append({
+                    "winId": win_id,
+                    "name": c.get("name", ""),
+                    "wmClass": wm_class,
+                    "tags": tags,
+                    "tagNum": tag_num,
+                    "focused": False,
+                    "minimized": True,
+                    "iconUri": "",
+                    "thumbnailUri": "",
+                })
 
-        self._windows = enriched
-        QMetaObject.invokeMethod(self, "_emit_changed", Qt.ConnectionType.QueuedConnection)
+            self._minimizedReady.emit(generation, result)
+
+            # Minimized windows cannot provide thumbnails, so capture icons only.
+            def _capture(entry):
+                win_id = entry["winId"]
+                wm_class = entry["wmClass"]
+                icon_uri = _net_wm_icon_file_uri(win_id, wm_class)
+                return {**entry, "iconUri": icon_uri}
+
+            with ThreadPoolExecutor(max_workers=4) as pool:
+                enriched = list(pool.map(_capture, result))
+
+            self._minimizedReady.emit(generation, enriched)
+        finally:
+            self._minimizedFinished.emit(generation)
+
+    @Slot(int, object)
+    def _apply_minimized_windows(self, generation, windows):
+        if generation != self._minimized_generation:
+            return
+        self._minimized_windows = windows
+        self.minimizedWindowsChanged.emit()
+
+    @Slot(int)
+    def _finish_minimized_refresh(self, _generation):
+        self._minimized_running = False
+        if self._minimized_pending:
+            self._minimized_pending = False
+            self._start_minimized_refresh(self._minimized_generation)
 
     @Slot(int)
     def focusWindow(self, win_id: int):
         """Tell the WM to switch to the tag containing win_id and focus it."""
-        _sadewm_request({"cmd": "focus_window", "win_id": win_id})
+        threading.Thread(
+            target=_sadewm_request,
+            args=({"cmd": "focus_window", "win_id": win_id},),
+            daemon=True,
+            name="sadeshell-focus-window",
+        ).start()

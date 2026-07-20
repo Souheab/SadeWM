@@ -85,8 +85,8 @@ Window {
     // React to service updates
     Connections {
         target: WindowPickerService
-        function onWindowsChanged() {
-            picker.allWindows = WindowPickerService.windows
+        function onMinimizedWindowsChanged() {
+            picker.allWindows = WindowPickerService.minimizedWindows
             picker._applyFilter(picker.searchQuery)
         }
     }

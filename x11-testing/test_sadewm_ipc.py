@@ -222,6 +222,35 @@ def test_ipc_focus_window(xd):
         time.sleep(0.2)
 
 
+def test_ipc_focus_visible_window_preserves_current_view(xd):
+    """Focusing a visible multi-tag client must not collapse the current view."""
+    helpers.ipc_request("view", mask=4)
+    time.sleep(0.2)
+    win = xd.new_window(title="test-ipc-focus-visible", size=(400, 300), type="dialog")
+    xd.wait_for_layout()
+
+    try:
+        # Put the selected client on tags 3 and 4, then show both tags.
+        helpers.ipc_request("toggletag", mask=8)
+        helpers.ipc_request("toggleview", mask=8)
+        time.sleep(0.2)
+        assert helpers.ipc_get_state()["tag_mask"] == 12
+
+        resp = helpers.ipc_request("focus_window", win_id=win.id)
+        assert resp.get("ok") is True, f"focus_window failed: {resp}"
+        time.sleep(0.2)
+
+        state = helpers.ipc_get_state()
+        assert state["tag_mask"] == 12, (
+            "focus_window collapsed a view that already contained the client: "
+            f"{state['tag_mask']}"
+        )
+    finally:
+        win.kill()
+        helpers.ipc_request("view", mask=1)
+        time.sleep(0.2)
+
+
 # ── Test 5: quit exits WM cleanly ─────────────────────────────────────────────
 
 

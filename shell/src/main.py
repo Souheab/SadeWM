@@ -296,7 +296,10 @@ def main():
     engine.load(QUrl.fromLocalFile(exit_confirmation_qml))
 
     # Start the IPC server so sadeshell --open-launcher works
-    ipc_service.start()
+    if not ipc_service.start():
+        systray_service.stop()
+        print("Refusing to start a second sadeshell instance", file=sys.stderr)
+        sys.exit(1)
 
     ret = app.exec()
     systray_service.stop()

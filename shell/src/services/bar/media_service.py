@@ -4,7 +4,7 @@ import threading
 import asyncio
 import os
 
-from PySide6.QtCore import QObject, Property, Signal, Slot, QTimer
+from PySide6.QtCore import QObject, Property, Signal, Slot, QTimer, Qt
 
 try:
     from dbus_next.aio import MessageBus
@@ -25,6 +25,9 @@ class MediaService(QObject):
     lengthChanged = Signal()
     allPlayersChanged = Signal()
     selectedPlayerChanged = Signal()
+    _pollReady = Signal(object)
+    _pollRequested = Signal()
+    _seekFinished = Signal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -41,6 +44,17 @@ class MediaService(QObject):
         self._manual_selection = False
         self._players_metadata = {}
         self._seeking = False
+        self._poll_running = False
+
+        self._pollReady.connect(
+            self._finish_poll, Qt.ConnectionType.QueuedConnection
+        )
+        self._pollRequested.connect(
+            self._poll, Qt.ConnectionType.QueuedConnection
+        )
+        self._seekFinished.connect(
+            self._finish_seek, Qt.ConnectionType.QueuedConnection
+        )
 
         if HAS_DBUS:
             self._poll_timer = QTimer(self)
@@ -61,15 +75,26 @@ class MediaService(QObject):
             self.positionChanged.emit()
 
     def _poll(self):
+        if self._poll_running:
+            return
+        self._poll_running = True
+
         def _run():
+            result = None
+            loop = None
             try:
                 loop = asyncio.new_event_loop()
                 asyncio.set_event_loop(loop)
-                loop.run_until_complete(self._async_poll())
-                loop.close()
+                result = loop.run_until_complete(self._async_poll())
             except Exception:
                 pass
-        threading.Thread(target=_run, daemon=True).start()
+            finally:
+                if loop is not None:
+                    loop.close()
+                self._pollReady.emit(result)
+        threading.Thread(
+            target=_run, daemon=True, name="sadeshell-media-poll"
+        ).start()
 
     async def _async_poll(self):
         try:
@@ -125,9 +150,15 @@ class MediaService(QObject):
                     continue
 
             bus.disconnect()
-            self._update_from_poll(players_data)
+            return players_data
         except Exception:
-            pass
+            return None
+
+    @Slot(object)
+    def _finish_poll(self, players_data):
+        self._poll_running = False
+        if players_data is not None:
+            self._update_from_poll(players_data)
 
     def _unpack_variant(self, v):
         if isinstance(v, Variant):
@@ -265,7 +296,7 @@ class MediaService(QObject):
                 loop.close()
             except Exception:
                 pass
-            self._poll()
+            self._pollRequested.emit()
         threading.Thread(target=_run, daemon=True).start()
 
     async def _async_command(self, player_name, method):
@@ -313,8 +344,13 @@ class MediaService(QObject):
                 loop.close()
             except Exception:
                 pass
-            self._seeking = False
+            self._seekFinished.emit()
         threading.Thread(target=_run, daemon=True).start()
+
+    @Slot()
+    def _finish_seek(self):
+        self._seeking = False
+        self._poll()
 
     async def _async_seek(self, player_name, position_us):
         bus = await MessageBus(bus_type=BusType.SESSION).connect()

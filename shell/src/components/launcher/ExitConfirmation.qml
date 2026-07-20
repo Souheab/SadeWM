@@ -16,9 +16,11 @@ Window {
     height: Screen.height
 
     property string errorText: ""
+    property bool quitting: false
 
     function open() {
         errorText = ""
+        quitting = false
         dialog.visible = true
         dialog.raise()
         dialog.requestActivate()
@@ -28,14 +30,15 @@ Window {
     function close() {
         dialog.visible = false
         errorText = ""
+        quitting = false
     }
 
     function confirmExit() {
-        if (WMIPCService.quit()) {
-            dialog.close()
-        } else {
-            errorText = WMIPCService.error
-        }
+        if (quitting)
+            return
+        quitting = true
+        errorText = ""
+        WMIPCService.quit()
     }
 
     Timer {
@@ -59,8 +62,20 @@ Window {
         }
     }
 
+    Connections {
+        target: WMIPCService
+        function onQuitFinished(ok) {
+            dialog.quitting = false
+            if (ok)
+                dialog.close()
+            else
+                dialog.errorText = WMIPCService.error
+        }
+    }
+
     MouseArea {
         anchors.fill: parent
+        enabled: !dialog.quitting
         onClicked: dialog.close()
     }
 
@@ -166,6 +181,7 @@ Window {
                     MouseArea {
                         id: cancelArea
                         anchors.fill: parent
+                        enabled: !dialog.quitting
                         hoverEnabled: true
                         cursorShape: Qt.PointingHandCursor
                         onClicked: dialog.close()
@@ -180,7 +196,7 @@ Window {
 
                     Text {
                         anchors.centerIn: parent
-                        text: "Exit"
+                        text: dialog.quitting ? "Exiting…" : "Exit"
                         color: Theme.barBg
                         font.family: Theme.monoFont
                         font.pixelSize: Theme.textFontSize
@@ -190,6 +206,7 @@ Window {
                     MouseArea {
                         id: confirmArea
                         anchors.fill: parent
+                        enabled: !dialog.quitting
                         hoverEnabled: true
                         cursorShape: Qt.PointingHandCursor
                         onClicked: dialog.confirmExit()

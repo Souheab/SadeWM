@@ -4,7 +4,7 @@ import subprocess
 import json
 import threading
 
-from PySide6.QtCore import QObject, Property, Signal, Slot, QTimer
+from PySide6.QtCore import QObject, Property, Signal, Slot, QTimer, Qt
 
 
 class WiFiService(QObject):
@@ -13,6 +13,9 @@ class WiFiService(QObject):
     connectedSignalChanged = Signal()
     networksChanged = Signal()
     scanningChanged = Signal()
+    _statusReady = Signal(object)
+    _statusRequested = Signal()
+    _networksReady = Signal(object)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -21,6 +24,21 @@ class WiFiService(QObject):
         self._connected_signal = 0
         self._networks = []
         self._scanning = False
+        self._status_running = False
+        self._status_pending = False
+        self._list_running = False
+        self._list_pending = False
+        self._list_pending_rescan = False
+
+        self._statusReady.connect(
+            self._finish_status_poll, Qt.ConnectionType.QueuedConnection
+        )
+        self._statusRequested.connect(
+            self._poll_status, Qt.ConnectionType.QueuedConnection
+        )
+        self._networksReady.connect(
+            self._finish_network_list, Qt.ConnectionType.QueuedConnection
+        )
 
         self._status_timer = QTimer(self)
         self._status_timer.setInterval(10000)
@@ -29,7 +47,13 @@ class WiFiService(QObject):
         self._poll_status()
 
     def _poll_status(self):
+        if self._status_running:
+            self._status_pending = True
+            return
+        self._status_running = True
+
         def _run():
+            state = None
             try:
                 radio = subprocess.run(
                     ["nmcli", "radio", "wifi"],
@@ -54,18 +78,31 @@ class WiFiService(QObject):
                                 sig = int(signal_str) if signal_str.isdigit() else 0
                                 break
 
-                if enabled != self._wifi_enabled:
-                    self._wifi_enabled = enabled
-                    self.wifiEnabledChanged.emit()
-                if ssid != self._connected_ssid:
-                    self._connected_ssid = ssid
-                    self.connectedSsidChanged.emit()
-                if sig != self._connected_signal:
-                    self._connected_signal = sig
-                    self.connectedSignalChanged.emit()
+                state = (enabled, ssid, sig)
             except Exception:
                 pass
-        threading.Thread(target=_run, daemon=True).start()
+            self._statusReady.emit(state)
+        threading.Thread(
+            target=_run, daemon=True, name="sadeshell-wifi-status"
+        ).start()
+
+    @Slot(object)
+    def _finish_status_poll(self, state):
+        self._status_running = False
+        if state is not None:
+            enabled, ssid, sig = state
+            if enabled != self._wifi_enabled:
+                self._wifi_enabled = enabled
+                self.wifiEnabledChanged.emit()
+            if ssid != self._connected_ssid:
+                self._connected_ssid = ssid
+                self.connectedSsidChanged.emit()
+            if sig != self._connected_signal:
+                self._connected_signal = sig
+                self.connectedSignalChanged.emit()
+        if self._status_pending:
+            self._status_pending = False
+            self._poll_status()
 
     @Property(bool, notify=wifiEnabledChanged)
     def wifiEnabled(self):
@@ -88,7 +125,14 @@ class WiFiService(QObject):
         return self._scanning
 
     def _list_networks(self, rescan=False):
+        if self._list_running:
+            self._list_pending = True
+            self._list_pending_rescan = self._list_pending_rescan or rescan
+            return
+        self._list_running = True
+
         def _run():
+            networks = None
             try:
                 if rescan:
                     subprocess.run(
@@ -120,16 +164,30 @@ class WiFiService(QObject):
                         "active": active.strip().lower() == "yes",
                     })
                 networks.sort(key=lambda n: (not n["active"], -n["signal"]))
-                self._networks = networks
-                self.networksChanged.emit()
             except Exception:
                 pass
             finally:
-                if self._scanning:
-                    self._scanning = False
-                    self.scanningChanged.emit()
-                self._poll_status()
-        threading.Thread(target=_run, daemon=True).start()
+                self._networksReady.emit((networks, rescan))
+        threading.Thread(
+            target=_run, daemon=True, name="sadeshell-wifi-networks"
+        ).start()
+
+    @Slot(object)
+    def _finish_network_list(self, payload):
+        networks, was_rescan = payload
+        self._list_running = False
+        if networks is not None and networks != self._networks:
+            self._networks = networks
+            self.networksChanged.emit()
+        if was_rescan and self._scanning:
+            self._scanning = False
+            self.scanningChanged.emit()
+        self._poll_status()
+        if self._list_pending:
+            rescan = self._list_pending_rescan
+            self._list_pending = False
+            self._list_pending_rescan = False
+            self._list_networks(rescan=rescan)
 
     @Slot()
     def scan(self):
@@ -145,19 +203,17 @@ class WiFiService(QObject):
 
     @Slot()
     def toggleWifi(self):
+        enabled = self._wifi_enabled
+
         def _run():
             try:
-                radio = subprocess.run(
-                    ["nmcli", "radio", "wifi"],
-                    capture_output=True, text=True, timeout=5
-                )
-                if radio.stdout.strip().lower() == "enabled":
+                if enabled:
                     subprocess.run(["nmcli", "radio", "wifi", "off"], timeout=5)
                 else:
                     subprocess.run(["nmcli", "radio", "wifi", "on"], timeout=5)
             except Exception:
                 pass
-            self._poll_status()
+            self._statusRequested.emit()
         threading.Thread(target=_run, daemon=True).start()
 
     @Slot(str)
@@ -170,5 +226,5 @@ class WiFiService(QObject):
                 )
             except Exception:
                 pass
-            self._poll_status()
+            self._statusRequested.emit()
         threading.Thread(target=_run, daemon=True).start()

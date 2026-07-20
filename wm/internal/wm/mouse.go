@@ -146,8 +146,16 @@ func (wm *WM) MoveMouse(arg *config.Arg) {
 		xproto.EventMaskButtonPress|xproto.EventMaskButtonRelease|xproto.EventMaskPointerMotion,
 		xproto.GrabModeAsync, xproto.GrabModeAsync,
 		xproto.WindowNone, wm.Cursors[CurMove], xproto.TimeCurrentTime).Reply()
-	if err != nil || reply.Status != xproto.GrabStatusSuccess {
-		util.LogDebug("MoveMouse: GrabPointer failed status=%d err=%v", reply.Status, err)
+	if err != nil {
+		util.LogDebug("MoveMouse: GrabPointer failed: %v", err)
+		return
+	}
+	if reply == nil || reply.Status != xproto.GrabStatusSuccess {
+		status := byte(0)
+		if reply != nil {
+			status = byte(reply.Status)
+		}
+		util.LogDebug("MoveMouse: GrabPointer failed status=%d", status)
 		return
 	}
 
@@ -251,8 +259,16 @@ func (wm *WM) ResizeMouse(arg *config.Arg) {
 		xproto.EventMaskButtonPress|xproto.EventMaskButtonRelease|xproto.EventMaskPointerMotion,
 		xproto.GrabModeAsync, xproto.GrabModeAsync,
 		xproto.WindowNone, wm.Cursors[CurResize], xproto.TimeCurrentTime).Reply()
-	if err != nil || reply.Status != xproto.GrabStatusSuccess {
-		util.LogDebug("ResizeMouse: GrabPointer failed status=%d err=%v", reply.Status, err)
+	if err != nil {
+		util.LogDebug("ResizeMouse: GrabPointer failed: %v", err)
+		return
+	}
+	if reply == nil || reply.Status != xproto.GrabStatusSuccess {
+		status := byte(0)
+		if reply != nil {
+			status = byte(reply.Status)
+		}
+		util.LogDebug("ResizeMouse: GrabPointer failed status=%d", status)
 		return
 	}
 

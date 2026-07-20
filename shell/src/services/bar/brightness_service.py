@@ -3,18 +3,26 @@
 import subprocess
 import re
 import threading
+import time
 
-from PySide6.QtCore import QObject, Property, Signal, Slot
+from PySide6.QtCore import QObject, Property, Signal, Slot, Qt
 
 
 class BrightnessService(QObject):
+    _MIN_APPLY_INTERVAL = 0.05
+
     displaysChanged = Signal()
+    _displaysReady = Signal(object)
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self._displays = []
-        self._pending_set = None
+        self._pending_set = {}
         self._set_running = False
+        self._set_lock = threading.Lock()
+        self._displaysReady.connect(
+            self._set_displays, Qt.ConnectionType.QueuedConnection
+        )
         self._list_displays()
 
     def _list_displays(self):
@@ -42,11 +50,15 @@ class BrightnessService(QObject):
                             })
                             current_output = None
                             connected = False
-                self._displays = displays
-                self.displaysChanged.emit()
+                self._displaysReady.emit(displays)
             except Exception:
                 pass
         threading.Thread(target=_run, daemon=True).start()
+
+    @Slot(object)
+    def _set_displays(self, displays):
+        self._displays = displays
+        self.displaysChanged.emit()
 
     @Property("QVariantList", notify=displaysChanged)
     def displays(self):
@@ -54,19 +66,53 @@ class BrightnessService(QObject):
 
     @Slot(str, float)
     def applyBrightness(self, name, value):
-        """Fire xrandr — does NOT update local state. Safe at 60fps."""
+        """Queue the latest value for an output on a single xrandr worker."""
         v = max(0.05, min(1.0, value))
-        vs = f"{v:.3f}"
+        with self._set_lock:
+            self._pending_set[name] = v
+            if self._set_running:
+                return
+            self._set_running = True
+        threading.Thread(
+            target=self._drain_brightness,
+            daemon=True,
+            name="sadeshell-brightness",
+        ).start()
 
-        def _run():
-            try:
-                subprocess.run(
-                    ["xrandr", "--output", name, "--brightness", vs],
-                    timeout=5
+    def _drain_brightness(self):
+        """Apply at most one command at a time, coalescing intermediate values."""
+        last_apply = 0.0
+        while True:
+            with self._set_lock:
+                if not self._pending_set:
+                    self._set_running = False
+                    return
+                wait_for = max(
+                    0.0,
+                    last_apply + self._MIN_APPLY_INTERVAL - time.monotonic(),
                 )
-            except Exception:
-                pass
-        threading.Thread(target=_run, daemon=True).start()
+                if wait_for == 0:
+                    pending = self._pending_set
+                    self._pending_set = {}
+
+            if wait_for:
+                # Leave the pending dictionary in place while throttling so
+                # drag updates continue replacing, rather than queueing, work.
+                time.sleep(wait_for)
+                continue
+
+            for name, value in pending.items():
+                try:
+                    subprocess.run(
+                        [
+                            "xrandr", "--output", name,
+                            "--brightness", f"{value:.3f}",
+                        ],
+                        timeout=5,
+                    )
+                except Exception:
+                    pass
+            last_apply = time.monotonic()
 
     @Slot(str, float)
     def setDisplay(self, name, value):

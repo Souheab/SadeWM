@@ -1041,14 +1041,14 @@ func (wm *WM) ipcFocusWindow(winID uint32) *ipc.Response {
 		wm.SelMon = found.Mon
 	}
 
-	// Switch to the client's tag (use the lowest-numbered tag the client is on)
+	// Preserve the current view when it already contains the client. This keeps
+	// multi-tag clients on the user's current view and avoids corrupting the
+	// alternate tagset used by "view previous".
 	clientTags := found.Tags & TagMask()
-	if clientTags != 0 {
-		// Pick lowest bit tag
-		tagMask := clientTags & (^clientTags + 1)
-		wm.SelMon.SelTags ^= 1
-		wm.SelMon.TagSet[wm.SelMon.SelTags] = tagMask
-		wm.ApplyTag(wm.GetDomTag(wm.SelMon.Tags))
+	currentTags := wm.SelMon.TagSet[wm.SelMon.SelTags] & TagMask()
+	if tagMask := focusWindowTagMask(clientTags, currentTags); tagMask != 0 {
+		// The client is hidden; reveal its lowest-numbered tag.
+		wm.View(&config.Arg{UI: tagMask})
 	}
 
 	// If minimized, restore it
@@ -1071,6 +1071,14 @@ func (wm *WM) ipcFocusWindow(winID uint32) *ipc.Response {
 	wm.Restack(found.Mon)
 	wm.Arrange(found.Mon)
 	return &ipc.Response{OK: true}
+}
+
+func focusWindowTagMask(clientTags, currentTags uint32) uint32 {
+	clientTags &= TagMask()
+	if clientTags == 0 || clientTags&currentTags != 0 {
+		return 0
+	}
+	return clientTags & (^clientTags + 1)
 }
 
 // getWMClass returns the WM_CLASS string (second part = class name) for a window.

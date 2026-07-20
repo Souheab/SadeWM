@@ -4,6 +4,7 @@ import os
 import re
 import socket
 import threading
+from concurrent.futures import ThreadPoolExecutor
 
 from PySide6.QtCore import QObject, Signal, Slot, QMetaObject, Qt
 
@@ -46,37 +47,81 @@ class IPCService(QObject):
         self._server = None
         self._thread = None
         self._running = False
+        self._owns_socket = False
+        self._connections = None
 
     @property
     def socket_path(self):
         return self._socket_path
 
     def start(self):
-        """Start the IPC server in a background daemon thread."""
-        # Remove stale socket
-        try:
-            os.unlink(self._socket_path)
-        except FileNotFoundError:
-            pass
+        """Start the IPC server, returning False when another shell owns it."""
+        if self._running:
+            return True
+
+        if os.path.exists(self._socket_path):
+            probe = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+            try:
+                probe.settimeout(0.25)
+                probe.connect(self._socket_path)
+            except (ConnectionRefusedError, FileNotFoundError):
+                # Nothing is listening; this is a stale socket from an
+                # unclean shutdown and is safe to replace.
+                try:
+                    os.unlink(self._socket_path)
+                except FileNotFoundError:
+                    pass
+            except OSError:
+                # Timeouts and other connection errors can mean a live server
+                # with a busy backlog. Do not steal its pathname.
+                print(
+                    f"sadeshell IPC: socket is already in use: {self._socket_path}",
+                    flush=True,
+                )
+                return False
+            else:
+                print(
+                    f"sadeshell IPC: another shell is already listening on "
+                    f"{self._socket_path}",
+                    flush=True,
+                )
+                return False
+            finally:
+                probe.close()
 
         self._server = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-        self._server.bind(self._socket_path)
+        try:
+            self._server.bind(self._socket_path)
+        except OSError:
+            self._server.close()
+            self._server = None
+            raise
         self._server.listen(5)
-        self._server.settimeout(1.0)
+        self._server.settimeout(0.5)
+        self._owns_socket = True
+        self._connections = ThreadPoolExecutor(
+            max_workers=4, thread_name_prefix="sadeshell-ipc"
+        )
         self._running = True
 
-        self._thread = threading.Thread(target=self._run, daemon=True)
+        self._thread = threading.Thread(
+            target=self._run, daemon=True, name="sadeshell-ipc-accept"
+        )
         self._thread.start()
         print(f"sadeshell IPC: listening on {self._socket_path}", flush=True)
+        return True
 
     def _run(self):
         while self._running:
             try:
                 conn, _ = self._server.accept()
+                executor = self._connections
+                if executor is None:
+                    conn.close()
+                    continue
                 try:
-                    data = conn.recv(4096).decode("utf-8").strip()
-                    self._handle(conn, data)
-                finally:
+                    executor.submit(self._serve_connection, conn)
+                except RuntimeError:
                     conn.close()
             except socket.timeout:
                 continue
@@ -84,6 +129,18 @@ class IPCService(QObject):
                 if self._running:
                     continue
                 break
+
+    def _serve_connection(self, conn):
+        """Read one bounded request without blocking the accept loop."""
+        try:
+            with conn:
+                conn.settimeout(1.0)
+                data = conn.recv(4096)
+                if not data:
+                    return
+                self._handle(conn, data.decode("utf-8").strip())
+        except (OSError, UnicodeDecodeError):
+            pass
 
     def _handle(self, conn, data):
         if data == "open-launcher":
@@ -150,7 +207,16 @@ class IPCService(QObject):
                 self._server.close()
             except OSError:
                 pass
-        try:
-            os.unlink(self._socket_path)
-        except (FileNotFoundError, OSError):
-            pass
+            self._server = None
+        if self._thread and self._thread is not threading.current_thread():
+            self._thread.join(timeout=1.5)
+        self._thread = None
+        if self._connections:
+            self._connections.shutdown(wait=False, cancel_futures=True)
+            self._connections = None
+        if self._owns_socket:
+            try:
+                os.unlink(self._socket_path)
+            except (FileNotFoundError, OSError):
+                pass
+            self._owns_socket = False

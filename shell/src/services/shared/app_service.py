@@ -5,6 +5,7 @@ import shutil
 import subprocess
 import configparser
 import glob
+import shlex
 import threading
 
 from PySide6.QtCore import (
@@ -20,14 +21,128 @@ _IS_SYSTEMD_UNIT = bool(os.environ.get("INVOCATION_ID"))
 _SYSTEMD_RUN = shutil.which("systemd-run") if _IS_SYSTEMD_UNIT else None
 
 
-def _make_scoped_cmd(exec_cmd: str) -> list[str] | None:
-    """If running under systemd, wrap exec_cmd in a transient user scope so
+def _make_scoped_cmd(argv: list[str]) -> list[str] | None:
+    """If running under systemd, wrap argv in a transient user scope so
     the launched app is not a child of the sadeshell service and survives
     sadeshell restarts/stops.  Returns None if systemd-run is unavailable."""
     if not _SYSTEMD_RUN:
         return None
-    # systemd-run --user --scope -- sh -c <exec_cmd>
-    return [_SYSTEMD_RUN, "--user", "--scope", "--", "sh", "-c", exec_cmd]
+    return [_SYSTEMD_RUN, "--user", "--scope", "--", *argv]
+
+
+def _desktop_bool(entry: dict, key: str) -> bool:
+    return entry.get(key, "false").strip().lower() == "true"
+
+
+def _desktop_list(value: str) -> set[str]:
+    return {item for item in value.split(";") if item}
+
+
+def _visible_on_current_desktop(entry: dict) -> bool:
+    current = {
+        desktop
+        for desktop in os.environ.get("XDG_CURRENT_DESKTOP", "").split(":")
+        if desktop
+    }
+    only_show_in = _desktop_list(entry.get("onlyshowin", ""))
+    not_show_in = _desktop_list(entry.get("notshowin", ""))
+    if only_show_in and not current.intersection(only_show_in):
+        return False
+    if current.intersection(not_show_in):
+        return False
+    return True
+
+
+def _try_exec_available(value: str) -> bool:
+    value = value.strip()
+    if not value:
+        return True
+    if os.path.isabs(value):
+        return os.path.isfile(value) and os.access(value, os.X_OK)
+    return shutil.which(value) is not None
+
+
+def _expand_exec(entry: dict) -> list[str]:
+    """Expand Desktop Entry Exec field codes into a direct argv list."""
+    raw = entry.get("exec", "")
+    if not raw:
+        return []
+    try:
+        tokens = shlex.split(raw, comments=False, posix=True)
+    except ValueError:
+        return []
+
+    name = str(entry.get("name", ""))
+    icon = str(entry.get("icon", ""))
+    desktop_file = str(entry.get("desktopFile", ""))
+    argv: list[str] = []
+
+    for token in tokens:
+        if token == "%i":
+            if icon:
+                argv.extend(["--icon", icon])
+            continue
+
+        expanded = []
+        i = 0
+        valid = True
+        while i < len(token):
+            if token[i] != "%":
+                expanded.append(token[i])
+                i += 1
+                continue
+            if i + 1 >= len(token):
+                valid = False
+                break
+            code = token[i + 1]
+            i += 2
+            if code == "%":
+                expanded.append("%")
+            elif code == "c":
+                expanded.append(name)
+            elif code == "k":
+                expanded.append(desktop_file)
+            elif code in "fFuUdDnNvVm":
+                # No file or URL was supplied by the launcher.
+                continue
+            else:
+                # Unknown and embedded %i field codes make the entry invalid.
+                valid = False
+                break
+        if not valid:
+            return []
+        value = "".join(expanded)
+        if value:
+            argv.append(value)
+
+    return argv
+
+
+def _terminal_prefix() -> list[str] | None:
+    configured = os.environ.get("TERMINAL", "").strip()
+    if configured:
+        try:
+            command = shlex.split(configured, comments=False, posix=True)
+        except ValueError:
+            command = []
+    else:
+        command = []
+        for candidate in (
+            "x-terminal-emulator", "kitty", "alacritty", "foot", "wezterm",
+            "konsole", "gnome-terminal", "xfce4-terminal", "xterm",
+        ):
+            if path := shutil.which(candidate):
+                command = [path]
+                break
+    if not command:
+        return None
+
+    terminal = os.path.basename(command[0])
+    if terminal == "wezterm":
+        return [*command, "start", "--"]
+    if terminal in {"gnome-terminal", "kgx"}:
+        return [*command, "--"]
+    return [*command, "-e"]
 
 
 _ICON_THEME_PATHS = []
@@ -164,15 +279,22 @@ def _parse_desktop_files():
                 continue
             seen.add(basename)
 
-            cp = configparser.ConfigParser(interpolation=None)
-            cp.read(f, encoding="utf-8")
+            cp = configparser.ConfigParser(interpolation=None, strict=False)
+            try:
+                cp.read(f, encoding="utf-8")
+            except (configparser.Error, OSError, UnicodeError):
+                continue
             if not cp.has_section("Desktop Entry"):
                 continue
 
             entry = dict(cp["Desktop Entry"])
             if entry.get("type", "Application") != "Application":
                 continue
-            if entry.get("nodisplay", "false").lower() == "true":
+            if _desktop_bool(entry, "hidden") or _desktop_bool(entry, "nodisplay"):
+                continue
+            if not _visible_on_current_desktop(entry):
+                continue
+            if not _try_exec_available(entry.get("tryexec", "")):
                 continue
 
             name = entry.get("name", basename)
@@ -181,12 +303,8 @@ def _parse_desktop_files():
             icon = entry.get("icon", "")
             keywords = entry.get("keywords", "")
             exec_cmd = entry.get("exec", "")
-
-            # Clean up Exec field — remove %u, %f, %U, %F etc.
-            exec_cmd = exec_cmd.replace("%u", "").replace("%U", "")
-            exec_cmd = exec_cmd.replace("%f", "").replace("%F", "")
-            exec_cmd = exec_cmd.replace("%i", "").replace("%c", "").replace("%k", "")
-            exec_cmd = exec_cmd.strip()
+            if not exec_cmd.strip():
+                continue
 
             apps.append({
                 "name": name,
@@ -197,6 +315,7 @@ def _parse_desktop_files():
                 "keywords": keywords,
                 "exec": exec_cmd,
                 "desktopFile": f,
+                "terminal": _desktop_bool(entry, "terminal"),
             })
 
     apps.sort(key=lambda a: a["name"].lower())
@@ -276,10 +395,8 @@ class AppService(QObject):
             return
         try:
             if _SYSTEMD_RUN:
-                # Wrap in a transient scope so the child outlives sadeshell
-                import shlex
-                exec_str = shlex.join(cmd)
-                launch = [_SYSTEMD_RUN, "--user", "--scope", "--", "sh", "-c", exec_str]
+                # Wrap in a transient scope so the child outlives sadeshell.
+                launch = _make_scoped_cmd([str(arg) for arg in cmd])
                 subprocess.Popen(
                     launch,
                     start_new_session=True,
@@ -298,25 +415,23 @@ class AppService(QObject):
 
     @Slot("QVariant")
     def launch(self, entry):
-        exec_cmd = entry.get("exec", "") if isinstance(entry, dict) else ""
-        if not exec_cmd:
+        if not isinstance(entry, dict):
             return
+        argv = _expand_exec(entry)
+        if not argv:
+            return
+        if entry.get("terminal", False):
+            terminal = _terminal_prefix()
+            if terminal is None:
+                return
+            argv = [*terminal, *argv]
         try:
-            scoped = _make_scoped_cmd(exec_cmd)
-            if scoped:
-                subprocess.Popen(
-                    scoped,
-                    start_new_session=True,
-                    stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL,
-                )
-            else:
-                subprocess.Popen(
-                    exec_cmd,
-                    shell=True,
-                    start_new_session=True,
-                    stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL,
-                )
+            command = _make_scoped_cmd(argv) or argv
+            subprocess.Popen(
+                command,
+                start_new_session=True,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
         except Exception:
             pass

@@ -11,14 +11,32 @@ Item {
     readonly property int toastTopMargin: Theme.barHeight + 8
     readonly property int toastRightMargin: Theme.edgeMargin
 
-    // Bounding rect of the visible toast column — used by Shell.qml to update the
-    // X11 input shape so only the toast area captures pointer events.
-    readonly property rect toastAreaRect: Qt.rect(
-        parent ? parent.width - toastWidth - toastRightMargin : 0,
-        toastTopMargin,
-        toastWidth,
-        toastColumn.height
-    )
+    signal inputRegionChanged()
+
+    // Return only toast rectangles that are both on-screen and ready for input.
+    // In particular, an expired toast that has slid off-screen must not leave a
+    // transparent input rectangle behind.
+    function inputRects() {
+        var rects = []
+        for (var i = 0; i < toastColumn.children.length; i++) {
+            var toast = toastColumn.children[i]
+            if (!toast.visible || !toast.inputActive)
+                continue
+
+            var pos = toast.mapToItem(root, 0, 0)
+            var left = Math.max(0, Math.round(pos.x))
+            var top = Math.max(0, Math.round(pos.y))
+            var right = Math.min(root.width, Math.round(pos.x + toast.width))
+            var bottom = Math.min(root.height, Math.round(pos.y + toast.height))
+            if (right > left && bottom > top) {
+                rects.push({
+                    x: left, y: top,
+                    width: right - left, height: bottom - top
+                })
+            }
+        }
+        return rects
+    }
 
     Column {
         id: toastColumn
@@ -29,25 +47,23 @@ Item {
         spacing: root.toastSpacing
 
         Repeater {
-            model: Math.min(NotificationService.popupQueue.length, 5)
+            model: NotificationService.popupModel
 
-            delegate: NotificationToast {
-                required property int index
-                property var capturedNotif: NotificationService.popupQueue[index]
-                notif: capturedNotif
-                onDone: NotificationService.removeFromQueue(capturedNotif)
-            }
+            delegate: NotificationToast {}
         }
     }
 
     component NotificationToast: Rectangle {
         id: toast
 
-        property var notif
-        signal done()
+        required property int index
+        required property var notification
+        readonly property var notif: notification
+        property bool inputActive: false
 
         width: root.toastWidth
         height: toastContent.implicitHeight + 20
+        visible: index < 5
         radius: Theme.menuRadius
         color: Theme.menuBg
         border.color: notif && notif.urgency === 2 ? Qt.alpha("#f7768e", 0.5) : Theme.menuBorder
@@ -56,7 +72,30 @@ Item {
 
         x: root.toastWidth + root.toastRightMargin + 20
 
-        Component.onCompleted: slideInAnim.start()
+        function beginShowing() {
+            if (!toast.visible || slideInAnim.running || toast.inputActive)
+                return
+            slideOutAnim.stop()
+            expireTimer.stop()
+            toast.x = root.toastWidth + root.toastRightMargin + 20
+            slideInAnim.restart()
+        }
+
+        Component.onCompleted: Qt.callLater(beginShowing)
+        Component.onDestruction: root.inputRegionChanged()
+        onVisibleChanged: {
+            if (visible) {
+                Qt.callLater(beginShowing)
+            } else {
+                slideInAnim.stop()
+                slideOutAnim.stop()
+                expireTimer.stop()
+                inputActive = false
+                x = root.toastWidth + root.toastRightMargin + 20
+                root.inputRegionChanged()
+            }
+        }
+        onHeightChanged: if (inputActive) root.inputRegionChanged()
 
         NumberAnimation {
             id: slideInAnim
@@ -65,7 +104,15 @@ Item {
             to: 0
             duration: 300
             easing.type: Easing.OutCubic
-            onStarted: expireTimer.start()
+            onStarted: {
+                toast.inputActive = false
+                root.inputRegionChanged()
+            }
+            onFinished: {
+                toast.inputActive = true
+                root.inputRegionChanged()
+                expireTimer.start()
+            }
         }
 
         NumberAnimation {
@@ -75,7 +122,11 @@ Item {
             to: root.toastWidth + root.toastRightMargin + 20
             duration: 250
             easing.type: Easing.InCubic
-            onFinished: toast.done()
+            onStarted: {
+                toast.inputActive = false
+                root.inputRegionChanged()
+            }
+            onFinished: NotificationService.removeFromQueueById(toast.notif.id)
         }
 
         Timer {

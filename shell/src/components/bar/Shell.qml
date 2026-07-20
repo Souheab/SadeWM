@@ -105,7 +105,6 @@ Window {
         property bool popupVisible: false
         property bool mediaVisible: false
         property bool systrayMenuVisible: false
-        property bool toastsActive: NotificationService.popupQueue.length > 0
         property bool maskActive: false
         anchors.fill: parent
 
@@ -140,15 +139,12 @@ Window {
                 })
             }
 
-            // Toast notifications: the overlay Item is full-screen, so we
-            // derive the actual column bounding rect from notifPopups.
-            if (toastsActive && notifPopups.toastAreaRect.height > 0) {
-                var tr = notifPopups.toastAreaRect
-                rects.push({
-                    x: Math.round(tr.x), y: Math.round(tr.y),
-                    width: Math.round(tr.width), height: Math.round(tr.height)
-                })
-            }
+            // Toast notifications live in a full-screen overlay.  Ask it for
+            // the individual visible toast rects so transparent gaps and
+            // already-slid-out delegates stay click-through.
+            var toastRects = notifPopups.inputRects()
+            for (var j = 0; j < toastRects.length; j++)
+                rects.push(toastRects[j])
 
             WindowHelper.setInputRegion(rects)
         }
@@ -185,7 +181,6 @@ Window {
             Qt.callLater(updateInputRegion)
         }
 
-        onToastsActiveChanged: Qt.callLater(updateInputRegion)
         onMaskActiveChanged:   Qt.callLater(updateInputRegion)
 
         Connections {
@@ -193,14 +188,14 @@ Window {
             function onHasFullscreenChanged() { Qt.callLater(popupLayer.updateInputRegion) }
         }
 
-        // Keep input region in sync when the media card or toast column resizes.
+        // Keep input region in sync when the media card or toast set changes.
         Connections {
             target: mediaPopup
             function onHeightChanged() { Qt.callLater(popupLayer.updateInputRegion) }
         }
         Connections {
             target: notifPopups
-            function onToastAreaRectChanged() { Qt.callLater(popupLayer.updateInputRegion) }
+            function onInputRegionChanged() { Qt.callLater(popupLayer.updateInputRegion) }
         }
 
         MediaDetails {

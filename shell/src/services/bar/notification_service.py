@@ -1,9 +1,17 @@
 """NotificationService — D-Bus notification server."""
 
-import threading
 import asyncio
+import threading
 
-from PySide6.QtCore import QObject, Property, Signal, Slot, QTimer
+from PySide6.QtCore import (
+    QAbstractListModel,
+    QModelIndex,
+    QObject,
+    Property,
+    Qt,
+    Signal,
+    Slot,
+)
 
 try:
     from dbus_next.aio import MessageBus
@@ -14,16 +22,78 @@ except ImportError:
     HAS_DBUS = False
 
 
+class PopupQueueModel(QAbstractListModel):
+    """Row-aware popup model so each toast keeps its own lifecycle."""
+
+    NotificationRole = int(Qt.ItemDataRole.UserRole) + 1
+    countChanged = Signal()
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._entries = []
+
+    def roleNames(self):
+        return {self.NotificationRole: b"notification"}
+
+    def rowCount(self, parent=QModelIndex()):
+        if parent.isValid():
+            return 0
+        return len(self._entries)
+
+    def data(self, index, role=Qt.ItemDataRole.DisplayRole):
+        if not index.isValid() or not 0 <= index.row() < len(self._entries):
+            return None
+        if role == self.NotificationRole:
+            return self._entries[index.row()]
+        return None
+
+    @property
+    def entries(self):
+        return self._entries
+
+    def prepend(self, entry):
+        self.beginInsertRows(QModelIndex(), 0, 0)
+        self._entries.insert(0, entry)
+        self.endInsertRows()
+        self.countChanged.emit()
+
+    def remove_by_id(self, notification_id):
+        row = next(
+            (i for i, entry in enumerate(self._entries)
+             if entry.get("id") == notification_id),
+            -1,
+        )
+        if row < 0:
+            return False
+        self.beginRemoveRows(QModelIndex(), row, row)
+        self._entries.pop(row)
+        self.endRemoveRows()
+        self.countChanged.emit()
+        return True
+
+    def clear(self):
+        if not self._entries:
+            return False
+        self.beginResetModel()
+        self._entries.clear()
+        self.endResetModel()
+        self.countChanged.emit()
+        return True
+
+
 class NotificationService(QObject):
     notificationsChanged = Signal()
     popupQueueChanged = Signal()
     unreadCountChanged = Signal()
+    _notificationReceived = Signal(object)
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self._notifications = []
-        self._popup_queue = []
+        self._popup_model = PopupQueueModel(self)
         self._next_id = 1
+        self._id_lock = threading.Lock()
+        self._notificationReceived.connect(self._commit_notification)
 
         if HAS_DBUS:
             self._start_server()
@@ -47,8 +117,9 @@ class NotificationService(QObject):
         await bus.wait_for_disconnect()
 
     def _add_notification(self, app_name, summary, body, app_icon, expire_timeout):
-        notif_id = self._next_id
-        self._next_id += 1
+        with self._id_lock:
+            notif_id = self._next_id
+            self._next_id += 1
 
         entry = {
             "id": notif_id,
@@ -60,12 +131,18 @@ class NotificationService(QObject):
             "expireTimeout": expire_timeout if expire_timeout > 0 else 5000,
         }
 
+        # D-Bus calls arrive on the asyncio worker thread.  Deliver the model
+        # mutation to this QObject's (GUI) thread before QML observes it.
+        self._notificationReceived.emit(entry)
+        return notif_id
+
+    @Slot(object)
+    def _commit_notification(self, entry):
         self._notifications.insert(0, entry)
-        self._popup_queue.insert(0, entry)
+        self._popup_model.prepend(entry)
         self.notificationsChanged.emit()
         self.popupQueueChanged.emit()
         self.unreadCountChanged.emit()
-        return notif_id
 
     @Property("QVariantList", notify=notificationsChanged)
     def notifications(self):
@@ -73,7 +150,11 @@ class NotificationService(QObject):
 
     @Property("QVariantList", notify=popupQueueChanged)
     def popupQueue(self):
-        return self._popup_queue
+        return self._popup_model.entries
+
+    @Property(QObject, constant=True)
+    def popupModel(self):
+        return self._popup_model
 
     @Property(int, notify=unreadCountChanged)
     def unreadCount(self):
@@ -89,16 +170,22 @@ class NotificationService(QObject):
     @Slot()
     def dismissAll(self):
         self._notifications.clear()
-        self._popup_queue.clear()
+        self._popup_model.clear()
         self.notificationsChanged.emit()
         self.popupQueueChanged.emit()
         self.unreadCountChanged.emit()
 
     @Slot("QVariant")
     def removeFromQueue(self, entry):
+        if hasattr(entry, "toVariant"):
+            entry = entry.toVariant()
         entry_id = entry.get("id") if isinstance(entry, dict) else None
-        if entry_id is not None:
-            self._popup_queue = [e for e in self._popup_queue if e.get("id") != entry_id]
+        if entry_id is not None and self._popup_model.remove_by_id(entry_id):
+            self.popupQueueChanged.emit()
+
+    @Slot(int)
+    def removeFromQueueById(self, notification_id):
+        if self._popup_model.remove_by_id(notification_id):
             self.popupQueueChanged.emit()
 
 

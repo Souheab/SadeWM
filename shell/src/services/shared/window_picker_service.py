@@ -4,24 +4,116 @@ Uses:
 - sadewm IPC socket to enumerate clients (get_clients) and focus them (focus_window)
 - python-xlib to read _NET_WM_ICON for per-window icons, with XDG theme fallback
 - python-xlib get_image() + Pillow for window thumbnails (no external tools needed)
-- Images are saved to /tmp/sadeshell-winpicker/ as PNG files and exposed as file:// URIs
+- Images are saved to a private per-process runtime directory and exposed as file:// URIs
 """
 
 from __future__ import annotations
 
+import atexit
 import glob
-import io
 import json
 import os
+import shutil
 import socket
+import stat
+import tempfile
 import threading
 from concurrent.futures import ThreadPoolExecutor
 
 from PySide6.QtCore import QObject, Property, Signal, Slot, Qt
 
-# Cache dir for saved thumbnails and icons
-_CACHE_DIR = "/tmp/sadeshell-winpicker"
-os.makedirs(_CACHE_DIR, exist_ok=True)
+# Cache for saved thumbnails and icons. It is created lazily so starting the
+# shell never leaves an empty directory behind when the picker is unused.
+_CACHE_DIR: str | None = None
+_CACHE_CLOSED = False
+_CACHE_LOCK = threading.RLock()
+
+
+def _private_runtime_parent() -> str:
+    """Return a trustworthy runtime parent, falling back to the system temp dir."""
+    runtime_dir = os.environ.get("XDG_RUNTIME_DIR")
+    if runtime_dir:
+        try:
+            info = os.stat(runtime_dir, follow_symlinks=False)
+            if (
+                stat.S_ISDIR(info.st_mode)
+                and info.st_uid == os.getuid()
+                and (stat.S_IMODE(info.st_mode) & 0o022) == 0
+            ):
+                return runtime_dir
+        except OSError:
+            pass
+    return tempfile.gettempdir()
+
+
+def _create_private_cache_dir(parent: str | None = None) -> str:
+    cache_dir = tempfile.mkdtemp(
+        prefix="sadeshell-winpicker-",
+        dir=parent or _private_runtime_parent(),
+    )
+    os.chmod(cache_dir, 0o700)
+    return cache_dir
+
+
+def _get_cache_dir() -> str:
+    global _CACHE_DIR
+    with _CACHE_LOCK:
+        if _CACHE_CLOSED:
+            raise RuntimeError("window picker cache is closed")
+        if _CACHE_DIR is None:
+            _CACHE_DIR = _create_private_cache_dir()
+        return _CACHE_DIR
+
+
+def _write_private_png(image, cache_dir: str, filename: str) -> str:
+    """Atomically save a PNG with permissions restricted to the current user."""
+    fd, temporary_path = tempfile.mkstemp(
+        prefix=".sadeshell-image-",
+        suffix=".png",
+        dir=cache_dir,
+    )
+    try:
+        os.fchmod(fd, 0o600)
+        with os.fdopen(fd, "wb") as output:
+            fd = -1
+            image.save(output, "PNG")
+        destination = os.path.join(cache_dir, filename)
+        os.replace(temporary_path, destination)
+        os.chmod(destination, 0o600)
+        return destination
+    finally:
+        if fd >= 0:
+            os.close(fd)
+        try:
+            os.unlink(temporary_path)
+        except FileNotFoundError:
+            pass
+
+
+def _save_cached_png(image, filename: str) -> str:
+    # Keep cleanup from racing a capture that is encoding or replacing a file.
+    with _CACHE_LOCK:
+        return _write_private_png(image, _get_cache_dir(), filename)
+
+
+def _remove_private_cache_dir(cache_dir: str) -> None:
+    try:
+        shutil.rmtree(cache_dir)
+    except FileNotFoundError:
+        pass
+
+
+def _cleanup_cache() -> None:
+    global _CACHE_DIR, _CACHE_CLOSED
+    with _CACHE_LOCK:
+        _CACHE_CLOSED = True
+        cache_dir = _CACHE_DIR
+        _CACHE_DIR = None
+        if cache_dir is not None:
+            _remove_private_cache_dir(cache_dir)
+
+
+atexit.register(_cleanup_cache)
 
 
 # ---------------------------------------------------------------------------
@@ -165,8 +257,7 @@ def _net_wm_icon_file_uri(win_id: int, wm_class: str) -> str:
                         raw[i * 4 + 2] = argb & 0xFF           # B
                         raw[i * 4 + 3] = (argb >> 24) & 0xFF  # A
                     img = Image.frombytes("RGBA", (best_w, best_h), bytes(raw))
-                    out_path = os.path.join(_CACHE_DIR, f"icon_{win_id}.png")
-                    img.save(out_path, "PNG")
+                    out_path = _save_cached_png(img, f"icon_{win_id}.png")
                     dpy.close()
                     return f"file://{out_path}"
         dpy.close()
@@ -218,8 +309,7 @@ def _capture_thumbnail_file_uri(win_id: int) -> str:
         pil = Image.frombuffer("RGB", (w, h), raw_bytes, "raw", "BGRX", 0, 1)
         pil.thumbnail((_THUMB_W, _THUMB_H), Image.LANCZOS)
 
-        out_path = os.path.join(_CACHE_DIR, f"thumb_{win_id}.png")
-        pil.save(out_path, "PNG")
+        out_path = _save_cached_png(pil, f"thumb_{win_id}.png")
         return f"file://{out_path}"
     except Exception:
         return ""
@@ -445,3 +535,8 @@ class WindowPickerService(QObject):
             daemon=True,
             name="sadeshell-focus-window",
         ).start()
+
+    @Slot()
+    def stop(self):
+        """Prevent further cache writes and remove this process's image cache."""
+        _cleanup_cache()

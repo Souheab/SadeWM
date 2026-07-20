@@ -297,11 +297,15 @@ def main():
 
     # Start the IPC server so sadeshell --open-launcher works
     if not ipc_service.start():
+        audio_service.stop()
+        window_picker_service.stop()
         systray_service.stop()
         print("Refusing to start a second sadeshell instance", file=sys.stderr)
         sys.exit(1)
 
     ret = app.exec()
+    audio_service.stop()
+    window_picker_service.stop()
     systray_service.stop()
     ipc_service.stop()
     sys.exit(ret)

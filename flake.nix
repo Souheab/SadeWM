@@ -21,6 +21,7 @@
           pulsectl
           emoji
           xlib
+          pillow
         ]);
 
         # ── dev/testing Python env (not shipped in sadeshell) ─────────────────

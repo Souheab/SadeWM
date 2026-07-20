@@ -122,6 +122,21 @@ func (wm *WM) snapY(ny, ocy, h int) int {
 	return ny
 }
 
+// snapClientY clamps a client's full visible frame to the monitor work area.
+// Client Y coordinates describe the content origin, so a decorated floating
+// window needs its titlebar height subtracted before applying the frame clamp.
+func (wm *WM) snapClientY(c *Client, ny, ocy int) int {
+	topDecoration := 0
+	if c.FrameWin != 0 {
+		topDecoration = titlebarHeight
+	}
+	return wm.snapY(
+		ny-topDecoration,
+		ocy-topDecoration,
+		c.Height()+topDecoration,
+	) + topDecoration
+}
+
 // MoveMouse implements Mod+Button1 window dragging.
 func (wm *WM) MoveMouse(arg *config.Arg) {
 	c := wm.SelMon.Sel
@@ -199,7 +214,7 @@ func (wm *WM) MoveMouse(arg *config.Arg) {
 			ny := ocy + (int(e.RootY) - ptrY)
 
 			nx = wm.snapX(nx, ocx, c.Width())
-			ny = wm.snapY(ny, ocy, c.Height())
+			ny = wm.snapClientY(c, ny, ocy)
 
 			if !c.IsFloating && wm.SelMon.Lt.Arrange != nil {
 				// Tiled mode: swap with the client under the cursor, but only

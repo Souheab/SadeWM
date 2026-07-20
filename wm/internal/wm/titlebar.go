@@ -728,7 +728,7 @@ func (wm *WM) titlebarDrag(c *Client, startRootX, startRootY int16) {
 			nx := ocx + (int(e.RootX) - ptrX)
 			ny := ocy + (int(e.RootY) - ptrY)
 			nx = wm.snapX(nx, ocx, c.Width())
-			ny = wm.snapY(ny, ocy, c.Height())
+			ny = wm.snapClientY(c, ny, ocy)
 
 			if !c.IsFloating {
 				c.IsFloating = true

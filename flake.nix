@@ -279,8 +279,11 @@
             xorgserver
             xrandr
             xprop
+            xdpyinfo
             xwd
             imagemagick
+            picom
+            xterm
             cairo
             libxscrnsaver
             python3

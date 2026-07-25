@@ -14,6 +14,7 @@ import (
 func (wm *WM) RegisterActions() {
 	wm.Actions = map[string]config.ActionFunc{
 		"spawn":          wm.Spawn,
+		"shellcmd":       wm.ShellCommand,
 		"focusstack":     wm.FocusStack,
 		"focusup":        wm.FocusUp,
 		"focusdown":      wm.FocusDown,
@@ -63,6 +64,10 @@ func (wm *WM) Spawn(arg *config.Arg) {
 	case []string:
 		argv = v
 	default:
+		return
+	}
+	if command := shellCommandFromArgv(argv); command != "" {
+		wm.sendShellCommandAsync(command)
 		return
 	}
 	wm.spawnCmd(argv)

@@ -77,6 +77,8 @@ type ClientDTO struct {
 	WinID     uint32 `json:"win_id"`
 	Class     string `json:"class"`
 	Tags      uint32 `json:"tags"`
+	Width     int    `json:"width"`
+	Height    int    `json:"height"`
 	Floating  bool   `json:"floating"`
 	Maximized bool   `json:"maximized"`
 	Focused   bool   `json:"focused"`

@@ -10,7 +10,6 @@ Uses:
 from __future__ import annotations
 
 import atexit
-import glob
 import json
 import os
 import shutil
@@ -18,9 +17,20 @@ import socket
 import stat
 import tempfile
 import threading
-from concurrent.futures import ThreadPoolExecutor
+import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from dataclasses import dataclass
+from functools import lru_cache
 
-from PySide6.QtCore import QObject, Property, Signal, Slot, Qt
+from PySide6.QtCore import (
+    QAbstractListModel,
+    QModelIndex,
+    QObject,
+    Property,
+    Signal,
+    Slot,
+    Qt,
+)
 
 # Cache for saved thumbnails and icons. It is created lazily so starting the
 # shell never leaves an empty directory behind when the picker is unused.
@@ -181,6 +191,9 @@ def _build_icon_search_dirs() -> list[str]:
 
 _ICON_DIRS: list[str] | None = None
 _ICON_DIRS_LOCK = threading.Lock()
+_ICON_INDEX: dict[str, str] | None = None
+_ICON_INDEX_LOCK = threading.Lock()
+_ICON_TARGET_SIZE = 64
 
 
 def _icon_search_dirs() -> list[str]:
@@ -191,29 +204,70 @@ def _icon_search_dirs() -> list[str]:
     return _ICON_DIRS
 
 
+def _icon_path_score(path: str) -> tuple[int, int, int]:
+    """Prefer app icons near the picker target size, then PNG/SVG over XPM."""
+    lowered = path.lower()
+    app_penalty = 0 if f"{os.sep}apps{os.sep}" in lowered else 1
+    size_penalty = 10_000
+    for component in lowered.split(os.sep):
+        if "x" not in component:
+            continue
+        left, _, right = component.partition("x")
+        if left.isdigit() and right.isdigit():
+            size_penalty = abs(int(left) - _ICON_TARGET_SIZE)
+            break
+    extension_penalty = {".png": 0, ".svg": 1, ".xpm": 2}.get(
+        os.path.splitext(lowered)[1], 3
+    )
+    return app_penalty, size_penalty, extension_penalty
+
+
+def _build_icon_index() -> dict[str, str]:
+    """Walk configured icon roots once instead of recursively globbing per window."""
+    index: dict[str, str] = {}
+    scores: dict[str, tuple[int, int, int]] = {}
+    for root in _icon_search_dirs():
+        for directory, _subdirs, files in os.walk(root):
+            for filename in files:
+                stem, extension = os.path.splitext(filename)
+                if extension.lower() not in {".png", ".svg", ".xpm"}:
+                    continue
+                key = stem.casefold()
+                path = os.path.join(directory, filename)
+                score = _icon_path_score(path)
+                if key not in scores or score < scores[key]:
+                    scores[key] = score
+                    index[key] = path
+    return index
+
+
+def _icon_index() -> dict[str, str]:
+    global _ICON_INDEX
+    with _ICON_INDEX_LOCK:
+        if _ICON_INDEX is None:
+            _ICON_INDEX = _build_icon_index()
+        return _ICON_INDEX
+
+
+@lru_cache(maxsize=256)
 def _icon_path_from_class(wm_class: str) -> str:
-    """Look up <wm_class> in XDG icon theme dirs. Returns file path or ''."""
+    """Resolve a WM_CLASS through the process-wide icon index."""
     if not wm_class:
         return ""
-    names = [wm_class, wm_class.lower()]
-    for d in _icon_search_dirs():
-        for name in names:
-            for ext in ("png", "svg", "xpm"):
-                # Prefer 48x48/apps, then any apps dir, then any match
-                for pattern in (
-                    f"{d}/**/48x48/apps/{name}.{ext}",
-                    f"{d}/**/32x32/apps/{name}.{ext}",
-                    f"{d}/**/apps/{name}.{ext}",
-                    f"{d}/**/{name}.{ext}",
-                    f"{d}/{name}.{ext}",
-                ):
-                    matches = glob.glob(pattern, recursive=True)
-                    if matches:
-                        return matches[0]
+    index = _icon_index()
+    candidates = (
+        wm_class.casefold(),
+        wm_class.casefold().replace(" ", "-"),
+    )
+    for candidate in candidates:
+        if path := index.get(candidate):
+            return path
     return ""
 
 
-def _net_wm_icon_file_uri(win_id: int, wm_class: str) -> str:
+def _net_wm_icon_file_uri(
+    win_id: int, wm_class: str, cache_token: int | None = None
+) -> str:
     """Return a file:// URI for the window icon.
 
     Tries in order:
@@ -234,20 +288,33 @@ def _net_wm_icon_file_uri(win_id: int, wm_class: str) -> str:
             prop = win.get_full_property(atom, X.AnyPropertyType)
             if prop is not None and prop.value:
                 values = list(prop.value)
-                best_w = best_h = best_start = 0
+                candidates: list[tuple[int, int, int]] = []
                 idx = 0
                 while idx + 2 <= len(values):
                     w_icon = int(values[idx])
                     h_icon = int(values[idx + 1])
                     idx += 2
+                    if w_icon < 1 or h_icon < 1 or w_icon > 4096 or h_icon > 4096:
+                        break
                     n = w_icon * h_icon
                     if idx + n > len(values):
                         break
-                    if w_icon * h_icon > best_w * best_h:
-                        best_w, best_h = w_icon, h_icon
-                        best_start = idx
+                    candidates.append((w_icon, h_icon, idx))
                     idx += n
-                if best_w > 0:
+                if candidates:
+                    large_enough = [
+                        item
+                        for item in candidates
+                        if max(item[0], item[1]) >= _ICON_TARGET_SIZE
+                    ]
+                    if large_enough:
+                        best_w, best_h, best_start = min(
+                            large_enough, key=lambda item: item[0] * item[1]
+                        )
+                    else:
+                        best_w, best_h, best_start = max(
+                            candidates, key=lambda item: item[0] * item[1]
+                        )
                     # Convert ARGB ints → RGBA bytes
                     raw = bytearray(best_w * best_h * 4)
                     for i in range(best_w * best_h):
@@ -257,7 +324,11 @@ def _net_wm_icon_file_uri(win_id: int, wm_class: str) -> str:
                         raw[i * 4 + 2] = argb & 0xFF           # B
                         raw[i * 4 + 3] = (argb >> 24) & 0xFF  # A
                     img = Image.frombytes("RGBA", (best_w, best_h), bytes(raw))
-                    out_path = _save_cached_png(img, f"icon_{win_id}.png")
+                    img.thumbnail(
+                        (_ICON_TARGET_SIZE, _ICON_TARGET_SIZE), Image.LANCZOS
+                    )
+                    token = cache_token if cache_token is not None else time.monotonic_ns()
+                    out_path = _save_cached_png(img, f"icon_{win_id}_{token}.png")
                     dpy.close()
                     return f"file://{out_path}"
         dpy.close()
@@ -273,11 +344,13 @@ def _net_wm_icon_file_uri(win_id: int, wm_class: str) -> str:
 # Thumbnail capture via python-xlib get_image + Pillow
 # ---------------------------------------------------------------------------
 
-_THUMB_W = 280
-_THUMB_H = 175
+_THUMB_W = 212
+_THUMB_H = 136
 
 
-def _capture_thumbnail_file_uri(win_id: int) -> str:
+def _capture_thumbnail_file_uri(
+    win_id: int, cache_token: int | None = None
+) -> str:
     """Capture a window thumbnail using python-xlib and Pillow.
 
     Returns a file:// URI pointing to the saved PNG, or '' on failure.
@@ -309,7 +382,8 @@ def _capture_thumbnail_file_uri(win_id: int) -> str:
         pil = Image.frombuffer("RGB", (w, h), raw_bytes, "raw", "BGRX", 0, 1)
         pil.thumbnail((_THUMB_W, _THUMB_H), Image.LANCZOS)
 
-        out_path = _save_cached_png(pil, f"thumb_{win_id}.png")
+        token = cache_token if cache_token is not None else time.monotonic_ns()
+        out_path = _save_cached_png(pil, f"thumb_{win_id}_{token}.png")
         return f"file://{out_path}"
     except Exception:
         return ""
@@ -318,6 +392,157 @@ def _capture_thumbnail_file_uri(win_id: int) -> str:
 # ---------------------------------------------------------------------------
 # WindowPickerService
 # ---------------------------------------------------------------------------
+
+
+_WINDOW_ROLES = (
+    "winId",
+    "name",
+    "wmClass",
+    "tags",
+    "tagNum",
+    "focused",
+    "minimized",
+    "iconUri",
+    "thumbnailUri",
+)
+
+
+class WindowListModel(QAbstractListModel):
+    """Filterable window model whose asset roles can be updated per row."""
+
+    countChanged = Signal()
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        first_role = int(Qt.ItemDataRole.UserRole) + 1
+        self._role_names = {
+            first_role + index: name.encode()
+            for index, name in enumerate(_WINDOW_ROLES)
+        }
+        self._role_ids = {
+            name.decode(): role for role, name in self._role_names.items()
+        }
+        self._all_items: list[dict] = []
+        self._items: list[dict] = []
+        self._query = ""
+
+    def roleNames(self):
+        return self._role_names
+
+    def rowCount(self, parent=QModelIndex()):
+        return 0 if parent.isValid() else len(self._items)
+
+    def data(self, index, role):
+        if not index.isValid() or not 0 <= index.row() < len(self._items):
+            return None
+        role_name = self._role_names.get(role)
+        if role_name is None:
+            return None
+        return self._items[index.row()].get(role_name.decode())
+
+    @Property(int, notify=countChanged)
+    def count(self):
+        return len(self._items)
+
+    @Slot(int, result="QVariantMap")
+    def get(self, row):
+        if 0 <= row < len(self._items):
+            return dict(self._items[row])
+        return {}
+
+    @Slot(str)
+    def setFilter(self, query):
+        normalized = (query or "").strip().casefold()
+        if normalized == self._query:
+            return
+        self._query = normalized
+        self._reset_visible_items()
+
+    def set_items(self, items):
+        incoming = [dict(item) for item in items]
+        same_rows = (
+            not self._query
+            and len(incoming) == len(self._all_items)
+            and [
+                item.get("winId") for item in incoming
+            ] == [
+                item.get("winId") for item in self._all_items
+            ]
+        )
+        if same_rows:
+            for row, (current, replacement) in enumerate(
+                zip(self._all_items, incoming)
+            ):
+                changed_names = [
+                    name
+                    for name in _WINDOW_ROLES
+                    if current.get(name) != replacement.get(name)
+                ]
+                current.clear()
+                current.update(replacement)
+                if changed_names:
+                    roles = [self._role_ids[name] for name in changed_names]
+                    model_index = self.index(row, 0)
+                    self.dataChanged.emit(
+                        model_index, model_index, roles
+                    )
+            return
+        self.beginResetModel()
+        self._all_items = incoming
+        self._items = self._filtered_items()
+        self.endResetModel()
+        self.countChanged.emit()
+
+    def update_item(self, win_id, changes):
+        changed_names = [name for name in changes if name in self._role_ids]
+        if not changed_names:
+            return
+        target = None
+        for item in self._all_items:
+            if item.get("winId") == win_id:
+                item.update(changes)
+                target = item
+                break
+        if target is None:
+            return
+        for row, item in enumerate(self._items):
+            if item is target:
+                roles = [self._role_ids[name] for name in changed_names]
+                model_index = self.index(row, 0)
+                self.dataChanged.emit(model_index, model_index, roles)
+                break
+
+    def _filtered_items(self):
+        if not self._query:
+            return list(self._all_items)
+        return [
+            item
+            for item in self._all_items
+            if self._query in str(item.get("name", "")).casefold()
+            or self._query in str(item.get("wmClass", "")).casefold()
+        ]
+
+    def _reset_visible_items(self):
+        self.beginResetModel()
+        self._items = self._filtered_items()
+        self.endResetModel()
+        self.countChanged.emit()
+
+
+@dataclass
+class _WindowAssets:
+    wm_class: str
+    icon_uri: str = ""
+    icon_attempted: bool = False
+    thumbnail_uri: str = ""
+    thumbnail_attempted_at: float = 0.0
+    thumbnail_geometry: tuple[int, int] = (0, 0)
+
+
+_VISIBLE_THUMBNAIL_TTL = 3.0
+_BACKGROUND_THUMBNAIL_TTL = 30.0
+_CAPTURE_WORKERS = 2
+
 
 class WindowPickerService(QObject):
     """Provides the list of all WM windows with icons and thumbnails.
@@ -331,11 +556,20 @@ class WindowPickerService(QObject):
     _windowsFinished = Signal(int)
     _minimizedReady = Signal(int, object)
     _minimizedFinished = Signal(int)
+    _assetReady = Signal(int, str, int, object)
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self._windows: list[dict] = []
         self._minimized_windows: list[dict] = []
+        self._windows_model = WindowListModel(self)
+        self._minimized_windows_model = WindowListModel(self)
+        self._asset_cache: dict[int, _WindowAssets] = {}
+        self._asset_cache_lock = threading.Lock()
+        self._capture_pool = ThreadPoolExecutor(
+            max_workers=_CAPTURE_WORKERS,
+            thread_name_prefix="sadeshell-window-assets",
+        )
         self._refresh_generation = 0
         self._refresh_running = False
         self._refresh_pending = False
@@ -355,6 +589,9 @@ class WindowPickerService(QObject):
         self._minimizedFinished.connect(
             self._finish_minimized_refresh, Qt.ConnectionType.QueuedConnection
         )
+        self._assetReady.connect(
+            self._apply_asset, Qt.ConnectionType.QueuedConnection
+        )
 
     @Property("QVariantList", notify=windowsChanged)
     def windows(self) -> list:
@@ -363,6 +600,14 @@ class WindowPickerService(QObject):
     @Property("QVariantList", notify=minimizedWindowsChanged)
     def minimizedWindows(self) -> list:
         return self._minimized_windows
+
+    @Property(QObject, constant=True)
+    def windowsModel(self):
+        return self._windows_model
+
+    @Property(QObject, constant=True)
+    def minimizedWindowsModel(self):
+        return self._minimized_windows_model
 
     @Slot()
     def refresh(self):
@@ -384,46 +629,26 @@ class WindowPickerService(QObject):
 
     def _do_refresh(self, generation):
         try:
+            state_resp = _sadewm_request({"cmd": "get_state"})
+            current_tags = (
+                state_resp.get("tag_mask", 0) if state_resp.get("ok") else 0
+            )
             resp = _sadewm_request({"cmd": "get_clients"})
             if not resp.get("ok"):
                 self._windowsReady.emit(generation, [])
                 return
 
             clients = resp.get("clients", [])
-
-            # Phase 1: emit metadata immediately, before thumbnail capture.
-            result = []
-            for c in clients:
-                win_id = c.get("win_id", 0)
-                wm_class = c.get("class", "")
-                tags = c.get("tags", 0)
-                tag_num = (tags & -tags).bit_length() if tags else 0
-                result.append({
-                    "winId": win_id,
-                    "name": c.get("name", ""),
-                    "wmClass": wm_class,
-                    "tags": tags,
-                    "tagNum": tag_num,
-                    "focused": c.get("focused", False),
-                    "minimized": c.get("minimized", False),
-                    "iconUri": "",
-                    "thumbnailUri": "",
-                })
-
+            self._purge_asset_cache({int(c.get("win_id", 0)) for c in clients})
+            result = [self._entry_from_client(c) for c in clients]
             self._windowsReady.emit(generation, result)
-
-            # Phase 2: capture thumbnails and icons in parallel, then re-emit.
-            def _capture(entry):
-                win_id = entry["winId"]
-                wm_class = entry["wmClass"]
-                icon_uri = _net_wm_icon_file_uri(win_id, wm_class)
-                thumb_uri = _capture_thumbnail_file_uri(win_id)
-                return {**entry, "iconUri": icon_uri, "thumbnailUri": thumb_uri}
-
-            with ThreadPoolExecutor(max_workers=4) as pool:
-                enriched = list(pool.map(_capture, result))
-
-            self._windowsReady.emit(generation, enriched)
+            self._capture_assets(
+                generation,
+                "normal",
+                result,
+                current_tags=current_tags,
+                include_thumbnails=True,
+            )
         finally:
             self._windowsFinished.emit(generation)
 
@@ -432,6 +657,7 @@ class WindowPickerService(QObject):
         if generation != self._refresh_generation:
             return
         self._windows = windows
+        self._windows_model.set_items(windows)
         self.windowsChanged.emit()
 
     @Slot(int)
@@ -473,42 +699,23 @@ class WindowPickerService(QObject):
             clients = resp.get("clients", [])
 
             # Filter minimized windows to the currently selected tags.
-            result = []
+            result: list[dict] = []
             for c in clients:
                 if not c.get("minimized", False):
                     continue
                 win_tags = c.get("tags", 0)
                 if current_tags != 0 and (win_tags & current_tags) == 0:
                     continue
-                win_id = c.get("win_id", 0)
-                wm_class = c.get("class", "")
-                tags = c.get("tags", 0)
-                tag_num = (tags & -tags).bit_length() if tags else 0
-                result.append({
-                    "winId": win_id,
-                    "name": c.get("name", ""),
-                    "wmClass": wm_class,
-                    "tags": tags,
-                    "tagNum": tag_num,
-                    "focused": False,
-                    "minimized": True,
-                    "iconUri": "",
-                    "thumbnailUri": "",
-                })
+                result.append(self._entry_from_client(c))
 
             self._minimizedReady.emit(generation, result)
-
-            # Minimized windows cannot provide thumbnails, so capture icons only.
-            def _capture(entry):
-                win_id = entry["winId"]
-                wm_class = entry["wmClass"]
-                icon_uri = _net_wm_icon_file_uri(win_id, wm_class)
-                return {**entry, "iconUri": icon_uri}
-
-            with ThreadPoolExecutor(max_workers=4) as pool:
-                enriched = list(pool.map(_capture, result))
-
-            self._minimizedReady.emit(generation, enriched)
+            self._capture_assets(
+                generation,
+                "minimized",
+                result,
+                current_tags=current_tags,
+                include_thumbnails=False,
+            )
         finally:
             self._minimizedFinished.emit(generation)
 
@@ -517,7 +724,192 @@ class WindowPickerService(QObject):
         if generation != self._minimized_generation:
             return
         self._minimized_windows = windows
+        self._minimized_windows_model.set_items(windows)
         self.minimizedWindowsChanged.emit()
+
+    def _entry_from_client(self, client):
+        win_id = int(client.get("win_id", 0))
+        wm_class = str(client.get("class", "") or "")
+        tags = int(client.get("tags", 0))
+        geometry = (
+            int(client.get("width", 0) or 0),
+            int(client.get("height", 0) or 0),
+        )
+        with self._asset_cache_lock:
+            assets = self._asset_cache.get(win_id)
+            if assets is None or assets.wm_class != wm_class:
+                assets = _WindowAssets(wm_class=wm_class)
+                self._asset_cache[win_id] = assets
+            icon_uri = assets.icon_uri
+            thumbnail_uri = assets.thumbnail_uri
+        return {
+            "winId": win_id,
+            "name": str(client.get("name", "") or ""),
+            "wmClass": wm_class,
+            "tags": tags,
+            "tagNum": (tags & -tags).bit_length() if tags else 0,
+            "focused": bool(client.get("focused", False)),
+            "minimized": bool(client.get("minimized", False)),
+            "iconUri": icon_uri,
+            "thumbnailUri": thumbnail_uri,
+            "_geometry": geometry,
+        }
+
+    def _purge_asset_cache(self, active_ids):
+        with self._asset_cache_lock:
+            stale_ids = set(self._asset_cache) - active_ids
+            for win_id in stale_ids:
+                del self._asset_cache[win_id]
+
+    @staticmethod
+    def _priority(entry, current_tags, original_index):
+        if entry.get("focused"):
+            group = 0
+        elif current_tags and entry.get("tags", 0) & current_tags:
+            group = 1
+        else:
+            group = 2
+        return group, original_index
+
+    def _capture_assets(
+        self,
+        generation,
+        target,
+        entries,
+        *,
+        current_tags,
+        include_thumbnails,
+    ):
+        now = time.monotonic()
+        ordered = [
+            entry
+            for _index, entry in sorted(
+                enumerate(entries),
+                key=lambda pair: self._priority(
+                    pair[1], current_tags, pair[0]
+                ),
+            )
+        ]
+        thumbnail_tasks = []
+        icon_tasks = []
+        with self._asset_cache_lock:
+            for entry in ordered:
+                win_id = entry["winId"]
+                assets = self._asset_cache.get(win_id)
+                if assets is None or assets.wm_class != entry["wmClass"]:
+                    assets = _WindowAssets(wm_class=entry["wmClass"])
+                    self._asset_cache[win_id] = assets
+                on_current_tags = bool(
+                    current_tags and entry.get("tags", 0) & current_tags
+                )
+                ttl = (
+                    _VISIBLE_THUMBNAIL_TTL
+                    if on_current_tags or entry.get("focused")
+                    else _BACKGROUND_THUMBNAIL_TTL
+                )
+                if (
+                    include_thumbnails
+                    and not entry.get("minimized")
+                    and (
+                        now - assets.thumbnail_attempted_at >= ttl
+                        or (
+                            entry.get("_geometry") != (0, 0)
+                            and entry.get("_geometry")
+                            != assets.thumbnail_geometry
+                        )
+                    )
+                ):
+                    thumbnail_tasks.append(("thumbnail", entry))
+                    assets.thumbnail_attempted_at = now
+                if not assets.icon_attempted:
+                    icon_tasks.append(("icon", entry))
+                    assets.icon_attempted = True
+
+        # Queue all thumbnails before icon fallbacks so filesystem indexing
+        # never delays the first visual previews.
+        tasks = thumbnail_tasks + icon_tasks
+        if not tasks:
+            return
+        futures = {
+            self._capture_pool.submit(
+                self._capture_asset, kind, entry
+            ): (kind, entry)
+            for kind, entry in tasks
+        }
+        for future in as_completed(futures):
+            kind, entry = futures[future]
+            try:
+                uri = future.result()
+            except Exception:
+                uri = ""
+            uri = self._remember_asset(entry, kind, uri)
+            changes = {
+                "thumbnailUri" if kind == "thumbnail" else "iconUri": uri
+            }
+            self._assetReady.emit(
+                generation, target, entry["winId"], changes
+            )
+
+    @staticmethod
+    def _capture_asset(kind, entry):
+        token = time.monotonic_ns()
+        if kind == "thumbnail":
+            return _capture_thumbnail_file_uri(entry["winId"], token)
+        return _net_wm_icon_file_uri(
+            entry["winId"], entry["wmClass"], token
+        )
+
+    def _remember_asset(self, entry, kind, uri):
+        with self._asset_cache_lock:
+            assets = self._asset_cache.get(entry["winId"])
+            if assets is None or assets.wm_class != entry["wmClass"]:
+                return uri
+            if kind == "thumbnail":
+                if uri:
+                    assets.thumbnail_uri = uri
+                    assets.thumbnail_geometry = entry.get(
+                        "_geometry", (0, 0)
+                    )
+                elif not assets.thumbnail_uri:
+                    assets.thumbnail_geometry = entry.get(
+                        "_geometry", (0, 0)
+                    )
+                return assets.thumbnail_uri
+            else:
+                if uri:
+                    assets.icon_uri = uri
+                return assets.icon_uri
+
+    @Slot(int, str, int, object)
+    def _apply_asset(self, generation, target, win_id, changes):
+        if target == "normal":
+            if generation != self._refresh_generation:
+                return
+        else:
+            if generation != self._minimized_generation:
+                return
+        collections = (
+            (
+                self._windows,
+                self._windows_model,
+                self.windowsChanged,
+            ),
+            (
+                self._minimized_windows,
+                self._minimized_windows_model,
+                self.minimizedWindowsChanged,
+            ),
+        )
+        for windows, model, changed_signal in collections:
+            updated = False
+            for entry in windows:
+                if entry.get("winId") == win_id:
+                    entry.update(changes)
+                    updated = True
+                    break
+            if updated:
+                model.update_item(win_id, changes)
+                changed_signal.emit()
 
     @Slot(int)
     def _finish_minimized_refresh(self, _generation):
@@ -539,4 +931,5 @@ class WindowPickerService(QObject):
     @Slot()
     def stop(self):
         """Prevent further cache writes and remove this process's image cache."""
+        self._capture_pool.shutdown(wait=False, cancel_futures=True)
         _cleanup_cache()

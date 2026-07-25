@@ -74,6 +74,16 @@ func describeKeybind(key config.Key) string {
 	switch key.Action {
 	case "spawn":
 		return describeSpawn(key.Arg.V)
+	case "shellcmd":
+		if command, ok := key.Arg.V.(string); ok {
+			switch command {
+			case "open-window-picker":
+				return "Switch windows"
+			case "open-minimized-picker":
+				return "Restore minimized window"
+			}
+		}
+		return "Open shell control"
 	case "focusstack":
 		if key.Arg.I < 0 {
 			return "Focus previous window"

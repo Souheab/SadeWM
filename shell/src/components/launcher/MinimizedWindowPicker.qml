@@ -16,14 +16,12 @@ Window {
     width: Screen.width
     height: Screen.height
 
-    // All windows from service, filtered by search query
-    property var allWindows: []
-    property var filteredWindows: []
     property int selectedIndex: 0
     property string searchQuery: ""
 
     // Number of columns in the grid — always up to 5 per row
-    readonly property int cols: Math.max(1, Math.min(5, filteredWindows.length))
+    readonly property int windowCount: WindowPickerService.minimizedWindowsModel.count
+    readonly property int cols: Math.max(1, Math.min(5, windowCount))
     readonly property int cardW: 220
     readonly property int cardH: 180
     readonly property int cardSpacing: 14
@@ -32,6 +30,7 @@ Window {
         searchQuery = ""
         selectedIndex = 0
         searchBox.clear()
+        WindowPickerService.minimizedWindowsModel.setFilter("")
         WindowPickerService.refreshMinimized()
         picker.visible = true
         picker.raise()
@@ -46,25 +45,14 @@ Window {
     }
 
     function _applyFilter(query) {
-        var q = query.toLowerCase().trim()
-        var result = []
-        for (var i = 0; i < allWindows.length; i++) {
-            var w = allWindows[i]
-            if (q === "" ||
-                w.name.toLowerCase().indexOf(q) !== -1 ||
-                w.wmClass.toLowerCase().indexOf(q) !== -1) {
-                result.push(w)
-            }
-        }
-        filteredWindows = result
-        if (selectedIndex >= filteredWindows.length) {
-            selectedIndex = Math.max(0, filteredWindows.length - 1)
-        }
+        WindowPickerService.minimizedWindowsModel.setFilter(query)
+        if (selectedIndex >= windowCount)
+            selectedIndex = Math.max(0, windowCount - 1)
     }
 
     function selectWindow() {
-        if (selectedIndex >= 0 && selectedIndex < filteredWindows.length) {
-            var w = filteredWindows[selectedIndex]
+        if (selectedIndex >= 0 && selectedIndex < windowCount) {
+            var w = WindowPickerService.minimizedWindowsModel.get(selectedIndex)
             WindowPickerService.focusWindow(w.winId)
             close()
         }
@@ -86,8 +74,8 @@ Window {
     Connections {
         target: WindowPickerService
         function onMinimizedWindowsChanged() {
-            picker.allWindows = WindowPickerService.minimizedWindows
-            picker._applyFilter(picker.searchQuery)
+            if (picker.selectedIndex >= picker.windowCount)
+                picker.selectedIndex = Math.max(0, picker.windowCount - 1)
         }
     }
 
@@ -148,7 +136,7 @@ Window {
                 onNextItem: {
                     picker.selectedIndex = Math.min(
                         picker.selectedIndex + picker.cols,
-                        picker.filteredWindows.length - 1)
+                        picker.windowCount - 1)
                     gridView.positionViewAtIndex(picker.selectedIndex, GridView.Contain)
                 }
                 onPrevItem: {
@@ -199,15 +187,19 @@ Window {
                 }
                 cellWidth: picker.cardW + picker.cardSpacing
                 cellHeight: picker.cardH + picker.cardSpacing
-                model: picker.filteredWindows
+                model: WindowPickerService.minimizedWindowsModel
                 currentIndex: picker.selectedIndex
                 clip: true
                 boundsBehavior: Flickable.StopAtBounds
 
                 delegate: Item {
                     id: delegateRoot
-                    required property var modelData
                     required property int index
+                    required property int winId
+                    required property string name
+                    required property string wmClass
+                    required property int tagNum
+                    required property string iconUri
                     width: gridView.cellWidth
                     height: gridView.cellHeight
 
@@ -273,13 +265,13 @@ Window {
                                 height: 18
                                 radius: 4
                                 color: "#cc1a1b26"
-                                visible: delegateRoot.modelData.tagNum > 0
+                                visible: delegateRoot.tagNum > 0
 
                                 Text {
                                     id: tagLabel
                                     anchors.centerIn: parent
-                                    text: delegateRoot.modelData.tagNum > 0
-                                        ? String(delegateRoot.modelData.tagNum) : ""
+                                    text: delegateRoot.tagNum > 0
+                                        ? String(delegateRoot.tagNum) : ""
                                     color: Theme.dotOccupied
                                     font.family: Theme.monoFont
                                     font.pixelSize: 11
@@ -304,11 +296,10 @@ Window {
                                         fill: parent
                                         margins: 3
                                     }
-                                    source: delegateRoot.modelData.iconUri || ""
+                                    source: delegateRoot.iconUri || ""
                                     sourceSize: Qt.size(24, 24)
                                     asynchronous: true
-                                    mipmap: true
-                                    cache: false
+                                    mipmap: false
                                     visible: status === Image.Ready
                                     smooth: true
                                 }
@@ -343,8 +334,8 @@ Window {
                                     rightMargin: 10
                                 }
                                 text: {
-                                    var n = delegateRoot.modelData.wmClass ||
-                                            delegateRoot.modelData.name || "Unknown"
+                                    var n = delegateRoot.wmClass ||
+                                            delegateRoot.name || "Unknown"
                                     return n
                                 }
                                 color: delegateRoot.index === picker.selectedIndex

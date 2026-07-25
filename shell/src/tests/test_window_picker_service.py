@@ -3,6 +3,7 @@ import stat
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 
 _src = os.path.join(os.path.dirname(__file__), "..")
@@ -10,6 +11,8 @@ sys.path.insert(0, os.path.abspath(_src))
 
 from services.shared.window_picker_service import (  # noqa: E402
     WindowPickerService,
+    WindowListModel,
+    _WindowAssets,
     _create_private_cache_dir,
     _remove_private_cache_dir,
     _write_private_png,
@@ -50,6 +53,119 @@ class TestWindowPickerService(unittest.TestCase):
 
         self.assertEqual(service.windows, [{"name": "normal"}])
         self.assertEqual(service.minimizedWindows, [{"name": "minimized"}])
+
+    def test_list_model_filters_and_updates_one_window(self):
+        model = WindowListModel()
+        model.set_items([
+            {
+                "winId": 1,
+                "name": "Terminal",
+                "wmClass": "WezTerm",
+                "iconUri": "",
+            },
+            {
+                "winId": 2,
+                "name": "Documentation",
+                "wmClass": "Firefox",
+                "iconUri": "",
+            },
+        ])
+
+        self.assertEqual(model.count, 2)
+        model.setFilter("fire")
+        self.assertEqual(model.count, 1)
+        self.assertEqual(model.get(0)["winId"], 2)
+
+        model.update_item(2, {"iconUri": "file:///icon.png"})
+        self.assertEqual(model.get(0)["iconUri"], "file:///icon.png")
+
+    def test_cached_assets_are_reused_in_metadata(self):
+        service = WindowPickerService()
+        service._asset_cache[7] = _WindowAssets(
+            wm_class="Firefox",
+            icon_uri="file:///icon.png",
+            icon_attempted=True,
+            thumbnail_uri="file:///thumb.png",
+            thumbnail_attempted_at=1.0,
+        )
+
+        entry = service._entry_from_client({
+            "win_id": 7,
+            "name": "Browser",
+            "class": "Firefox",
+            "tags": 1,
+        })
+
+        self.assertEqual(entry["iconUri"], "file:///icon.png")
+        self.assertEqual(entry["thumbnailUri"], "file:///thumb.png")
+
+    def test_capture_cache_prevents_immediate_recapture(self):
+        service = WindowPickerService()
+        entry = service._entry_from_client({
+            "win_id": 9,
+            "name": "Terminal",
+            "class": "WezTerm",
+            "tags": 1,
+            "focused": True,
+        })
+
+        calls = []
+
+        def fake_capture(kind, captured_entry):
+            calls.append((kind, captured_entry["winId"]))
+            return f"file:///{kind}.png"
+
+        with mock.patch.object(
+            service, "_capture_asset", side_effect=fake_capture
+        ):
+            service._capture_assets(
+                1,
+                "normal",
+                [entry],
+                current_tags=1,
+                include_thumbnails=True,
+            )
+            service._capture_assets(
+                1,
+                "normal",
+                [entry],
+                current_tags=1,
+                include_thumbnails=True,
+            )
+
+        self.assertCountEqual(calls, [("thumbnail", 9), ("icon", 9)])
+
+    def test_failed_refresh_keeps_last_good_thumbnail(self):
+        service = WindowPickerService()
+        service._asset_cache[11] = _WindowAssets(
+            wm_class="Editor",
+            icon_attempted=True,
+            thumbnail_uri="file:///last-good.png",
+            thumbnail_attempted_at=0.0,
+            thumbnail_geometry=(800, 600),
+        )
+        entry = service._entry_from_client({
+            "win_id": 11,
+            "name": "Editor",
+            "class": "Editor",
+            "tags": 1,
+            "width": 800,
+            "height": 600,
+        })
+
+        with mock.patch.object(service, "_capture_asset", return_value=""):
+            service._capture_assets(
+                1,
+                "normal",
+                [entry],
+                current_tags=1,
+                include_thumbnails=True,
+            )
+
+        self.assertEqual(
+            service._asset_cache[11].thumbnail_uri,
+            "file:///last-good.png",
+        )
 
 
 if __name__ == "__main__":

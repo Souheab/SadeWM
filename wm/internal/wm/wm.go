@@ -875,10 +875,10 @@ func (wm *WM) handleIPCRequest(req *ipc.IPCRequest) *ipc.Response {
 		wm.spawnCmd([]string{"sadeshell", "--open-emoji-picker"})
 		return &ipc.Response{OK: true}
 	case "open-window-picker":
-		wm.spawnCmd([]string{"sadeshell", "--open-window-picker"})
+		wm.sendShellCommandAsync("open-window-picker")
 		return &ipc.Response{OK: true}
 	case "open-minimized-picker":
-		wm.spawnCmd([]string{"sadeshell", "--open-minimized-picker"})
+		wm.sendShellCommandAsync("open-minimized-picker")
 		return &ipc.Response{OK: true}
 	case "get_clients":
 		return wm.ipcGetClients()
@@ -907,6 +907,8 @@ func (wm *WM) ipcGetState() *ipc.Response {
 			WinID:     uint32(c.Win),
 			Class:     wm.getWMClass(c.Win),
 			Tags:      c.Tags,
+			Width:     c.W,
+			Height:    c.H,
 			Floating:  c.IsFloating,
 			Maximized: c.Maximized,
 			Focused:   c == wm.SelMon.Sel,
@@ -1000,6 +1002,8 @@ func (wm *WM) ipcGetClients() *ipc.Response {
 				WinID:     uint32(c.Win),
 				Class:     wm.getWMClass(c.Win),
 				Tags:      c.Tags,
+				Width:     c.W,
+				Height:    c.H,
 				Floating:  c.IsFloating,
 				Maximized: c.Maximized,
 				Focused:   c == m.Sel,

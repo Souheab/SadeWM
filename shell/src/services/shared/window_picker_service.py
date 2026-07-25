@@ -1,4 +1,4 @@
-"""WindowPickerService — exposes all managed windows for the window-picker popup.
+"""WindowPickerService — exposes active and minimized windows to picker popups.
 
 Uses:
 - sadewm IPC socket to enumerate clients (get_clients) and focus them (focus_window)
@@ -400,6 +400,7 @@ _WINDOW_ROLES = (
     "wmClass",
     "tags",
     "tagNum",
+    "workspaceLabel",
     "focused",
     "minimized",
     "iconUri",
@@ -545,13 +546,15 @@ _CAPTURE_WORKERS = 2
 
 
 class WindowPickerService(QObject):
-    """Provides the list of all WM windows with icons and thumbnails.
+    """Provides active WM windows and minimized windows with cached assets.
 
     Normal and minimized pickers have independent models and notifications.
     """
 
     windowsChanged = Signal()
     minimizedWindowsChanged = Signal()
+    refreshingChanged = Signal()
+    minimizedRefreshingChanged = Signal()
     _windowsReady = Signal(int, object)
     _windowsFinished = Signal(int)
     _minimizedReady = Signal(int, object)
@@ -576,6 +579,8 @@ class WindowPickerService(QObject):
         self._minimized_generation = 0
         self._minimized_running = False
         self._minimized_pending = False
+        self._focus_history: list[int] = []
+        self._focus_history_lock = threading.Lock()
 
         self._windowsReady.connect(
             self._apply_windows, Qt.ConnectionType.QueuedConnection
@@ -609,6 +614,14 @@ class WindowPickerService(QObject):
     def minimizedWindowsModel(self):
         return self._minimized_windows_model
 
+    @Property(bool, notify=refreshingChanged)
+    def refreshing(self):
+        return self._refresh_running
+
+    @Property(bool, notify=minimizedRefreshingChanged)
+    def minimizedRefreshing(self):
+        return self._minimized_running
+
     @Slot()
     def refresh(self):
         """Re-query all windows from the WM, capture thumbnails and icons."""
@@ -619,7 +632,9 @@ class WindowPickerService(QObject):
         self._start_refresh(self._refresh_generation)
 
     def _start_refresh(self, generation):
-        self._refresh_running = True
+        if not self._refresh_running:
+            self._refresh_running = True
+            self.refreshingChanged.emit()
         threading.Thread(
             target=self._do_refresh,
             args=(generation,),
@@ -640,7 +655,13 @@ class WindowPickerService(QObject):
 
             clients = resp.get("clients", [])
             self._purge_asset_cache({int(c.get("win_id", 0)) for c in clients})
-            result = [self._entry_from_client(c) for c in clients]
+            visible_clients = [
+                client
+                for client in clients
+                if not client.get("minimized", False)
+            ]
+            visible_clients = self._order_by_recent_focus(visible_clients)
+            result = [self._entry_from_client(c) for c in visible_clients]
             self._windowsReady.emit(generation, result)
             self._capture_assets(
                 generation,
@@ -662,10 +683,12 @@ class WindowPickerService(QObject):
 
     @Slot(int)
     def _finish_refresh(self, _generation):
-        self._refresh_running = False
         if self._refresh_pending:
             self._refresh_pending = False
             self._start_refresh(self._refresh_generation)
+            return
+        self._refresh_running = False
+        self.refreshingChanged.emit()
 
     @Slot()
     def refreshMinimized(self):
@@ -677,7 +700,9 @@ class WindowPickerService(QObject):
         self._start_minimized_refresh(self._minimized_generation)
 
     def _start_minimized_refresh(self, generation):
-        self._minimized_running = True
+        if not self._minimized_running:
+            self._minimized_running = True
+            self.minimizedRefreshingChanged.emit()
         threading.Thread(
             target=self._do_refresh_minimized,
             args=(generation,),
@@ -748,12 +773,65 @@ class WindowPickerService(QObject):
             "wmClass": wm_class,
             "tags": tags,
             "tagNum": (tags & -tags).bit_length() if tags else 0,
+            "workspaceLabel": ", ".join(
+                str(index + 1)
+                for index in range(32)
+                if tags & (1 << index)
+            ),
             "focused": bool(client.get("focused", False)),
             "minimized": bool(client.get("minimized", False)),
             "iconUri": icon_uri,
             "thumbnailUri": thumbnail_uri,
             "_geometry": geometry,
         }
+
+    def _order_by_recent_focus(self, clients):
+        """Keep the focused client first and the rest in MRU order when known."""
+        active_ids = {
+            int(client.get("win_id", 0))
+            for client in clients
+            if int(client.get("win_id", 0))
+        }
+        focused_ids = [
+            int(client.get("win_id", 0))
+            for client in clients
+            if client.get("focused") and int(client.get("win_id", 0))
+        ]
+        with self._focus_history_lock:
+            for win_id in reversed(focused_ids):
+                if win_id in self._focus_history:
+                    self._focus_history.remove(win_id)
+                self._focus_history.insert(0, win_id)
+            self._focus_history = [
+                win_id
+                for win_id in self._focus_history
+                if win_id in active_ids
+            ]
+            rank = {
+                win_id: index
+                for index, win_id in enumerate(self._focus_history)
+            }
+
+        indexed_clients = list(enumerate(clients))
+        indexed_clients.sort(
+            key=lambda pair: (
+                0 if pair[1].get("focused") else 1,
+                rank.get(
+                    int(pair[1].get("win_id", 0)),
+                    len(rank) + pair[0],
+                ),
+                pair[0],
+            )
+        )
+        return [client for _index, client in indexed_clients]
+
+    def _remember_focused_window(self, win_id):
+        if not win_id:
+            return
+        with self._focus_history_lock:
+            if win_id in self._focus_history:
+                self._focus_history.remove(win_id)
+            self._focus_history.insert(0, win_id)
 
     def _purge_asset_cache(self, active_ids):
         with self._asset_cache_lock:
@@ -913,14 +991,17 @@ class WindowPickerService(QObject):
 
     @Slot(int)
     def _finish_minimized_refresh(self, _generation):
-        self._minimized_running = False
         if self._minimized_pending:
             self._minimized_pending = False
             self._start_minimized_refresh(self._minimized_generation)
+            return
+        self._minimized_running = False
+        self.minimizedRefreshingChanged.emit()
 
     @Slot(int)
     def focusWindow(self, win_id: int):
         """Tell the WM to switch to the tag containing win_id and focus it."""
+        self._remember_focused_window(win_id)
         threading.Thread(
             target=_sadewm_request,
             args=({"cmd": "focus_window", "win_id": win_id},),

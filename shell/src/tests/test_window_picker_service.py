@@ -99,6 +99,82 @@ class TestWindowPickerService(unittest.TestCase):
         self.assertEqual(entry["iconUri"], "file:///icon.png")
         self.assertEqual(entry["thumbnailUri"], "file:///thumb.png")
 
+    def test_entry_formats_all_workspace_tags(self):
+        service = WindowPickerService()
+        entry = service._entry_from_client({
+            "win_id": 8,
+            "name": "Editor",
+            "class": "Code",
+            "tags": (1 << 0) | (1 << 2) | (1 << 4),
+        })
+
+        self.assertEqual(entry["tagNum"], 1)
+        self.assertEqual(entry["workspaceLabel"], "1, 3, 5")
+
+    def test_recent_focus_order_keeps_previous_window_next(self):
+        service = WindowPickerService()
+        clients = [
+            {"win_id": 1, "focused": True},
+            {"win_id": 2, "focused": False},
+            {"win_id": 3, "focused": False},
+        ]
+
+        first = service._order_by_recent_focus(clients)
+        self.assertEqual([client["win_id"] for client in first], [1, 2, 3])
+
+        service._remember_focused_window(3)
+        second = service._order_by_recent_focus(clients)
+        self.assertEqual([client["win_id"] for client in second], [1, 3, 2])
+
+        clients[0]["focused"] = False
+        clients[2]["focused"] = True
+        third = service._order_by_recent_focus(clients)
+        self.assertEqual([client["win_id"] for client in third], [3, 1, 2])
+
+    def test_normal_refresh_excludes_minimized_windows(self):
+        service = WindowPickerService()
+        service._refresh_generation = 1
+        emitted = []
+        service._windowsReady.connect(
+            lambda generation, windows: emitted.append((generation, windows))
+        )
+        responses = [
+            {"ok": True, "tag_mask": 1},
+            {
+                "ok": True,
+                "clients": [
+                    {
+                        "win_id": 1,
+                        "name": "Visible",
+                        "class": "Terminal",
+                        "tags": 1,
+                        "focused": True,
+                        "minimized": False,
+                    },
+                    {
+                        "win_id": 2,
+                        "name": "Hidden",
+                        "class": "Browser",
+                        "tags": 1,
+                        "focused": False,
+                        "minimized": True,
+                    },
+                ],
+            },
+        ]
+
+        with mock.patch(
+            "services.shared.window_picker_service._sadewm_request",
+            side_effect=responses,
+        ), mock.patch.object(service, "_capture_assets"):
+            service._do_refresh(1)
+
+        self.assertEqual(len(emitted), 1)
+        self.assertEqual(
+            [entry["winId"] for entry in emitted[0][1]],
+            [1],
+        )
+
     def test_capture_cache_prevents_immediate_recapture(self):
         service = WindowPickerService()
         entry = service._entry_from_client({

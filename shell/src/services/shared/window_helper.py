@@ -5,7 +5,8 @@ import ctypes.util
 import os
 import subprocess
 
-from PySide6.QtCore import QObject, QTimer, Slot
+from PySide6.QtCore import QObject, QTimer, Slot, Qt
+from PySide6.QtGui import QCursor, QGuiApplication
 
 
 def _load_lib(*candidates):
@@ -316,6 +317,20 @@ class WindowHelper(QObject):
                 libx11.XCloseDisplay(display)
         except Exception as e:
             print(f"WindowHelper.grabKeyboard error: {e}")
+
+    @Slot(result=bool)
+    def altPressed(self):
+        """Return whether Alt is currently held, for classic Alt+Tab behavior."""
+        return bool(
+            QGuiApplication.queryKeyboardModifiers()
+            & Qt.KeyboardModifier.AltModifier
+        )
+
+    @Slot(result=QObject)
+    def activeScreen(self):
+        """Return the screen under the pointer, falling back to the primary screen."""
+        active_screen = QGuiApplication.screenAt(QCursor.pos())
+        return active_screen or QGuiApplication.primaryScreen()
 
     @Slot("QVariant")
     def setInputRegion(self, rects_variant):

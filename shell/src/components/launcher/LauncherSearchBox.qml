@@ -1,7 +1,7 @@
 import QtQuick
 import "../shared"
 
-// LauncherSearchBox: a reusable search bar used by AppLauncher and EmojiPicker.
+// LauncherSearchBox: reusable search and keyboard navigation for launchers/pickers.
 // The parent window is expected to expose:
 //   property string placeholderText
 //   property string iconGlyph     (FontAwesome glyph for the leading icon)
@@ -10,6 +10,9 @@ import "../shared"
 //   signal accepted()                     — Enter pressed
 //   signal nextItem()                     — Down / Ctrl+J
 //   signal prevItem()                     — Up / Ctrl+K
+//   signal nextColumn()/prevColumn()       — Right / Left
+//   signal nextLinear()/prevLinear()       — Tab / Shift+Tab
+//   signal modifierReleased()              — Alt released
 //   signal dismissed()                    — Escape
 
 Item {
@@ -17,12 +20,18 @@ Item {
 
     property string placeholderText: "Search\u2026"
     property string iconGlyph: "\uf002"
+    property string hintText: ""
     property alias text: searchField.text
 
     signal queryChanged(string text)
     signal accepted()
     signal nextItem()
     signal prevItem()
+    signal nextColumn()
+    signal prevColumn()
+    signal nextLinear()
+    signal prevLinear()
+    signal modifierReleased()
     signal dismissed()
 
     implicitHeight: 56
@@ -42,7 +51,9 @@ Item {
         Row {
             anchors.fill: parent
             anchors.leftMargin: 20
-            anchors.rightMargin: 20
+            anchors.rightMargin: hintLabel.visible
+                ? hintLabel.implicitWidth + 36
+                : 20
             spacing: 12
 
             Text {
@@ -78,8 +89,30 @@ Item {
                                 (event.key === Qt.Key_K && (event.modifiers & Qt.ControlModifier))) {
                         root.prevItem()
                         event.accepted = true
+                    } else if (event.key === Qt.Key_Right) {
+                        root.nextColumn()
+                        event.accepted = true
+                    } else if (event.key === Qt.Key_Left) {
+                        root.prevColumn()
+                        event.accepted = true
+                    } else if (event.key === Qt.Key_Tab &&
+                               !(event.modifiers & Qt.ShiftModifier)) {
+                        root.nextLinear()
+                        event.accepted = true
+                    } else if (event.key === Qt.Key_Backtab ||
+                               (event.key === Qt.Key_Tab &&
+                                (event.modifiers & Qt.ShiftModifier))) {
+                        root.prevLinear()
+                        event.accepted = true
                     } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
                         root.accepted()
+                        event.accepted = true
+                    }
+                }
+
+                Keys.onReleased: (event) => {
+                    if (event.key === Qt.Key_Alt) {
+                        root.modifierReleased()
                         event.accepted = true
                     }
                 }
@@ -93,6 +126,20 @@ Item {
                     verticalAlignment: Text.AlignVCenter
                 }
             }
+        }
+
+        Text {
+            id: hintLabel
+            anchors {
+                right: parent.right
+                rightMargin: 20
+                verticalCenter: parent.verticalCenter
+            }
+            visible: root.hintText.length > 0 && root.width >= 680
+            text: root.hintText
+            color: Qt.alpha(Theme.textColor, 0.45)
+            font.family: Theme.monoFont
+            font.pixelSize: 10
         }
     }
 

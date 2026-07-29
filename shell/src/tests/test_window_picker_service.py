@@ -2,6 +2,7 @@ import os
 import stat
 import sys
 import tempfile
+import types
 import unittest
 from unittest import mock
 
@@ -13,7 +14,9 @@ from services.shared.window_picker_service import (  # noqa: E402
     WindowPickerService,
     WindowListModel,
     _WindowAssets,
+    _capture_thumbnail_file_uri,
     _create_private_cache_dir,
+    _net_wm_icon_file_uri,
     _remove_private_cache_dir,
     _write_private_png,
 )
@@ -27,6 +30,59 @@ class _FakeImage:
 
 
 class TestWindowPickerService(unittest.TestCase):
+    def test_x_display_is_closed_when_asset_capture_fails(self):
+        fake_display = mock.MagicMock()
+        fake_display.intern_atom.side_effect = RuntimeError("window vanished")
+
+        pil_module = types.ModuleType("PIL")
+        pil_module.Image = mock.MagicMock()
+        xlib_module = types.ModuleType("Xlib")
+        xlib_module.display = types.SimpleNamespace(
+            Display=mock.Mock(return_value=fake_display)
+        )
+        xlib_module.X = types.SimpleNamespace(
+            NONE=0,
+            AnyPropertyType=0,
+            IsViewable=2,
+            ZPixmap=2,
+        )
+
+        with mock.patch.dict(
+            sys.modules,
+            {"PIL": pil_module, "Xlib": xlib_module},
+        ), mock.patch(
+            "services.shared.window_picker_service._icon_path_from_class",
+            return_value="",
+        ):
+            self.assertEqual(_net_wm_icon_file_uri(1, "Gone"), "")
+
+        fake_display.close.assert_called_once_with()
+
+    def test_x_display_is_closed_when_thumbnail_window_vanishes(self):
+        fake_window = mock.MagicMock()
+        fake_window.get_attributes.side_effect = RuntimeError("window vanished")
+        fake_display = mock.MagicMock()
+        fake_display.create_resource_object.return_value = fake_window
+
+        pil_module = types.ModuleType("PIL")
+        pil_module.Image = mock.MagicMock()
+        xlib_module = types.ModuleType("Xlib")
+        xlib_module.display = types.SimpleNamespace(
+            Display=mock.Mock(return_value=fake_display)
+        )
+        xlib_module.X = types.SimpleNamespace(
+            IsViewable=2,
+            ZPixmap=2,
+        )
+
+        with mock.patch.dict(
+            sys.modules,
+            {"PIL": pil_module, "Xlib": xlib_module},
+        ):
+            self.assertEqual(_capture_thumbnail_file_uri(1), "")
+
+        fake_display.close.assert_called_once_with()
+
     def test_cache_directory_and_images_are_private(self):
         with tempfile.TemporaryDirectory() as parent:
             cache_dir = _create_private_cache_dir(parent)

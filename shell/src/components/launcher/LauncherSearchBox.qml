@@ -12,7 +12,6 @@ import "../shared"
 //   signal prevItem()                     — Up / Ctrl+K
 //   signal nextColumn()/prevColumn()       — Right / Left
 //   signal nextLinear()/prevLinear()       — Tab / Shift+Tab
-//   signal modifierReleased()              — Alt released
 //   signal dismissed()                    — Escape
 
 Item {
@@ -31,7 +30,6 @@ Item {
     signal prevColumn()
     signal nextLinear()
     signal prevLinear()
-    signal modifierReleased()
     signal dismissed()
 
     implicitHeight: 56
@@ -106,13 +104,6 @@ Item {
                         event.accepted = true
                     } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
                         root.accepted()
-                        event.accepted = true
-                    }
-                }
-
-                Keys.onReleased: (event) => {
-                    if (event.key === Qt.Key_Alt) {
-                        root.modifierReleased()
                         event.accepted = true
                     }
                 }

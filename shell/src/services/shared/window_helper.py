@@ -5,7 +5,7 @@ import ctypes.util
 import os
 import subprocess
 
-from PySide6.QtCore import QObject, QTimer, Slot, Qt
+from PySide6.QtCore import QObject, QTimer, Slot
 from PySide6.QtGui import QCursor, QGuiApplication
 
 
@@ -295,36 +295,33 @@ class WindowHelper(QObject):
             print(f"WindowHelper: error raising window: {e}")
 
     @Slot("QVariant")
-    def grabKeyboard(self, window):
-        """Force X11 keyboard focus to the given window."""
+    def focusKeyboard(self, window):
+        """Give an override-redirect QML window X11 keyboard focus.
+
+        Qt's requestActivate() does not focus bypass-WM windows reliably. Use
+        python-xlib here instead of calling libX11 through ctypes so pointer
+        signatures and connection cleanup are handled safely.
+        """
+        dpy = None
         try:
-            wid = int(window.winId()) if hasattr(window, 'winId') else 0
+            wid = int(window.winId()) if hasattr(window, "winId") else 0
             if not wid:
                 return
-            if not self._ensure_libs() or not self._libx11:
-                return
+            from Xlib import X
+            from Xlib import display as xdisplay
 
-            libx11 = self._libx11
-            _raw = libx11.XOpenDisplay(None)
-            if not _raw:
-                return
-            display = ctypes.c_void_p(_raw)
-            try:
-                # RevertToParent = 1, CurrentTime = 0
-                libx11.XSetInputFocus(display, wid, 1, 0)
-                libx11.XFlush(display)
-            finally:
-                libx11.XCloseDisplay(display)
-        except Exception as e:
-            print(f"WindowHelper.grabKeyboard error: {e}")
-
-    @Slot(result=bool)
-    def altPressed(self):
-        """Return whether Alt is currently held, for classic Alt+Tab behavior."""
-        return bool(
-            QGuiApplication.queryKeyboardModifiers()
-            & Qt.KeyboardModifier.AltModifier
-        )
+            dpy = xdisplay.Display()
+            target = dpy.create_resource_object("window", wid)
+            dpy.set_input_focus(target, X.RevertToParent, X.CurrentTime)
+            dpy.sync()
+        except Exception as error:
+            print(f"WindowHelper.focusKeyboard error: {error}")
+        finally:
+            if dpy is not None:
+                try:
+                    dpy.close()
+                except Exception:
+                    pass
 
     @Slot(result=QObject)
     def activeScreen(self):

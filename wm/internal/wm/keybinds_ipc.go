@@ -78,7 +78,7 @@ func describeKeybind(key config.Key) string {
 		if command, ok := key.Arg.V.(string); ok {
 			switch command {
 			case "open-window-picker":
-				return "Switch windows"
+				return "Search windows"
 			case "open-minimized-picker":
 				return "Restore minimized window"
 			}
@@ -198,7 +198,7 @@ func describeSpawn(value any) string {
 	case "sadeshell --open-emoji-picker":
 		return "Open emoji picker"
 	case "sadeshell --open-window-picker":
-		return "Switch windows"
+		return "Search windows"
 	case "sadeshell --open-minimized-picker":
 		return "Restore minimized window"
 	case "sadeshell --confirm-exit":

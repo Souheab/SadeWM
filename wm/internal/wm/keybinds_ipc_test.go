@@ -23,20 +23,26 @@ func TestDefaultKeysIncludeKeybindOverlay(t *testing.T) {
 	t.Fatal("expected Super+s keybind overlay binding")
 }
 
-func TestDefaultAltTabUsesResidentShellIPC(t *testing.T) {
+func TestDefaultAltSUsesResidentShellIPC(t *testing.T) {
 	alt := uint16(config.AltKey)
+	foundAltS := false
 	for _, key := range config.DefaultKeys() {
 		if key.Mod == alt && key.KeyStr == "Tab" {
+			t.Fatal("Alt+Tab must remain unbound")
+		}
+		if key.Mod == alt && key.KeyStr == "s" {
+			foundAltS = true
 			if key.Action != "shellcmd" {
-				t.Fatalf("Alt+Tab action = %q, want shellcmd", key.Action)
+				t.Fatalf("Alt+S action = %q, want shellcmd", key.Action)
 			}
 			if command, ok := key.Arg.V.(string); !ok || command != "open-window-picker" {
-				t.Fatalf("unexpected Alt+Tab shell command: %#v", key.Arg.V)
+				t.Fatalf("unexpected Alt+S shell command: %#v", key.Arg.V)
 			}
-			return
 		}
 	}
-	t.Fatal("expected Alt+Tab window picker binding")
+	if !foundAltS {
+		t.Fatal("expected Alt+S window picker binding")
+	}
 }
 
 func TestFormatKeyMods(t *testing.T) {

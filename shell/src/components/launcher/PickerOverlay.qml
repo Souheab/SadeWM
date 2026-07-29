@@ -13,8 +13,6 @@ Window {
     property string searchQuery: ""
     property bool opened: false
     property bool awaitingInitialResults: false
-    property bool classicSwitching: false
-    property bool altReleasePending: false
 
     readonly property var windowModel: minimizedOnly
         ? WindowPickerService.minimizedWindowsModel
@@ -67,6 +65,7 @@ Window {
         if (opened)
             return
 
+        closingAnimation.stop()
         placeOnActiveScreen()
         opened = true
         visible = true
@@ -75,8 +74,6 @@ Window {
         selectedIndex = 0
         searchQuery = ""
         awaitingInitialResults = true
-        altReleasePending = false
-        classicSwitching = !minimizedOnly && WindowHelper.altPressed()
         searchBox.clear()
         windowModel.setFilter("")
 
@@ -89,16 +86,14 @@ Window {
         requestActivate()
         openingAnimation.restart()
         focusTimer.start()
-        altReleaseTimer.restart()
     }
 
     function close() {
         if (!opened)
             return
         opened = false
-        classicSwitching = false
-        altReleasePending = false
-        altReleaseTimer.stop()
+        focusTimer.stop()
+        openingAnimation.stop()
         closingAnimation.restart()
         searchQuery = ""
         selectedIndex = 0
@@ -123,15 +118,6 @@ Window {
         }
 
         selectedIndex = 0
-        if (!minimizedOnly) {
-            for (var index = 0; index < windowCount; ++index) {
-                var entry = windowModel.get(index)
-                if (!entry.focused) {
-                    selectedIndex = index
-                    break
-                }
-            }
-        }
         positionSelection()
     }
 
@@ -141,13 +127,6 @@ Window {
         if (awaitingInitialResults) {
             awaitingInitialResults = false
             setInitialSelection()
-            if (altReleasePending) {
-                altReleasePending = false
-                if (windowCount > 0)
-                    selectWindow()
-                else
-                    close()
-            }
         } else if (selectedIndex >= windowCount) {
             selectedIndex = Math.max(0, windowCount - 1)
         }
@@ -193,40 +172,16 @@ Window {
         }
     }
 
-    function finishClassicSwitch() {
-        if (!classicSwitching || !opened)
-            return
-        classicSwitching = false
-        altReleaseTimer.stop()
-        if (awaitingInitialResults || (refreshing && windowCount <= 0)) {
-            altReleasePending = true
-            return
-        }
-        if (windowCount > 0)
-            selectWindow()
-        else
-            close()
-    }
-
     Timer {
         id: focusTimer
         interval: 40
         repeat: false
         onTriggered: {
+            if (!picker.opened)
+                return
             picker.requestActivate()
             searchBox.forceActiveFocus()
-            WindowHelper.grabKeyboard(picker)
-        }
-    }
-
-    Timer {
-        id: altReleaseTimer
-        interval: 20
-        repeat: true
-        running: picker.opened && picker.classicSwitching
-        onTriggered: {
-            if (!WindowHelper.altPressed())
-                picker.finishClassicSwitch()
+            WindowHelper.focusKeyboard(picker)
         }
     }
 
@@ -285,10 +240,9 @@ Window {
         function onRefreshingChanged() {
             if (!picker.minimizedOnly
                     && !WindowPickerService.refreshing
-                    && picker.altReleasePending
                     && picker.awaitingInitialResults) {
                 picker.awaitingInitialResults = false
-                picker.close()
+                picker.setInitialSelection()
             }
         }
 
@@ -360,8 +314,8 @@ Window {
                 anchors.fill: parent
                 placeholderText: picker.minimizedOnly
                     ? "Restore minimized window\u2026"
-                    : "Switch to window\u2026"
-                iconGlyph: picker.minimizedOnly ? "\uf2d1" : "\uf2d2"
+                    : "Search open windows\u2026"
+                iconGlyph: picker.minimizedOnly ? "\uf2d1" : "\uf002"
                 hintText: picker.refreshing
                     ? "Refreshing\u2026"
                     : "\u2191\u2193\u2190\u2192 navigate  \u00b7  Enter select"
@@ -374,7 +328,6 @@ Window {
                 onPrevColumn: picker.moveHorizontal(-1)
                 onNextLinear: picker.moveLinear(1)
                 onPrevLinear: picker.moveLinear(-1)
-                onModifierReleased: picker.finishClassicSwitch()
                 onDismissed: picker.close()
             }
         }
@@ -541,7 +494,7 @@ Window {
                                 source: delegateRoot.thumbnailUri || ""
                                 sourceSize: Qt.size(228, 134)
                                 fillMode: Image.PreserveAspectFit
-                                asynchronous: true
+                                asynchronous: false
                                 mipmap: false
                                 visible: status === Image.Ready
                                 smooth: true
@@ -597,7 +550,7 @@ Window {
                                     }
                                     source: delegateRoot.iconUri || ""
                                     sourceSize: Qt.size(24, 24)
-                                    asynchronous: true
+                                    asynchronous: false
                                     mipmap: false
                                     visible: status === Image.Ready
                                     smooth: true
@@ -681,7 +634,7 @@ Window {
                                     anchors.fill: parent
                                     source: delegateRoot.iconUri || ""
                                     sourceSize: Qt.size(46, 46)
-                                    asynchronous: true
+                                    asynchronous: false
                                     mipmap: false
                                     visible: status === Image.Ready
                                     smooth: true
@@ -799,12 +752,8 @@ Window {
                     rightMargin: 14
                     verticalCenter: parent.verticalCenter
                 }
-                text: picker.classicSwitching
-                    ? "Release Alt to switch"
-                    : "Tab cycle  \u00b7  Enter select  \u00b7  Esc close"
-                color: picker.classicSwitching
-                    ? Theme.dotSelected
-                    : Qt.alpha(Theme.textColor, 0.52)
+                text: "Type to search  \u00b7  Enter select  \u00b7  Esc close"
+                color: Qt.alpha(Theme.textColor, 0.52)
                 font.family: Theme.monoFont
                 font.pixelSize: 9
                 visible: parent.width >= 420

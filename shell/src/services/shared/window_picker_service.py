@@ -275,6 +275,7 @@ def _net_wm_icon_file_uri(
     2. WM_CLASS-based XDG icon theme lookup
     Returns '' if nothing found.
     """
+    dpy = None
     try:
         from PIL import Image
         from Xlib import display as xdisplay, X
@@ -329,11 +330,15 @@ def _net_wm_icon_file_uri(
                     )
                     token = cache_token if cache_token is not None else time.monotonic_ns()
                     out_path = _save_cached_png(img, f"icon_{win_id}_{token}.png")
-                    dpy.close()
                     return f"file://{out_path}"
-        dpy.close()
     except Exception:
         pass
+    finally:
+        if dpy is not None:
+            try:
+                dpy.close()
+            except Exception:
+                pass
 
     # Fallback: XDG theme lookup by WM_CLASS
     path = _icon_path_from_class(wm_class)
@@ -355,6 +360,7 @@ def _capture_thumbnail_file_uri(
 
     Returns a file:// URI pointing to the saved PNG, or '' on failure.
     """
+    dpy = None
     try:
         from PIL import Image
         from Xlib import display as xdisplay, X
@@ -365,17 +371,16 @@ def _capture_thumbnail_file_uri(
         # Only capture if the window is viewable
         attrs = win.get_attributes()
         if attrs.map_state != X.IsViewable:
-            dpy.close()
             return ""
 
         geom = win.get_geometry()
         w, h = int(geom.width), int(geom.height)
         if w < 1 or h < 1:
-            dpy.close()
             return ""
 
         raw_img = win.get_image(0, 0, w, h, X.ZPixmap, 0xFFFFFFFF)
-        dpy.close()
+        if raw_img is None:
+            return ""
 
         raw_bytes = bytes(raw_img.data)
         # X11 ZPixmap on little-endian: 32bpp, pixel layout is BGRX
@@ -387,6 +392,12 @@ def _capture_thumbnail_file_uri(
         return f"file://{out_path}"
     except Exception:
         return ""
+    finally:
+        if dpy is not None:
+            try:
+                dpy.close()
+            except Exception:
+                pass
 
 
 # ---------------------------------------------------------------------------

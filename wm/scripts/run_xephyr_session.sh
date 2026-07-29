@@ -17,7 +17,7 @@ Usage: $(basename "$0") [options]
 
 Build sadewm and sadeshell, then run them in Xephyr with Picom's XRender
 backend. By default, two test terminals are opened and the transparent
-Alt+Tab window-picker overlay is displayed.
+Alt+S window-search overlay is displayed.
 
 Options:
   --display DISPLAY   Nested X display (default: :7)
@@ -92,7 +92,7 @@ if DISPLAY="$NESTED_DISPLAY" xdpyinfo >/dev/null 2>&1; then
     exit 1
 fi
 
-SESSION_DIR="$(mktemp -d "${TMPDIR:-/tmp}/sadewm-xephyr.XXXXXX")"
+SESSION_DIR="$(mktemp -d "/tmp/sadewm-xephyr.XXXXXX")"
 if [[ -n "${XDG_RUNTIME_DIR:-}" && -d "$XDG_RUNTIME_DIR" && -w "$XDG_RUNTIME_DIR" ]]; then
     RUNTIME_DIR="$XDG_RUNTIME_DIR"
 else
@@ -189,6 +189,7 @@ export PATH="$SHELL_BIN_DIR:$PATH"
 export QT_QPA_PLATFORM=xcb
 export QT_QUICK_BACKEND=software
 export QT_XCB_NO_XI2=1
+export PYTHONFAULTHANDLER=1
 
 echo "==> Starting sadeshell..."
 "$SHELL_BIN" >"$SESSION_DIR/sadeshell.log" 2>&1 &
@@ -253,7 +254,7 @@ fi
 
 echo
 echo "Nested session is running on $NESTED_DISPLAY."
-echo "Use Alt+Tab to reopen the picker; press Ctrl+C here to stop everything."
+echo "Use Alt+S to toggle the picker; press Ctrl+C here to stop everything."
 echo "Logs: $SESSION_DIR"
 
 while :; do

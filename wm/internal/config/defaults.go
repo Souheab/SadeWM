@@ -126,7 +126,7 @@ func DefaultKeys() []Key {
 		{Mod: mod, KeyStr: "p", Action: "spawn", Arg: Arg{V: []string{"sadeshell", "--open-launcher"}}},
 		{Mod: mod, KeyStr: "s", Action: "spawn", Arg: Arg{V: []string{"sadeshell", "--open-keybinds"}}},
 		{Mod: mod, KeyStr: "period", Action: "spawn", Arg: Arg{V: []string{"sadeshell", "--open-emoji-picker"}}},
-		{Mod: alt, KeyStr: "Tab", Action: "shellcmd", Arg: Arg{V: "open-window-picker"}},
+		{Mod: alt, KeyStr: "s", Action: "shellcmd", Arg: Arg{V: "open-window-picker"}},
 		{Mod: mod | shift, KeyStr: "Tab", Action: "shellcmd", Arg: Arg{V: "open-minimized-picker"}},
 		{Mod: mod, KeyStr: "Return", Action: "spawn", Arg: Arg{V: []string{TerminalProgram}}},
 		{Mod: mod, KeyStr: "Tab", Action: "focusstack", Arg: Arg{I: +1}},

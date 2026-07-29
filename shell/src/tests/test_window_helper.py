@@ -18,10 +18,61 @@ if _qtgui is not None:
     if not hasattr(_qtgui, "QGuiApplication"):
         _qtgui.QGuiApplication = mock.MagicMock()
 
-from services.shared.window_helper import WindowHelper  # noqa: E402
+from services.shared import window_helper as window_helper_module  # noqa: E402
+
+
+WindowHelper = window_helper_module.WindowHelper
 
 
 class TestWindowHelper(unittest.TestCase):
+    def test_active_screen_geometry_returns_values_instead_of_screen_object(self):
+        geometry = mock.MagicMock()
+        geometry.x.return_value = -1920
+        geometry.y.return_value = 0
+        geometry.width.return_value = 1920
+        geometry.height.return_value = 1080
+        screen = mock.MagicMock()
+        screen.geometry.return_value = geometry
+        cursor_position = object()
+
+        with mock.patch.object(
+            window_helper_module.QCursor, "pos", return_value=cursor_position
+        ), mock.patch.object(
+            window_helper_module.QGuiApplication, "screenAt", return_value=screen
+        ) as screen_at:
+            result = WindowHelper().activeScreenGeometry()
+
+        screen_at.assert_called_once_with(cursor_position)
+        self.assertEqual(
+            result,
+            {"x": -1920, "y": 0, "width": 1920, "height": 1080},
+        )
+
+    def test_active_screen_geometry_falls_back_to_primary_screen(self):
+        geometry = mock.MagicMock()
+        geometry.x.return_value = 0
+        geometry.y.return_value = 0
+        geometry.width.return_value = 2560
+        geometry.height.return_value = 1440
+        primary_screen = mock.MagicMock()
+        primary_screen.geometry.return_value = geometry
+
+        with mock.patch.object(
+            window_helper_module.QCursor, "pos", return_value=object()
+        ), mock.patch.object(
+            window_helper_module.QGuiApplication, "screenAt", return_value=None
+        ), mock.patch.object(
+            window_helper_module.QGuiApplication,
+            "primaryScreen",
+            return_value=primary_screen,
+        ):
+            result = WindowHelper().activeScreenGeometry()
+
+        self.assertEqual(
+            result,
+            {"x": 0, "y": 0, "width": 2560, "height": 1440},
+        )
+
     def test_focus_keyboard_uses_xlib_and_closes_connection(self):
         target = object()
         fake_display = mock.MagicMock()

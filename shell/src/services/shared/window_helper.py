@@ -323,11 +323,29 @@ class WindowHelper(QObject):
                 except Exception:
                     pass
 
-    @Slot(result=QObject)
-    def activeScreen(self):
-        """Return the screen under the pointer, falling back to the primary screen."""
+    @Slot(result="QVariantMap")
+    def activeScreenGeometry(self):
+        """Return a value copy of the active screen's geometry.
+
+        Returning the parentless QScreen QObject from an explicit QML call gives
+        the QML engine ownership of an application-owned object.  Once its
+        JavaScript wrapper is collected, Qt can be left with a dangling screen
+        pointer.  Keep QScreen inside Qt and expose only the geometry values the
+        picker needs.
+        """
         active_screen = QGuiApplication.screenAt(QCursor.pos())
-        return active_screen or QGuiApplication.primaryScreen()
+        if active_screen is None:
+            active_screen = QGuiApplication.primaryScreen()
+        if active_screen is None:
+            return {"x": 0, "y": 0, "width": 0, "height": 0}
+
+        geometry = active_screen.geometry()
+        return {
+            "x": geometry.x(),
+            "y": geometry.y(),
+            "width": geometry.width(),
+            "height": geometry.height(),
+        }
 
     @Slot("QVariant")
     def setInputRegion(self, rects_variant):

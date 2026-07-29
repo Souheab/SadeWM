@@ -56,9 +56,17 @@ Window {
     height: Screen.height
 
     function placeOnActiveScreen() {
-        var activeScreen = WindowHelper.activeScreen()
-        if (activeScreen)
-            picker.screen = activeScreen
+        var geometry = WindowHelper.activeScreenGeometry()
+        if (geometry.width <= 0 || geometry.height <= 0)
+            return
+
+        // Do not assign picker.screen here. QWindow recreates an existing
+        // native window when its screen is set, racing the Qt Quick render
+        // context. Geometry is enough to place this X11 overlay.
+        picker.x = geometry.x
+        picker.y = geometry.y
+        picker.width = geometry.width
+        picker.height = geometry.height
     }
 
     function open() {

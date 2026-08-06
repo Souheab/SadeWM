@@ -93,60 +93,79 @@ func (wm *WM) arrangeMon(m *Monitor) {
 
 // Restack manages Z-order of windows.
 func (wm *WM) Restack(m *Monitor) {
-	if m.Sel == nil {
+	if m == nil {
 		return
 	}
-
-	if m.Lt.Arrange != nil {
-		// Stack tiled windows below each other.  Dwm uses the bar
-		// window as the initial sibling, but sadewm has no bar window
-		// (sadeshell is a separate process), so we simply lower each
-		// tiled window and chain siblings.
-		var sibling xproto.Window
-		for c := m.Stack; c != nil; c = c.SNext {
-			if !c.IsFloating && !c.IsAbove && c.IsVisible() {
-				if sibling != 0 {
-					xproto.ConfigureWindow(wm.Conn, c.Win,
-						xproto.ConfigWindowSibling|xproto.ConfigWindowStackMode,
-						[]uint32{uint32(sibling), uint32(xproto.StackModeBelow)})
-				} else {
-					xproto.ConfigureWindow(wm.Conn, c.Win,
-						xproto.ConfigWindowStackMode,
-						[]uint32{uint32(xproto.StackModeBelow)})
-				}
-				if c.BorderWin != 0 {
-					wm.restackBorderWindow(c)
-					sibling = c.BorderWin
-				} else {
-					sibling = c.Win
-				}
-			}
-		}
-	}
-
-	// Raise floating windows from oldest to newest stack position. Focus()
-	// moves the selected client to the head of m.Stack, and the last X raise
-	// wins, so walking the stack backwards keeps the focused floating window
-	// above older floating peers. Above windows are a separate top layer.
-	var floats []*Client
-	var aboves []*Client
+	layers := [5][]*Client{}
 	for c := m.Stack; c != nil; c = c.SNext {
-		if !c.IsVisible() {
+		if !wm.clientVisible(c) {
 			continue
 		}
-		if c.IsAbove {
-			aboves = append(aboves, c)
-		} else if wm.isFreeform(c) {
-			floats = append(floats, c)
+		layer := wm.clientLayer(c)
+		layers[layer] = append(layers[layer], c)
+	}
+	for _, clients := range layers {
+		wm.raiseStackLayer(clients)
+	}
+	wm.updateClientListStacking()
+}
+
+func (wm *WM) clientLayer(c *Client) int {
+	if c == nil {
+		return 2
+	}
+	layer := 2
+	switch {
+	case c.IsDesktop:
+		layer = 0
+	case c.IsFullscreen && c.Mon != nil && c.Mon.Sel == c:
+		layer = 4
+	case c.IsDock || c.IsAbove:
+		layer = 3
+	case c.IsBelow:
+		layer = 1
+	}
+	if c.TransientFor != xproto.WindowNone {
+		if parent := wm.winToClient(c.TransientFor); parent != nil {
+			layer = max(layer, wm.clientLayerWithoutTransient(parent))
 		}
 	}
-	wm.raiseStackLayer(floats)
-	wm.raiseStackLayer(aboves)
+	return layer
+}
+
+func (wm *WM) clientLayerWithoutTransient(c *Client) int {
+	switch {
+	case c.IsDesktop:
+		return 0
+	case c.IsFullscreen && c.Mon != nil && c.Mon.Sel == c:
+		return 4
+	case c.IsDock || c.IsAbove:
+		return 3
+	case c.IsBelow:
+		return 1
+	default:
+		return 2
+	}
 }
 
 func (wm *WM) raiseStackLayer(clients []*Client) {
+	// Preserve stack-list order within each category, while ensuring ordinary
+	// transients remain above their parent and modal group members remain above
+	// the rest of their layer.
 	for i := len(clients) - 1; i >= 0; i-- {
-		wm.raiseClient(clients[i])
+		if clients[i].TransientFor == xproto.WindowNone && !clients[i].IsModal {
+			wm.raiseClient(clients[i])
+		}
+	}
+	for i := len(clients) - 1; i >= 0; i-- {
+		if clients[i].TransientFor != xproto.WindowNone && !clients[i].IsModal {
+			wm.raiseClient(clients[i])
+		}
+	}
+	for i := len(clients) - 1; i >= 0; i-- {
+		if clients[i].IsModal {
+			wm.raiseClient(clients[i])
+		}
 	}
 }
 
@@ -182,7 +201,7 @@ func (wm *WM) moveClientOffscreen(c *Client) {
 
 func (wm *WM) showHide(head *Client) {
 	for c := head; c != nil; c = c.SNext {
-		if c.IsVisible() {
+		if wm.clientVisible(c) {
 			if (c.Mon.Lt.Arrange == nil || c.IsFloating) && !c.IsFullscreen {
 				wm.Resize(c, c.X, c.Y, c.W, c.H, false)
 			} else {
@@ -212,7 +231,9 @@ func (wm *WM) showHide(head *Client) {
 // Resize applies size hint checks and resizes a client.
 func (wm *WM) Resize(c *Client, x, y, w, h int, interact bool) {
 	if wm.applySizeHints(c, &x, &y, &w, &h, interact) {
-		wm.resizeClient(c, x, y, w, h)
+		if !interact || !wm.syncInteractiveResize(c, x, y, w, h) {
+			wm.resizeClient(c, x, y, w, h)
+		}
 	}
 }
 
@@ -286,7 +307,7 @@ func (wm *WM) configure(c *Client) {
 // NextTiled returns the next tiled (non-floating, visible) client.
 func (wm *WM) NextTiled(c *Client) *Client {
 	for ; c != nil; c = c.Next {
-		if !c.IsFloating && c.IsVisible() {
+		if !c.IsFloating && wm.clientVisible(c) {
 			return c
 		}
 	}
@@ -299,8 +320,8 @@ func (wm *WM) onlyClient(c *Client) bool {
 }
 
 func (wm *WM) applySizeHints(c *Client, x, y, w, h *int, interact bool) bool {
-	*w = max(1, *w)
-	*h = max(1, *h)
+	*w = min(max(1, *w), 65535)
+	*h = min(max(1, *h), 65535)
 
 	if interact {
 		if *x > wm.SW {

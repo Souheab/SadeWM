@@ -223,7 +223,7 @@ func (wm *WM) MoveMouse(arg *config.Arg) {
 				m := wm.winToMon(c.Win)
 				var target *Client
 				for t := m.Clients; t != nil; t = t.Next {
-					if t != c && !t.IsFloating && t.IsVisible() &&
+					if t != c && !t.IsFloating && wm.clientVisible(t) &&
 						int(e.RootX) >= t.X && int(e.RootX) < t.X+t.W &&
 						int(e.RootY) >= t.Y && int(e.RootY) < t.Y+t.H {
 						target = t

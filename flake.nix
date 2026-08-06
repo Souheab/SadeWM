@@ -284,6 +284,7 @@
             imagemagick
             picom
             xterm
+            wmctrl
             cairo
             libxscrnsaver
             python3

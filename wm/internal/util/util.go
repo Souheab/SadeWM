@@ -16,6 +16,7 @@ var (
 	Debug    bool
 	fifoPath string
 	fifoFile *os.File
+	fifoFD   = -1
 	fifoMu   sync.Mutex
 )
 
@@ -52,18 +53,23 @@ func StartFIFOLog(path string) {
 
 	fifoPath = path
 
-	// Open the FIFO in a goroutine so we don't block if no reader is connected.
-	// O_RDWR keeps the FIFO open even when no reader is present (prevents SIGPIPE).
-	go func() {
-		f, err := os.OpenFile(path, os.O_RDWR|os.O_APPEND, os.ModeNamedPipe)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "sadewm: cannot open FIFO %s: %v\n", path, err)
-			return
-		}
-		fifoMu.Lock()
-		fifoFile = f
-		fifoMu.Unlock()
-	}()
+	// O_RDWR keeps the FIFO open even when no reader is present (preventing
+	// SIGPIPE), and O_NONBLOCK makes the open itself safe to perform here while
+	// keeping raw writes from ever parking the window-manager event loop.
+	fd, err := syscall.Open(path, syscall.O_RDWR|syscall.O_APPEND|syscall.O_NONBLOCK, 0)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "sadewm: cannot open FIFO %s: %v\n", path, err)
+		return
+	}
+	f := os.NewFile(uintptr(fd), path)
+	if f == nil {
+		_ = syscall.Close(fd)
+		return
+	}
+	fifoMu.Lock()
+	fifoFile = f
+	fifoFD = fd
+	fifoMu.Unlock()
 }
 
 // StopFIFOLog closes and removes the FIFO.
@@ -73,6 +79,7 @@ func StopFIFOLog() {
 	if fifoFile != nil {
 		fifoFile.Close()
 		fifoFile = nil
+		fifoFD = -1
 	}
 	if fifoPath != "" {
 		os.Remove(fifoPath)
@@ -83,11 +90,14 @@ func StopFIFOLog() {
 // fifoWrite writes a message to the FIFO if a reader is connected.
 func fifoWrite(msg string) {
 	fifoMu.Lock()
-	f := fifoFile
-	fifoMu.Unlock()
-	if f != nil {
-		// Non-blocking write; ignore errors (no reader connected, etc.)
-		f.WriteString(msg)
+	defer fifoMu.Unlock()
+	if fifoFD >= 0 {
+		// os.File.Write waits for readiness even on a non-blocking descriptor,
+		// and calling File.Fd again can return it to blocking mode when the Go
+		// poller owns the file. Retain the descriptor captured at setup instead.
+		// Use the raw syscall so EAGAIN really means "drop this live-log
+		// message" instead of parking the window-manager event loop.
+		_, _ = syscall.Write(fifoFD, []byte(msg))
 	}
 }
 

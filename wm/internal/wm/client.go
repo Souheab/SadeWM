@@ -3,6 +3,7 @@ package wm
 import (
 	"sync"
 	"sync/atomic"
+	"time"
 	"unsafe"
 
 	"github.com/jezek/xgb"
@@ -37,6 +38,8 @@ type Client struct {
 	Tags uint32
 	// State flags
 	IsFixed, IsFloating, IsUrgent, NeverFocus bool
+	TypeNeverFocus, InputNeverFocus           bool
+	InitialIconic                             bool
 	HasPositionHint                           bool
 	OldState                                  bool // was floating before fullscreen
 	IsFullscreen                              bool
@@ -45,6 +48,36 @@ type Client struct {
 	IsAbove                                   bool
 	IsDock                                    bool
 	HasMapped                                 bool
+	IsDesktop                                 bool
+	IsModal, IsSticky, IsShaded               bool
+	MaximizedHorz, MaximizedVert              bool
+	SkipTaskbar, SkipPager, IsBelow           bool
+	DemandsAttention                          bool
+	WindowType                                xproto.Atom
+	ManageSeq                                 uint64
+	NormalX, NormalY, NormalW, NormalH        int
+	NormalGeometryValid                       bool
+	StateRestoreFloating                      bool
+	FullscreenMonitors                        [4]uint32
+	HasFullscreenMonitors                     bool
+	UserTime                                  uint32
+	UserTimeWindow                            xproto.Window
+	Strut                                     [12]uint32
+	HasStrut                                  bool
+	TransientFor                              xproto.Window
+	WindowGroup                               xproto.Window
+	WinGravity                                byte
+	ColormapWindows                           []xproto.Window
+	PingPending                               bool
+	PingTimestamp                             uint32
+	PingDeadline                              time.Time
+	Unresponsive                              bool
+	SyncCounter                               uint32
+	SyncValue                                 uint64
+	SyncWaiting                               bool
+	SyncDeadline                              time.Time
+	SyncPending                               bool
+	SyncX, SyncY, SyncW, SyncH                int
 
 	// Linked list pointers
 	Next  *Client
@@ -109,10 +142,8 @@ type WM struct {
 	Mons   *Monitor
 	SelMon *Monitor
 
-	// Atoms
-	WMAtom  [WMLast]xproto.Atom
-	NetAtom [NetLast]xproto.Atom
-	UTF8    xproto.Atom
+	// ICCCM/EWMH atoms.
+	Atoms AtomRegistry
 
 	// Cursors
 	Cursors [CurLast]xproto.Cursor
@@ -175,44 +206,25 @@ type WM struct {
 	Actions map[string]config.ActionFunc
 
 	// Cairo titlebar support
-	XlibDpy        unsafe.Pointer // *C.Display – opened once for Cairo
-	ShapeAvailable bool
-	TitlebarMap    map[xproto.Window]*Client // titlebar win → owning client
-	FrameMap       map[xproto.Window]*Client // floating frame win → owning client
+	XlibDpy           unsafe.Pointer // *C.Display – opened once for Cairo
+	ShapeAvailable    bool
+	XineramaAvailable bool
+	XSyncAvailable    bool
+	RandRAvailable    bool
+	RandROpcode       byte
+	RandREventBase    byte
+	ShowingDesktop    bool
+	LastUserTime      uint32
+	NextManageSeq     uint64
+	DesktopNames      []string
+	DockStruts        map[xproto.Window][12]uint32
+	ShowDesktopFocus  *Client
+	WMSelection       xproto.Atom
+	SelectionTime     uint32
+	ShuttingDown      bool
+	TitlebarMap       map[xproto.Window]*Client // titlebar win → owning client
+	FrameMap          map[xproto.Window]*Client // floating frame win → owning client
 }
-
-// Atom enums
-const (
-	NetSupported = iota
-	NetWMName
-	NetWMState
-	NetWMCheck
-	NetWMFullscreen
-	NetActiveWindow
-	NetWMWindowType
-	NetWMStateAbove
-	NetWMStateStaysOnTop
-	NetWMWindowTypeDialog
-	NetWMWindowTypeDock
-	NetClientList
-	NetWMWindowTypeUtility
-	NetWMWindowTypeSplash
-	NetWMWindowTypeToolbar
-	NetWMWindowTypePopupMenu
-	NetWMWindowTypeDropdownMenu
-	NetWMWindowTypeTooltip
-	NetWMWindowTypeNotification
-	NetFrameExtents
-	NetLast
-)
-
-const (
-	WMProtocols = iota
-	WMDelete
-	WMState
-	WMTakeFocus
-	WMLast
-)
 
 // Cursor types
 const (
@@ -257,10 +269,11 @@ func (c *Client) Height() int {
 	return c.H + 2*c.BW
 }
 
-// Intersect calculates the intersection area between a rect and a monitor's working area.
+// Intersect calculates the intersection area between a rect and a monitor's
+// physical output rectangle. Work-area struts must not change output affinity.
 func Intersect(x, y, w, h int, m *Monitor) int {
-	overlapX := max(0, min(x+w, m.WX+m.WW)-max(x, m.WX))
-	overlapY := max(0, min(y+h, m.WY+m.WH)-max(y, m.WY))
+	overlapX := max(0, min(x+w, m.MX+m.MW)-max(x, m.MX))
+	overlapY := max(0, min(y+h, m.MY+m.MH)-max(y, m.MY))
 	return overlapX * overlapY
 }
 

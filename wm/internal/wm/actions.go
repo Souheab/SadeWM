@@ -93,9 +93,7 @@ func (wm *WM) KillClient(arg *config.Arg) {
 	if c == nil {
 		return
 	}
-	if !wm.sendEvent(c, wm.WMAtom[WMDelete]) {
-		xproto.KillClient(wm.Conn, uint32(c.Win))
-	}
+	wm.closeClient(c, wm.LastUserTime)
 }
 
 // Quit stops the event loop.
@@ -366,6 +364,7 @@ func (wm *WM) sendMon(c *Client, m *Monitor) {
 	wm.detachStack(c)
 	c.Mon = m
 	c.Tags = m.TagSet[m.SelTags]
+	wm.publishClientDesktop(c)
 	wm.attachBottom(c)
 	wm.attachStack(c)
 	wm.Focus(nil)
@@ -383,6 +382,8 @@ func (wm *WM) ReloadConfig(arg *config.Arg) {
 		tc = config.LoadTOML(wm.CfgPath)
 	}
 	config.ApplyTOML(tc)
+	wm.DesktopNames = append(wm.DesktopNames[:0], config.Tags...)
+	wm.publishDesktopNames()
 	wm.ActiveRules = config.ApplyTOMLRules(tc)
 	wm.ActiveKeys = config.MergeKeys(tc, config.DefaultKeys())
 	wm.ApplyDisplaySettings()
@@ -465,7 +466,7 @@ func (wm *WM) detachStack(c *Client) {
 
 	if c == c.Mon.Sel {
 		var t *Client
-		for t = c.Mon.Stack; t != nil && !t.IsVisible(); t = t.SNext {
+		for t = c.Mon.Stack; t != nil && !wm.clientVisible(t); t = t.SNext {
 		}
 		c.Mon.Sel = t
 	}

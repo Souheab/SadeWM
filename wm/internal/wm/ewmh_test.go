@@ -46,13 +46,15 @@ func TestAtomListRemoveAboveAliases(t *testing.T) {
 
 func TestHasFloatingWindowTypeChecksAllAtoms(t *testing.T) {
 	wm := &WM{}
-	wm.NetAtom[NetWMWindowTypeDialog] = 20
-	wm.NetAtom[NetWMWindowTypeDock] = 30
+	wm.Atoms = AtomRegistry{
+		NetWMWindowTypeDialog: 20,
+		NetWMWindowTypeDock:   30,
+	}
 
-	if !wm.hasFloatingWindowType([]xproto.Atom{wm.NetAtom[NetWMWindowTypeDock], wm.NetAtom[NetWMWindowTypeDialog]}) {
+	if !wm.hasFloatingWindowType([]xproto.Atom{wm.Atoms.Get(NetWMWindowTypeDock), wm.Atoms.Get(NetWMWindowTypeDialog)}) {
 		t.Fatal("expected dialog in second position to be treated as floating")
 	}
-	if wm.hasFloatingWindowType([]xproto.Atom{wm.NetAtom[NetWMWindowTypeDock]}) {
+	if wm.hasFloatingWindowType([]xproto.Atom{wm.Atoms.Get(NetWMWindowTypeDock)}) {
 		t.Fatal("dock should not be treated as a floating dialog type")
 	}
 }

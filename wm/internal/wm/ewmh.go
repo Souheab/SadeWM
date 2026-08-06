@@ -1,6 +1,9 @@
 package wm
 
 import (
+	"sort"
+	"strings"
+
 	"github.com/jezek/xgb/xproto"
 	"github.com/sadewm/sadewm/wm/internal/config"
 	"github.com/sadewm/sadewm/wm/internal/util"
@@ -70,19 +73,19 @@ func atomsToBytes(atoms []xproto.Atom) []byte {
 
 func (wm *WM) setNetWMState(c *Client, states []xproto.Atom) {
 	xproto.ChangeProperty(wm.Conn, xproto.PropModeReplace, c.Win,
-		wm.NetAtom[NetWMState], xproto.AtomAtom, 32, uint32(len(states)), atomsToBytes(states))
+		wm.Atoms.Get(NetWMState), xproto.AtomAtom, 32, uint32(len(states)), atomsToBytes(states))
 }
 
 func (wm *WM) setFrameExtents(c *Client, top uint32) {
 	data := make([]byte, 16)
 	putUint32(data[8:], top)
 	xproto.ChangeProperty(wm.Conn, xproto.PropModeReplace, c.Win,
-		wm.NetAtom[NetFrameExtents], xproto.AtomCardinal, 32, 4, data)
+		wm.Atoms.Get(NetFrameExtents), xproto.AtomCardinal, 32, 4, data)
 }
 
 func (wm *WM) getState(w xproto.Window) int {
 	reply, err := xproto.GetProperty(wm.Conn, false, w,
-		wm.WMAtom[WMState], wm.WMAtom[WMState], 0, 2).Reply()
+		wm.Atoms.Get(WMState), wm.Atoms.Get(WMState), 0, 2).Reply()
 	if err != nil || reply.ValueLen == 0 {
 		return -1
 	}
@@ -103,12 +106,16 @@ func (wm *WM) setClientState(c *Client, state uint32) {
 	putUint32(data[0:], state)
 	putUint32(data[4:], uint32(xproto.AtomNone))
 	xproto.ChangeProperty(wm.Conn, xproto.PropModeReplace, c.Win,
-		wm.WMAtom[WMState], wm.WMAtom[WMState], 32, 2, data)
+		wm.Atoms.Get(WMState), wm.Atoms.Get(WMState), 32, 2, data)
 }
 
 func (wm *WM) sendEvent(c *Client, proto xproto.Atom) bool {
+	return wm.sendProtocol(c, proto, wm.LastUserTime, 0, 0)
+}
+
+func (wm *WM) supportsProtocol(c *Client, proto xproto.Atom) bool {
 	reply, err := xproto.GetProperty(wm.Conn, false, c.Win,
-		wm.WMAtom[WMProtocols], xproto.AtomAtom, 0, 32).Reply()
+		wm.Atoms.Get(WMProtocols), xproto.AtomAtom, 0, 32).Reply()
 	if err != nil || reply.ValueLen == 0 {
 		return false
 	}
@@ -122,38 +129,82 @@ func (wm *WM) sendEvent(c *Client, proto xproto.Atom) bool {
 		}
 	}
 
-	if exists {
+	return exists
+}
+
+func (wm *WM) sendProtocol(c *Client, proto xproto.Atom, timestamp, data2, data3 uint32) bool {
+	if !wm.supportsProtocol(c, proto) {
+		return false
+	}
+	if timestamp == 0 {
+		timestamp = uint32(xproto.TimeCurrentTime)
+	}
+	{
 		data := xproto.ClientMessageDataUnionData32New([]uint32{
 			uint32(proto),
-			uint32(xproto.TimeCurrentTime),
-			0, 0, 0,
+			timestamp,
+			data2, data3, 0,
 		})
 		ev := xproto.ClientMessageEvent{
 			Format: 32,
 			Window: c.Win,
-			Type:   wm.WMAtom[WMProtocols],
+			Type:   wm.Atoms.Get(WMProtocols),
 			Data:   data,
 		}
 		xproto.SendEvent(wm.Conn, false, c.Win, xproto.EventMaskNoEvent, string(ev.Bytes()))
 	}
-	return exists
+	return true
 }
 
 // updateWindowType checks EWMH window type and state atoms.
 func (wm *WM) updateWindowType(c *Client) {
-	states := wm.getAtomProps(c, wm.NetAtom[NetWMState], 32)
-	for _, state := range states {
-		if state == wm.NetAtom[NetWMFullscreen] {
-			wm.SetFullscreen(c, true)
-		}
-		if state == wm.NetAtom[NetWMStateAbove] || state == wm.NetAtom[NetWMStateStaysOnTop] {
-			wm.SetAbove(c, true)
+	wtypes := wm.getAtomProps(c, wm.Atoms.Get(NetWMWindowType), 32)
+	c.WindowType = wm.Atoms.Get(NetWMWindowTypeNormal)
+	for _, wtype := range wtypes {
+		if wm.isKnownWindowType(wtype) {
+			c.WindowType = wtype
+			break
 		}
 	}
-	wtypes := wm.getAtomProps(c, wm.NetAtom[NetWMWindowType], 32)
+	c.IsDesktop = c.WindowType == wm.Atoms.Get(NetWMWindowTypeDesktop)
+	c.IsDock = c.WindowType == wm.Atoms.Get(NetWMWindowTypeDock)
+	c.TypeNeverFocus = false
+	if c.IsDesktop || c.IsDock {
+		c.IsFloating = true
+		c.Tags = TagMask()
+		c.TypeNeverFocus = true
+		c.SkipTaskbar = true
+		c.SkipPager = true
+		c.BW = 0
+		wm.destroyTitlebar(c)
+	}
+	switch c.WindowType {
+	case wm.Atoms.Get(NetWMWindowTypeTooltip), wm.Atoms.Get(NetWMWindowTypeNotification),
+		wm.Atoms.Get(NetWMWindowTypePopupMenu), wm.Atoms.Get(NetWMWindowTypeDropdownMenu),
+		wm.Atoms.Get(NetWMWindowTypeCombo), wm.Atoms.Get(NetWMWindowTypeDND),
+		wm.Atoms.Get(NetWMWindowTypeSplash), wm.Atoms.Get(NetWMWindowTypeMenu):
+		c.TypeNeverFocus = true
+		c.SkipTaskbar = true
+		c.SkipPager = true
+	}
 	if wm.hasFloatingWindowType(wtypes) {
 		c.IsFloating = true
 	}
+	c.NeverFocus = c.TypeNeverFocus || c.InputNeverFocus
+	wm.publishAllowedActions(c)
+}
+
+func (wm *WM) isKnownWindowType(atom xproto.Atom) bool {
+	for _, name := range []AtomName{NetWMWindowTypeDesktop, NetWMWindowTypeDock,
+		NetWMWindowTypeToolbar, NetWMWindowTypeMenu, NetWMWindowTypeUtility,
+		NetWMWindowTypeSplash, NetWMWindowTypeDialog, NetWMWindowTypeDropdownMenu,
+		NetWMWindowTypePopupMenu, NetWMWindowTypeTooltip, NetWMWindowTypeNotification,
+		NetWMWindowTypeCombo, NetWMWindowTypeDND, NetWMWindowTypeNormal} {
+		if atom == wm.Atoms.Get(name) {
+			return true
+		}
+	}
+	return false
 }
 
 // isFloatingWindowType returns true for window types that should be floating.
@@ -161,14 +212,17 @@ func (wm *WM) isFloatingWindowType(wtype xproto.Atom) bool {
 	if wtype == xproto.AtomNone {
 		return false
 	}
-	return wtype == wm.NetAtom[NetWMWindowTypeDialog] ||
-		wtype == wm.NetAtom[NetWMWindowTypeUtility] ||
-		wtype == wm.NetAtom[NetWMWindowTypeSplash] ||
-		wtype == wm.NetAtom[NetWMWindowTypeToolbar] ||
-		wtype == wm.NetAtom[NetWMWindowTypePopupMenu] ||
-		wtype == wm.NetAtom[NetWMWindowTypeDropdownMenu] ||
-		wtype == wm.NetAtom[NetWMWindowTypeTooltip] ||
-		wtype == wm.NetAtom[NetWMWindowTypeNotification]
+	return wtype == wm.Atoms.Get(NetWMWindowTypeDialog) ||
+		wtype == wm.Atoms.Get(NetWMWindowTypeUtility) ||
+		wtype == wm.Atoms.Get(NetWMWindowTypeSplash) ||
+		wtype == wm.Atoms.Get(NetWMWindowTypeToolbar) ||
+		wtype == wm.Atoms.Get(NetWMWindowTypeMenu) ||
+		wtype == wm.Atoms.Get(NetWMWindowTypePopupMenu) ||
+		wtype == wm.Atoms.Get(NetWMWindowTypeDropdownMenu) ||
+		wtype == wm.Atoms.Get(NetWMWindowTypeTooltip) ||
+		wtype == wm.Atoms.Get(NetWMWindowTypeNotification) ||
+		wtype == wm.Atoms.Get(NetWMWindowTypeCombo) ||
+		wtype == wm.Atoms.Get(NetWMWindowTypeDND)
 }
 
 func (wm *WM) hasFloatingWindowType(wtypes []xproto.Atom) bool {
@@ -192,15 +246,15 @@ func (wm *WM) updateSizeHints(c *Client) {
 
 	v := reply.Value
 	flags := getUint32(v[0:])
-
 	const (
-		usPosition = 1 << 0
-		pPosition  = 1 << 2
-		pMinSize   = 1 << 4
-		pMaxSize   = 1 << 5
-		pResizeInc = 1 << 6
-		pBaseSize  = 1 << 8
-		pAspect    = 1 << 7
+		usPosition  = 1 << 0
+		pPosition   = 1 << 2
+		pMinSize    = 1 << 4
+		pMaxSize    = 1 << 5
+		pResizeInc  = 1 << 6
+		pBaseSize   = 1 << 8
+		pAspect     = 1 << 7
+		pWinGravity = 1 << 9
 	)
 
 	c.HasPositionHint = flags&(usPosition|pPosition) != 0
@@ -260,7 +314,61 @@ func (wm *WM) updateSizeHints(c *Client) {
 	}
 
 	c.IsFixed = c.MaxW > 0 && c.MaxH > 0 && c.MaxW == c.MinW && c.MaxH == c.MinH
+	c.WinGravity = xproto.GravityNorthWest
+	if flags&pWinGravity != 0 {
+		c.WinGravity = byte(getUint32(v[68:]))
+	}
 	c.HintsValid = true
+}
+
+func (wm *WM) updateColormapWindows(c *Client) {
+	reply, err := xproto.GetProperty(wm.Conn, false, c.Win, wm.Atoms.Get(WMColormapWindows),
+		xproto.AtomWindow, 0, 256).Reply()
+	c.ColormapWindows = c.ColormapWindows[:0]
+	if err == nil {
+		for i := uint32(0); i < reply.ValueLen; i++ {
+			win := xproto.Window(getUint32(reply.Value[i*4:]))
+			c.ColormapWindows = append(c.ColormapWindows, win)
+			wm.selectAdditionalEvents(win, xproto.EventMaskColorMapChange|xproto.EventMaskStructureNotify)
+		}
+	}
+	if len(c.ColormapWindows) == 0 {
+		c.ColormapWindows = append(c.ColormapWindows, c.Win)
+	}
+}
+
+func (wm *WM) selectAdditionalEvents(win xproto.Window, mask uint32) {
+	attrs, err := xproto.GetWindowAttributes(wm.Conn, win).Reply()
+	if err != nil {
+		return
+	}
+	xproto.ChangeWindowAttributes(wm.Conn, win, xproto.CwEventMask,
+		[]uint32{attrs.YourEventMask | mask})
+}
+
+func (wm *WM) installClientColormaps(c *Client) {
+	for i := len(c.ColormapWindows) - 1; i >= 0; i-- {
+		if attrs, err := xproto.GetWindowAttributes(wm.Conn, c.ColormapWindows[i]).Reply(); err == nil &&
+			attrs.Colormap != xproto.ColormapNone {
+			xproto.InstallColormap(wm.Conn, attrs.Colormap)
+		}
+	}
+}
+
+func (wm *WM) clientForColormapWindow(win xproto.Window) *Client {
+	if c := wm.winToClient(win); c != nil {
+		return c
+	}
+	for m := wm.Mons; m != nil; m = m.Next {
+		for c := m.Clients; c != nil; c = c.Next {
+			for _, candidate := range c.ColormapWindows {
+				if candidate == win {
+					return c
+				}
+			}
+		}
+	}
+	return nil
 }
 
 // updateWMHints reads ICCCM WM_HINTS.
@@ -268,6 +376,10 @@ func (wm *WM) updateWMHints(c *Client) {
 	reply, err := xproto.GetProperty(wm.Conn, false, c.Win,
 		xproto.AtomWmHints, xproto.AtomWmHints, 0, 9).Reply()
 	if err != nil || reply.ValueLen == 0 {
+		c.InputNeverFocus = false
+		c.NeverFocus = c.TypeNeverFocus
+		c.IsUrgent = false
+		c.WindowGroup = xproto.WindowNone
 		return
 	}
 
@@ -275,12 +387,15 @@ func (wm *WM) updateWMHints(c *Client) {
 	flags := getUint32(v[0:])
 
 	const (
-		inputHint   = 1 << 0
-		urgencyHint = 1 << 8
+		inputHint       = 1 << 0
+		stateHint       = 1 << 1
+		windowGroupHint = 1 << 6
+		urgencyHint     = 1 << 8
 	)
 
 	if c == wm.SelMon.Sel && flags&urgencyHint != 0 {
 		// Clear urgency for focused window
+		c.IsUrgent = false
 		flags &^= urgencyHint
 		putUint32(v[0:], flags)
 		xproto.ChangeProperty(wm.Conn, xproto.PropModeReplace, c.Win,
@@ -290,15 +405,24 @@ func (wm *WM) updateWMHints(c *Client) {
 	}
 
 	if flags&inputHint != 0 {
-		c.NeverFocus = getUint32(v[4:]) == 0
+		c.InputNeverFocus = getUint32(v[4:]) == 0
 	} else {
-		c.NeverFocus = false
+		c.InputNeverFocus = false
+	}
+	c.NeverFocus = c.TypeNeverFocus || c.InputNeverFocus
+	if flags&windowGroupHint != 0 && reply.ValueLen >= 9 {
+		c.WindowGroup = xproto.Window(getUint32(v[32:]))
+	}
+	if flags&stateHint != 0 && reply.ValueLen >= 3 && getUint32(v[8:]) == icccmIconicState {
+		c.InitialIconic = true
+	} else {
+		c.InitialIconic = false
 	}
 }
 
 // updateTitle reads the window title.
 func (wm *WM) updateTitle(c *Client) {
-	name := wm.getTextProp(c.Win, wm.NetAtom[NetWMName])
+	name := wm.getTextProp(c.Win, wm.Atoms.Get(NetWMName))
 	if name == "" {
 		name = wm.getTextProp(c.Win, xproto.AtomWmName)
 	}
@@ -326,7 +450,208 @@ func (wm *WM) updateClientList() {
 		}
 	}
 	xproto.ChangeProperty(wm.Conn, xproto.PropModeReplace, wm.Root,
-		wm.NetAtom[NetClientList], xproto.AtomWindow, 32, uint32(count), data)
+		wm.Atoms.Get(NetClientList), xproto.AtomWindow, 32, uint32(count), data)
+}
+
+func uint32sToBytes(values []uint32) []byte {
+	data := make([]byte, len(values)*4)
+	for i, value := range values {
+		putUint32(data[i*4:], value)
+	}
+	return data
+}
+
+func (wm *WM) setRootCardinals(name AtomName, values ...uint32) {
+	if wm.Conn == nil {
+		return
+	}
+	xproto.ChangeProperty(wm.Conn, xproto.PropModeReplace, wm.Root,
+		wm.Atoms.Get(name), xproto.AtomCardinal, 32, uint32(len(values)), uint32sToBytes(values))
+}
+
+func (wm *WM) setWindowCardinals(win xproto.Window, name AtomName, values ...uint32) {
+	if wm.Conn == nil {
+		return
+	}
+	xproto.ChangeProperty(wm.Conn, xproto.PropModeReplace, win,
+		wm.Atoms.Get(name), xproto.AtomCardinal, 32, uint32(len(values)), uint32sToBytes(values))
+}
+
+func (wm *WM) setWindowUTF8(win xproto.Window, name AtomName, value string) {
+	if wm.Conn == nil {
+		return
+	}
+	xproto.ChangeProperty(wm.Conn, xproto.PropModeReplace, win,
+		wm.Atoms.Get(name), wm.Atoms.Get(UTF8String), 8, uint32(len(value)), []byte(value))
+}
+
+func (wm *WM) setRootWindow(name AtomName, win xproto.Window) {
+	if wm.Conn == nil {
+		return
+	}
+	xproto.ChangeProperty(wm.Conn, xproto.PropModeReplace, wm.Root,
+		wm.Atoms.Get(name), xproto.AtomWindow, 32, 1, uint32ToBytes(uint32(win)))
+}
+
+func (wm *WM) publishSupported() {
+	atoms := make([]xproto.Atom, 0, len(supportedAtomNames)+3)
+	for _, name := range supportedAtomNames {
+		atoms = append(atoms, wm.Atoms.Get(name))
+	}
+	if wm.XineramaAvailable {
+		atoms = append(atoms, wm.Atoms.Get(NetWMFullscreenMonitors))
+	}
+	if wm.XSyncAvailable {
+		atoms = append(atoms, wm.Atoms.Get(NetWMSyncRequest), wm.Atoms.Get(NetWMSyncRequestCounter))
+	}
+	xproto.ChangeProperty(wm.Conn, xproto.PropModeReplace, wm.Root,
+		wm.Atoms.Get(NetSupported), xproto.AtomAtom, 32, uint32(len(atoms)), atomsToBytes(atoms))
+}
+
+func highestTagIndex(mask uint32) uint32 {
+	mask &= TagMask()
+	var result uint32
+	for i := range config.Tags {
+		if mask&(1<<uint(i)) != 0 {
+			result = uint32(i)
+		}
+	}
+	return result
+}
+
+func desktopForTags(tags uint32) uint32 {
+	if tags&TagMask() == TagMask() {
+		return ^uint32(0)
+	}
+	return highestTagIndex(tags)
+}
+
+func (wm *WM) currentDesktop() uint32 {
+	if wm.SelMon == nil {
+		return 0
+	}
+	return highestTagIndex(wm.SelMon.TagSet[wm.SelMon.SelTags])
+}
+
+func (wm *WM) publishDesktopProperties() {
+	count := len(config.Tags)
+	if count == 0 {
+		count = 1
+	}
+	wm.DesktopNames = append(wm.DesktopNames[:0], config.Tags...)
+	wm.setRootCardinals(NetNumberOfDesktops, uint32(count))
+	wm.setRootCardinals(NetDesktopGeometry, uint32(max(wm.SW, 1)), uint32(max(wm.SH, 1)))
+	viewport := make([]uint32, count*2)
+	wm.setRootCardinals(NetDesktopViewport, viewport...)
+	wm.setRootCardinals(NetCurrentDesktop, wm.currentDesktop())
+	wm.setRootCardinals(NetShowingDesktop, 0)
+	wm.publishDesktopNames()
+	wm.publishWorkarea()
+	wm.setRootWindow(NetActiveWindow, xproto.WindowNone)
+}
+
+func (wm *WM) publishDesktopNames() {
+	names := strings.Join(wm.DesktopNames, "\x00") + "\x00"
+	wm.setWindowUTF8(wm.Root, NetDesktopNames, names)
+}
+
+func (wm *WM) publishCurrentDesktop() {
+	wm.setRootCardinals(NetCurrentDesktop, wm.currentDesktop())
+}
+
+func (wm *WM) publishClientDesktop(c *Client) {
+	wm.setWindowCardinals(c.Win, NetWMDesktop, desktopForTags(c.Tags))
+}
+
+func (wm *WM) publishWorkarea() {
+	count := max(len(config.Tags), 1)
+	values := make([]uint32, 0, count*4)
+	for range count {
+		x, y := 0, int(wm.TopOffset)
+		w := max(wm.SW, 1)
+		h := max(wm.SH-y-int(wm.BottomOffset), 1)
+		values = append(values, uint32(x), uint32(y), uint32(w), uint32(h))
+	}
+	wm.setRootCardinals(NetWorkarea, values...)
+}
+
+func (wm *WM) publishAllowedActions(c *Client) {
+	actions := []xproto.Atom{}
+	if !c.IsDock && !c.IsDesktop {
+		actions = append(actions, wm.Atoms.Get(NetWMActionClose))
+		actions = append(actions,
+			wm.Atoms.Get(NetWMActionMove), wm.Atoms.Get(NetWMActionMinimize),
+			wm.Atoms.Get(NetWMActionShade), wm.Atoms.Get(NetWMActionStick),
+			wm.Atoms.Get(NetWMActionFullscreen), wm.Atoms.Get(NetWMActionChangeDesktop),
+			wm.Atoms.Get(NetWMActionAbove), wm.Atoms.Get(NetWMActionBelow))
+		if !c.IsFixed {
+			actions = append(actions, wm.Atoms.Get(NetWMActionResize),
+				wm.Atoms.Get(NetWMActionMaximizeHorz), wm.Atoms.Get(NetWMActionMaximizeVert))
+		}
+	}
+	xproto.ChangeProperty(wm.Conn, xproto.PropModeReplace, c.Win,
+		wm.Atoms.Get(NetWMAllowedActions), xproto.AtomAtom, 32, uint32(len(actions)), atomsToBytes(actions))
+}
+
+func (wm *WM) publishClientState(c *Client) {
+	states := make([]xproto.Atom, 0, 12)
+	add := func(on bool, name AtomName) {
+		if on {
+			states = append(states, wm.Atoms.Get(name))
+		}
+	}
+	add(c.IsModal, NetWMStateModal)
+	add(c.IsSticky, NetWMStateSticky)
+	add(c.MaximizedVert, NetWMStateMaximizedVert)
+	add(c.MaximizedHorz, NetWMStateMaximizedHorz)
+	add(c.IsShaded, NetWMStateShaded)
+	add(c.SkipTaskbar, NetWMStateSkipTaskbar)
+	add(c.SkipPager, NetWMStateSkipPager)
+	add(c.Minimized || (wm.ShowingDesktop && !c.IsDock && !c.IsDesktop), NetWMStateHidden)
+	add(c.IsFullscreen, NetWMFullscreen)
+	add(c.IsAbove, NetWMStateAbove)
+	add(c.IsBelow, NetWMStateBelow)
+	add(c.DemandsAttention, NetWMStateDemandsAttention)
+	add(c.Mon != nil && wm.SelMon == c.Mon && c.Mon.Sel == c, NetWMStateFocused)
+	wm.setNetWMState(c, states)
+}
+
+func (wm *WM) updateClientListStacking() {
+	clients := make([]*Client, 0)
+	for m := wm.Mons; m != nil; m = m.Next {
+		for c := m.Clients; c != nil; c = c.Next {
+			clients = append(clients, c)
+		}
+	}
+	sort.SliceStable(clients, func(i, j int) bool { return clients[i].ManageSeq < clients[j].ManageSeq })
+	mapping := make([]uint32, len(clients))
+	for i, c := range clients {
+		mapping[i] = uint32(c.Win)
+	}
+	xproto.ChangeProperty(wm.Conn, xproto.PropModeReplace, wm.Root,
+		wm.Atoms.Get(NetClientList), xproto.AtomWindow, 32, uint32(len(mapping)), uint32sToBytes(mapping))
+
+	stacking := make([]uint32, 0, len(clients))
+	seen := make(map[*Client]bool, len(clients))
+	if tree, err := xproto.QueryTree(wm.Conn, wm.Root).Reply(); err == nil {
+		for _, win := range tree.Children {
+			c := wm.winToClient(win)
+			if c == nil {
+				c = wm.FrameMap[win]
+			}
+			if c != nil && !seen[c] {
+				stacking = append(stacking, uint32(c.Win))
+				seen[c] = true
+			}
+		}
+	}
+	for _, c := range clients {
+		if !seen[c] {
+			stacking = append(stacking, uint32(c.Win))
+		}
+	}
+	xproto.ChangeProperty(wm.Conn, xproto.PropModeReplace, wm.Root,
+		wm.Atoms.Get(NetClientListStacking), xproto.AtomWindow, 32, uint32(len(stacking)), uint32sToBytes(stacking))
 }
 
 // setUrgent sets the urgency hint on a window.
@@ -334,12 +659,23 @@ func (wm *WM) setUrgent(c *Client, urg bool) {
 	c.IsUrgent = urg
 	reply, err := xproto.GetProperty(wm.Conn, false, c.Win,
 		xproto.AtomWmHints, xproto.AtomWmHints, 0, 9).Reply()
-	if err != nil || reply.ValueLen == 0 {
+	if err != nil {
 		return
 	}
 
 	const urgencyHint = 1 << 8
 	v := reply.Value
+	valueLen := reply.ValueLen
+	if valueLen == 0 {
+		if !urg {
+			return
+		}
+		// A rejected activation must set ICCCM urgency even when the client did
+		// not create WM_HINTS. Publish a complete zero-initialized hints value
+		// with only the urgency bit set.
+		v = make([]byte, 9*4)
+		valueLen = 9
+	}
 	flags := getUint32(v[0:])
 	if urg {
 		flags |= urgencyHint
@@ -348,7 +684,7 @@ func (wm *WM) setUrgent(c *Client, urg bool) {
 	}
 	putUint32(v[0:], flags)
 	xproto.ChangeProperty(wm.Conn, xproto.PropModeReplace, c.Win,
-		xproto.AtomWmHints, xproto.AtomWmHints, 32, reply.ValueLen, v)
+		xproto.AtomWmHints, xproto.AtomWmHints, 32, valueLen, v)
 }
 
 func init() {

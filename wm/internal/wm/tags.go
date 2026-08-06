@@ -63,6 +63,8 @@ func (wm *WM) View(arg *config.Arg) {
 	}
 	wm.Focus(wm.NextTiled(wm.SelMon.Clients))
 	wm.Arrange(wm.SelMon)
+	wm.publishCurrentDesktop()
+	wm.publishWorkareaFromStruts()
 }
 
 // ToggleView toggles tag(s) in the current view.
@@ -73,6 +75,8 @@ func (wm *WM) ToggleView(arg *config.Arg) {
 		wm.ApplyTag(wm.GetDomTag(wm.SelMon.Tags))
 		wm.Focus(nil)
 		wm.Arrange(wm.SelMon)
+		wm.publishCurrentDesktop()
+		wm.publishWorkareaFromStruts()
 	}
 }
 
@@ -80,6 +84,7 @@ func (wm *WM) ToggleView(arg *config.Arg) {
 func (wm *WM) Tag(arg *config.Arg) {
 	if wm.SelMon.Sel != nil && arg.UI&TagMask() != 0 {
 		wm.SelMon.Sel.Tags = arg.UI & TagMask()
+		wm.publishClientDesktop(wm.SelMon.Sel)
 		wm.Focus(nil)
 		wm.Arrange(wm.SelMon)
 	}
@@ -93,6 +98,7 @@ func (wm *WM) ToggleTag(arg *config.Arg) {
 	newTags := wm.SelMon.Sel.Tags ^ (arg.UI & TagMask())
 	if newTags != 0 {
 		wm.SelMon.Sel.Tags = newTags
+		wm.publishClientDesktop(wm.SelMon.Sel)
 		wm.ApplyTag(wm.GetDomTag(wm.SelMon.Tags))
 		wm.Focus(nil)
 		wm.Arrange(wm.SelMon)

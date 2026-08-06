@@ -11,16 +11,25 @@ import (
 
 func (wm *WM) handleEvent(ev xgb.Event) {
 	switch e := ev.(type) {
+	case randrNotifyEvent:
+		wm.refreshRootGeometry()
+		wm.refreshMonitorTopology()
 	case xproto.ButtonPressEvent:
 		wm.handleButtonPress(e)
 	case xproto.ClientMessageEvent:
 		wm.handleClientMessage(e)
+	case xproto.ColormapNotifyEvent:
+		if c := wm.clientForColormapWindow(e.Window); c != nil && c == wm.SelMon.Sel && e.New {
+			wm.installClientColormaps(c)
+		}
 	case xproto.ConfigureRequestEvent:
 		wm.handleConfigureRequest(e)
 	case xproto.ConfigureNotifyEvent:
 		wm.handleConfigureNotify(e)
 	case xproto.DestroyNotifyEvent:
 		wm.handleDestroyNotify(e)
+	case xproto.MapNotifyEvent:
+		wm.handleMapNotify(e)
 	case xproto.EnterNotifyEvent:
 		wm.handleEnterNotify(e)
 	case xproto.LeaveNotifyEvent:
@@ -39,12 +48,17 @@ func (wm *WM) handleEvent(ev xgb.Event) {
 		wm.handleMotionNotify(e)
 	case xproto.PropertyNotifyEvent:
 		wm.handlePropertyNotify(e)
+	case xproto.SelectionClearEvent:
+		if e.Selection == wm.WMSelection {
+			wm.RequestQuit()
+		}
 	case xproto.UnmapNotifyEvent:
 		wm.handleUnmapNotify(e)
 	}
 }
 
 func (wm *WM) handleButtonPress(e xproto.ButtonPressEvent) {
+	wm.recordUserTime(uint32(e.Time))
 	click := config.ClkRootWin
 	var c *Client
 
@@ -113,23 +127,67 @@ func (wm *WM) handleButtonPress(e xproto.ButtonPressEvent) {
 }
 
 func (wm *WM) handleClientMessage(e xproto.ClientMessageEvent) {
+	if e.Format != 32 {
+		return
+	}
+	d := e.Data.Data32
+	// Root-scoped requests must be handled before resolving a managed client.
+	switch e.Type {
+	case wm.Atoms.Get(NetCurrentDesktop):
+		if d[0] < uint32(len(config.Tags)) {
+			wm.View(&config.Arg{UI: 1 << d[0]})
+			wm.publishCurrentDesktop()
+		}
+		return
+	case wm.Atoms.Get(NetShowingDesktop):
+		if d[0] <= 1 {
+			wm.SetShowingDesktop(d[0] == 1)
+		}
+		return
+	case wm.Atoms.Get(NetRequestFrameExtents):
+		wm.setRequestedFrameExtents(e.Window)
+		return
+	case wm.Atoms.Get(WMProtocols):
+		if xproto.Atom(d[0]) == wm.Atoms.Get(NetWMPing) {
+			// PING replies target the root and identify the client in data[2].
+			if c := wm.winToClient(xproto.Window(d[2])); c != nil {
+				if !c.PingPending || c.PingTimestamp != d[1] {
+					return
+				}
+				c.PingPending = false
+				c.Unresponsive = false
+				c.DemandsAttention = false
+				wm.publishClientState(c)
+			}
+		}
+		return
+	}
+
 	c := wm.winToClient(e.Window)
 	if c == nil {
 		return
 	}
 
-	if e.Type == wm.NetAtom[NetWMState] {
-		d := e.Data.Data32
-		if xproto.Atom(d[1]) == wm.NetAtom[NetWMFullscreen] || xproto.Atom(d[2]) == wm.NetAtom[NetWMFullscreen] {
-			wm.SetFullscreen(c, d[0] == 1 || (d[0] == 2 && !c.IsFullscreen))
-		}
-		if xproto.Atom(d[1]) == wm.NetAtom[NetWMStateAbove] || xproto.Atom(d[2]) == wm.NetAtom[NetWMStateAbove] ||
-			xproto.Atom(d[1]) == wm.NetAtom[NetWMStateStaysOnTop] || xproto.Atom(d[2]) == wm.NetAtom[NetWMStateStaysOnTop] {
-			wm.SetAbove(c, d[0] == 1 || (d[0] == 2 && !c.IsAbove))
-		}
-	} else if e.Type == wm.NetAtom[NetActiveWindow] {
-		if c != wm.SelMon.Sel && !c.IsUrgent {
-			wm.setUrgent(c, true)
+	switch e.Type {
+	case wm.Atoms.Get(NetWMState):
+		wm.applyNetWMStateMessage(c, d)
+	case wm.Atoms.Get(NetActiveWindow):
+		wm.handleActivationRequest(c, d[0], d[1])
+	case wm.Atoms.Get(NetWMDesktop):
+		wm.moveClientToDesktop(c, d[0])
+	case wm.Atoms.Get(NetCloseWindow):
+		wm.closeClient(c, d[0])
+	case wm.Atoms.Get(NetMoveResizeWindow):
+		wm.handleNetMoveResizeWindow(c, d)
+	case wm.Atoms.Get(NetWMMoveResize):
+		wm.handleNetWMMoveResize(c, d)
+	case wm.Atoms.Get(NetRestackWindow):
+		wm.handleNetRestack(c, xproto.Window(d[1]), d[2])
+	case wm.Atoms.Get(NetWMFullscreenMonitors):
+		wm.setFullscreenMonitors(c, d)
+	case wm.Atoms.Get(WMChangeState):
+		if d[0] == icccmIconicState {
+			wm.minimizeClient(c)
 		}
 	}
 }
@@ -162,7 +220,7 @@ func (wm *WM) handleConfigureRequest(e xproto.ConfigureRequestEvent) {
 			if (y+h) > m.MY+m.MH && c.IsFloating {
 				y = m.MY + (m.MH/2 - h/2)
 			}
-			if c.IsVisible() {
+			if wm.clientVisible(c) {
 				wm.resizeClient(c, x, y, w, h)
 			} else {
 				c.OldX, c.OldY, c.OldW, c.OldH = c.X, c.Y, c.W, c.H
@@ -218,10 +276,13 @@ func (wm *WM) handleConfigureNotify(e xproto.ConfigureNotifyEvent) {
 	wm.SH = int(e.Height)
 
 	if wm.updateGeom() || dirty {
+		wm.setRootCardinals(NetDesktopGeometry, uint32(max(wm.SW, 1)), uint32(max(wm.SH, 1)))
+		wm.publishWorkareaFromStruts()
+		wm.publishSupported()
 		for m := wm.Mons; m != nil; m = m.Next {
 			for c := m.Clients; c != nil; c = c.Next {
 				if c.IsFullscreen {
-					wm.resizeClient(c, m.MX, m.MY, m.MW, m.MH)
+					wm.applyFullscreenGeometry(c)
 				}
 			}
 		}
@@ -233,6 +294,22 @@ func (wm *WM) handleConfigureNotify(e xproto.ConfigureNotifyEvent) {
 func (wm *WM) handleDestroyNotify(e xproto.DestroyNotifyEvent) {
 	if c := wm.winToClient(e.Window); c != nil {
 		wm.unmanage(c, true)
+	} else if _, ok := wm.DockStruts[e.Window]; ok {
+		delete(wm.DockStruts, e.Window)
+		wm.publishWorkareaFromStruts()
+	}
+	for m := wm.Mons; m != nil; m = m.Next {
+		for c := m.Clients; c != nil; c = c.Next {
+			if c.UserTimeWindow == e.Window {
+				c.UserTimeWindow = xproto.WindowNone
+			}
+		}
+	}
+}
+
+func (wm *WM) handleMapNotify(e xproto.MapNotifyEvent) {
+	if wm.winToClient(e.Window) == nil {
+		wm.updateExternalDockStrut(e.Window)
 	}
 }
 
@@ -279,6 +356,7 @@ func (wm *WM) handleExpose(e xproto.ExposeEvent) {
 }
 
 func (wm *WM) handleKeyPress(e xproto.KeyPressEvent) {
+	wm.recordUserTime(uint32(e.Time))
 	for _, key := range wm.ActiveKeys {
 		codes := keybind.StrToKeycodes(wm.X, key.KeyStr)
 		for _, code := range codes {
@@ -344,68 +422,109 @@ func (wm *WM) handleLeaveNotify(e xproto.LeaveNotifyEvent) {
 }
 
 func (wm *WM) handlePropertyNotify(e xproto.PropertyNotifyEvent) {
-	if e.State == xproto.PropertyDelete {
+	if e.Window == wm.Root {
+		if e.Atom == wm.Atoms.Get(NetDesktopNames) && e.State != xproto.PropertyDelete {
+			wm.acceptDesktopNames()
+		}
 		return
 	}
 
 	c := wm.winToClient(e.Window)
 	if c == nil {
+		if e.Atom == wm.Atoms.Get(NetWMUserTime) {
+			for m := wm.Mons; m != nil; m = m.Next {
+				for candidate := m.Clients; candidate != nil; candidate = candidate.Next {
+					if candidate.UserTimeWindow == e.Window {
+						wm.updateUserTime(candidate)
+					}
+				}
+			}
+		}
+		if e.Atom == wm.Atoms.Get(NetWMStrut) || e.Atom == wm.Atoms.Get(NetWMStrutPartial) ||
+			e.Atom == wm.Atoms.Get(NetWMWindowType) {
+			wm.updateExternalDockStrut(e.Window)
+		}
 		return
 	}
 	switch e.Atom {
 	case xproto.AtomWmTransientFor:
 		prop, err := xproto.GetProperty(wm.Conn, false, c.Win,
 			xproto.AtomWmTransientFor, xproto.AtomWindow, 0, 1).Reply()
-		if err == nil && prop.ValueLen > 0 && !c.IsFloating {
-			if wm.winToClient(xproto.Window(getUint32(prop.Value))) != nil {
+		c.TransientFor = xproto.WindowNone
+		if err == nil && prop.ValueLen > 0 {
+			c.TransientFor = xproto.Window(getUint32(prop.Value))
+			if wm.winToClient(c.TransientFor) != nil && !c.IsFloating {
 				c.IsFloating = true
 				wm.Arrange(c.Mon)
 			}
 		}
 	case xproto.AtomWmNormalHints:
 		c.HintsValid = false
+		wm.updateSizeHints(c)
+		wm.publishAllowedActions(c)
 	case xproto.AtomWmHints:
 		wm.updateWMHints(c)
+	case wm.Atoms.Get(WMColormapWindows):
+		wm.updateColormapWindows(c)
 	}
 
-	if e.Atom == xproto.AtomWmName || e.Atom == wm.NetAtom[NetWMName] {
+	if e.Atom == xproto.AtomWmName || e.Atom == wm.Atoms.Get(NetWMName) {
 		wm.updateTitle(c)
 		wm.drawTitlebar(c)
 	}
-	if e.Atom == wm.NetAtom[NetWMWindowType] {
+	if e.Atom == wm.Atoms.Get(NetWMWindowType) {
 		wm.updateWindowType(c)
+		wm.publishClientDesktop(c)
+		wm.publishClientState(c)
+		wm.Arrange(c.Mon)
+		wm.Restack(c.Mon)
+	}
+	if e.Atom == wm.Atoms.Get(NetWMState) && e.State == xproto.PropertyDelete {
+		wm.publishClientState(c)
+	}
+	if e.Atom == wm.Atoms.Get(NetWMDesktop) && e.State == xproto.PropertyDelete {
+		wm.publishClientDesktop(c)
+	}
+	if e.Atom == wm.Atoms.Get(NetWMAllowedActions) && e.State == xproto.PropertyDelete {
+		wm.publishAllowedActions(c)
+	}
+	if e.Atom == wm.Atoms.Get(NetWMStrut) || e.Atom == wm.Atoms.Get(NetWMStrutPartial) {
+		wm.updateStrut(c)
+	}
+	if e.Atom == wm.Atoms.Get(NetWMWindowOpacity) {
+		wm.forwardWindowOpacity(c)
+	}
+	if e.Atom == wm.Atoms.Get(NetWMUserTime) || e.Atom == wm.Atoms.Get(NetWMUserTimeWindow) {
+		wm.updateUserTime(c)
+	}
+	if e.Atom == wm.Atoms.Get(NetWMFullscreenMonitors) {
+		wm.updateFullscreenMonitors(c)
+	}
+	if e.Atom == wm.Atoms.Get(NetWMSyncRequestCounter) {
+		wm.updateSyncCounter(c)
 	}
 }
 
 func (wm *WM) handleUnmapNotify(e xproto.UnmapNotifyEvent) {
 	c := wm.winToClient(e.Window)
 	if c == nil {
+		if _, ok := wm.DockStruts[e.Window]; ok {
+			delete(wm.DockStruts, e.Window)
+			wm.publishWorkareaFromStruts()
+		}
 		return
 	}
 	if c.IgnoreUnmap > 0 {
 		c.IgnoreUnmap--
 		return
 	}
-	if e.Event == wm.Root {
-		// send_event case — set withdrawn
-		wm.setClientState(c, icccmWithdrawnState)
-	} else {
-		wm.unmanage(c, false)
-	}
+	wm.unmanage(c, false)
 }
 
 // manage creates a Client for a newly-mapped window.
 func (wm *WM) manage(w xproto.Window, wa *xproto.GetWindowAttributesReply) {
-	// Check if this is a dock window
-	wtypes := wm.getWindowAtomProps(w, wm.NetAtom[NetWMWindowType], 32)
-	if len(wtypes) > 0 {
-		if atomListContains(wtypes, wm.NetAtom[NetWMWindowTypeDock]) {
-			if !config.BarAlwaysOnTop {
-				xproto.MapWindow(wm.Conn, w)
-				return
-			}
-		}
-	}
+	wtypes := wm.getWindowAtomProps(w, wm.Atoms.Get(NetWMWindowType), 32)
+	wasIconic := wm.getState(w) == icccmIconicState
 
 	// Get geometry
 	geom, err := xproto.GetGeometry(wm.Conn, xproto.Drawable(w)).Reply()
@@ -433,6 +552,7 @@ func (wm *WM) manage(w xproto.Window, wa *xproto.GetWindowAttributesReply) {
 		xproto.AtomWmTransientFor, xproto.AtomWindow, 0, 1).Reply()
 	if err == nil && transProp.ValueLen > 0 {
 		transWin := xproto.Window(getUint32(transProp.Value))
+		c.TransientFor = transWin
 		if t := wm.winToClient(transWin); t != nil {
 			c.Mon = t.Mon
 			c.Tags = t.Tags
@@ -444,12 +564,11 @@ func (wm *WM) manage(w xproto.Window, wa *xproto.GetWindowAttributesReply) {
 	}
 
 	// Check dock override
-	wtypes = wm.getWindowAtomProps(w, wm.NetAtom[NetWMWindowType], 32)
+	wtypes = wm.getWindowAtomProps(w, wm.Atoms.Get(NetWMWindowType), 32)
 	if len(wtypes) > 0 {
-		if atomListContains(wtypes, wm.NetAtom[NetWMWindowTypeDock]) {
+		if atomListContains(wtypes, wm.Atoms.Get(NetWMWindowTypeDock)) {
 			c.BW = 0
 			c.OldBW = 0
-			c.IsAbove = true
 			c.IsFloating = true
 			c.Tags = ^uint32(0)
 			c.IsDock = true
@@ -480,6 +599,18 @@ func (wm *WM) manage(w xproto.Window, wa *xproto.GetWindowAttributesReply) {
 	wm.updateWindowType(c)
 	wm.updateSizeHints(c)
 	wm.updateWMHints(c)
+	wm.updateColormapWindows(c)
+	initialIconic := c.InitialIconic || wasIconic
+	c.Minimized = false
+	wm.NextManageSeq++
+	c.ManageSeq = wm.NextManageSeq
+	wm.applyInitialDesktop(c)
+	wm.publishClientDesktop(c)
+	wm.publishAllowedActions(c)
+	wm.updateStrut(c)
+	wm.updateUserTime(c)
+	wm.updateFullscreenMonitors(c)
+	wm.updateSyncCounter(c)
 
 	xproto.ChangeWindowAttributes(wm.Conn, w, xproto.CwEventMask,
 		[]uint32{xproto.EventMaskEnterWindow | xproto.EventMaskFocusChange |
@@ -494,10 +625,12 @@ func (wm *WM) manage(w xproto.Window, wa *xproto.GetWindowAttributesReply) {
 	wm.placeFloatingOnManage(c)
 	wm.attachBottom(c)
 	wm.attachStack(c)
+	xproto.ChangeSaveSet(wm.Conn, xproto.SetModeInsert, c.Win)
+	wm.applyInitialState(c)
 
 	// Append to _NET_CLIENT_LIST
 	xproto.ChangeProperty(wm.Conn, xproto.PropModeAppend, wm.Root,
-		wm.NetAtom[NetClientList], xproto.AtomWindow, 32, 1,
+		wm.Atoms.Get(NetClientList), xproto.AtomWindow, 32, 1,
 		uint32ToBytes(uint32(c.Win)))
 
 	// Move off-screen initially (trick from dwm)
@@ -506,28 +639,57 @@ func (wm *WM) manage(w xproto.Window, wa *xproto.GetWindowAttributesReply) {
 			xproto.ConfigWindowWidth|xproto.ConfigWindowHeight,
 		[]uint32{uint32(c.X + 2*wm.SW), uint32(c.Y), uint32(c.W), uint32(c.H)})
 
-	wm.setClientState(c, icccmNormalState)
+	if initialIconic {
+		c.Minimized = true
+		wm.MinimizeStack = append(wm.MinimizeStack, c)
+		wm.setClientState(c, icccmIconicState)
+	} else {
+		wm.setClientState(c, icccmNormalState)
+	}
 
-	if c.Mon == wm.SelMon {
+	if c.Mon == wm.SelMon && !c.NeverFocus && !initialIconic {
 		wm.Unfocus(wm.SelMon.Sel, false)
 	}
-	c.Mon.Sel = c
-	wm.Arrange(c.Mon)
-	xproto.MapWindow(wm.Conn, c.Win)
-	c.HasMapped = true
-	wm.showBorderWindow(c)
-
-	// Create titlebar for floating windows.
-	if c.IsFloating && !c.IsDock && !c.IsFullscreen {
-		wm.createTitlebar(c)
+	if !c.NeverFocus && !initialIconic {
+		c.Mon.Sel = c
 	}
-	wm.Focus(c)
+	wm.Arrange(c.Mon)
+	wm.forwardWindowOpacity(c)
+	if initialIconic {
+		wm.publishClientState(c)
+		wm.Focus(nil)
+	} else if c.NeverFocus {
+		xproto.MapWindow(wm.Conn, c.Win)
+		c.HasMapped = true
+		wm.showBorderWindow(c)
+		if c.IsFloating && !c.IsDock && !c.IsFullscreen {
+			wm.createTitlebar(c)
+		}
+		wm.Focus(nil)
+	} else {
+		xproto.MapWindow(wm.Conn, c.Win)
+		c.HasMapped = true
+		wm.showBorderWindow(c)
+		if c.IsFloating && !c.IsDock && !c.IsFullscreen {
+			wm.createTitlebar(c)
+		}
+		wm.Focus(c)
+	}
 	wm.Restack(c.Mon)
+	wm.updateClientListStacking()
 }
 
 // unmanage removes a client.
 func (wm *WM) unmanage(c *Client, destroyed bool) {
 	m := c.Mon
+	if wm.ShowDesktopFocus == c {
+		wm.ShowDesktopFocus = nil
+	}
+	for i := len(wm.MinimizeStack) - 1; i >= 0; i-- {
+		if wm.MinimizeStack[i] == c {
+			wm.MinimizeStack = append(wm.MinimizeStack[:i], wm.MinimizeStack[i+1:]...)
+		}
+	}
 
 	wm.destroyTitlebar(c)
 	wm.destroyBorderWindow(c)
@@ -547,11 +709,20 @@ func (wm *WM) unmanage(c *Client, destroyed bool) {
 			xproto.ConfigWindowBorderWidth, []uint32{uint32(c.OldBW)})
 		xproto.ChangeWindowAttributes(wm.Conn, c.Win, xproto.CwEventMask, []uint32{xproto.EventMaskNoEvent})
 		xproto.UngrabButton(wm.Conn, xproto.ButtonIndexAny, c.Win, xproto.ModMaskAny)
-		wm.setClientState(c, icccmWithdrawnState)
+		xproto.ChangeSaveSet(wm.Conn, xproto.SetModeDelete, c.Win)
+		if !wm.ShuttingDown {
+			wm.setClientState(c, icccmWithdrawnState)
+			for _, property := range []AtomName{NetWMDesktop, NetWMState, NetWMAllowedActions,
+				NetFrameExtents, NetWMFullscreenMonitors} {
+				xproto.DeleteProperty(wm.Conn, c.Win, wm.Atoms.Get(property))
+			}
+		}
 	}
+	delete(wm.DockStruts, c.Win)
+	wm.publishWorkareaFromStruts()
 
 	wm.Focus(nil)
-	wm.updateClientList()
+	wm.updateClientListStacking()
 	wm.Arrange(m)
 }
 

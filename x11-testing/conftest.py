@@ -93,6 +93,11 @@ def isolated_wm_proc(monkeypatch):
     env = os.environ.copy()
     env["DISPLAY"] = vd.name
     monkeypatch.setenv("DISPLAY", vd.name)
+    # Keep the isolated quit test from ever resolving the session WM's socket,
+    # even if a display lock races during parallel or repeated Xvfb runs.
+    isolated_socket = f"/tmp/sadewm-isolated-{os.getpid()}-{vd.name.lstrip(':')}.sock"
+    env["SADEWM_SOCKET"] = isolated_socket
+    monkeypatch.setenv("SADEWM_SOCKET", isolated_socket)
 
     log_fh = open(log_path, "w")
     proc = subprocess.Popen(
@@ -114,4 +119,37 @@ def isolated_wm_proc(monkeypatch):
                 proc.kill()
                 proc.wait()
         log_fh.close()
+        vd.stop()
+
+
+@pytest.fixture
+def multi_monitor_xd(monkeypatch):
+    """Function-scoped two-screen Xinerama/RandR sadewm fixture."""
+    wm_bin = os.environ.get("SADEWM_BIN")
+    if not wm_bin:
+        pytest.skip("SADEWM_BIN is required for multi-monitor tests")
+
+    vd = VirtualDisplay(screens=[(800, 600), (1024, 768)], xinerama=True)
+    vd.start()
+    socket_path = f"/tmp/sadewm-multimon-{os.getpid()}-{vd.name.lstrip(':')}.sock"
+    env = os.environ.copy()
+    env["DISPLAY"] = vd.name
+    env["SADEWM_SOCKET"] = socket_path
+    monkeypatch.setenv("DISPLAY", vd.name)
+    monkeypatch.setenv("SADEWM_SOCKET", socket_path)
+    proc = subprocess.Popen(
+        [wm_bin, "-d"], env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+    )
+    time.sleep(1.0)
+    try:
+        with XDrive(display=vd.name) as driver:
+            yield driver
+    finally:
+        if proc.poll() is None:
+            proc.terminate()
+            try:
+                proc.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+                proc.wait()
         vd.stop()

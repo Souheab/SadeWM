@@ -235,7 +235,7 @@ def test_above_window_stays_above_clicked_normal_floating_window(xd):
         time.sleep(0.2)
 
 
-def test_above_dock_does_not_stay_above_floating_window_by_default(xd):
+def test_dock_stays_in_dock_above_layer(xd):
     helpers.ipc_request("view", mask=16)
     time.sleep(0.2)
 
@@ -257,7 +257,7 @@ def test_above_dock_does_not_stay_above_floating_window_by_default(xd):
         xd.mouse.click(button=1)
         xd.wait_for_layout()
 
-        _assert_above(xd, normal, dock)
+        _assert_above(xd, dock, normal)
     finally:
         dock.kill()
         normal.kill()

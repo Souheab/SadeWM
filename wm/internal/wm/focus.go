@@ -8,9 +8,12 @@ import (
 
 // Focus sets focus to client c, or to the top visible client if c is nil.
 func (wm *WM) Focus(c *Client) {
-	if c == nil || !c.IsVisible() {
+	if modal := wm.modalFor(c); modal != nil {
+		c = modal
+	}
+	if c == nil || !wm.clientVisible(c) || c.NeverFocus {
 		c = nil
-		for c = wm.SelMon.Stack; c != nil && !c.IsVisible(); c = c.SNext {
+		for c = wm.SelMon.Stack; c != nil && (!wm.clientVisible(c) || c.NeverFocus); c = c.SNext {
 		}
 	}
 
@@ -32,14 +35,49 @@ func (wm *WM) Focus(c *Client) {
 			xproto.CwBorderPixel, []uint32{wm.BorderSel})
 		wm.setBorderWindowColor(c, wm.BorderSel)
 		wm.setFocus(c)
+		wm.installClientColormaps(c)
 		wm.drawTitlebar(c)
 	} else {
 		xproto.SetInputFocus(wm.Conn, xproto.InputFocusPointerRoot,
 			wm.Root, xproto.TimeCurrentTime)
-		xproto.DeleteProperty(wm.Conn, wm.Root, wm.NetAtom[NetActiveWindow])
+		wm.setRootWindow(NetActiveWindow, xproto.WindowNone)
 	}
 	wm.SelMon.Sel = c
+	if c != nil {
+		c.DemandsAttention = false
+		wm.publishClientState(c)
+	}
+	for m := wm.Mons; m != nil; m = m.Next {
+		for other := m.Clients; other != nil; other = other.Next {
+			if other != c {
+				wm.publishClientState(other)
+			}
+		}
+	}
 	wm.logSelClientInfo()
+}
+
+func (wm *WM) modalFor(c *Client) *Client {
+	if c == nil || c.Mon == nil {
+		return nil
+	}
+	for candidate := c.Mon.Stack; candidate != nil; candidate = candidate.SNext {
+		if !candidate.IsModal || !wm.clientVisible(candidate) || candidate == c {
+			continue
+		}
+		if candidate.TransientFor == c.Win ||
+			(c.WindowGroup != xproto.WindowNone && candidate.WindowGroup == c.WindowGroup) {
+			return candidate
+		}
+	}
+	return nil
+}
+
+func (wm *WM) clientVisible(c *Client) bool {
+	if c == nil || !c.IsVisible() {
+		return false
+	}
+	return !wm.ShowingDesktop || c.IsDock || c.IsDesktop
 }
 
 // Unfocus removes focus from client c.
@@ -54,7 +92,7 @@ func (wm *WM) Unfocus(c *Client, setFocusToRoot bool) {
 	if setFocusToRoot {
 		xproto.SetInputFocus(wm.Conn, xproto.InputFocusPointerRoot,
 			wm.Root, xproto.TimeCurrentTime)
-		xproto.DeleteProperty(wm.Conn, wm.Root, wm.NetAtom[NetActiveWindow])
+		wm.setRootWindow(NetActiveWindow, xproto.WindowNone)
 	}
 	wm.drawTitlebar(c)
 }
@@ -69,13 +107,13 @@ func (wm *WM) FocusStack(arg *config.Arg) {
 	if arg.I > 0 {
 		// Forward
 		for c = wm.SelMon.Sel.Next; c != nil; c = c.Next {
-			if c.IsVisible() && !c.IsDock {
+			if wm.clientVisible(c) && !c.IsDock && !c.NeverFocus {
 				break
 			}
 		}
 		if c == nil {
 			for c = wm.SelMon.Clients; c != nil; c = c.Next {
-				if c.IsVisible() && !c.IsDock {
+				if wm.clientVisible(c) && !c.IsDock && !c.NeverFocus {
 					break
 				}
 			}
@@ -84,14 +122,14 @@ func (wm *WM) FocusStack(arg *config.Arg) {
 		// Backward
 		var last *Client
 		for iter := wm.SelMon.Clients; iter != wm.SelMon.Sel; iter = iter.Next {
-			if iter.IsVisible() && !iter.IsDock {
+			if wm.clientVisible(iter) && !iter.IsDock && !iter.NeverFocus {
 				last = iter
 			}
 		}
 		c = last
 		if c == nil {
 			for iter := wm.SelMon.Sel; iter != nil; iter = iter.Next {
-				if iter.IsVisible() && !iter.IsDock {
+				if wm.clientVisible(iter) && !iter.IsDock && !iter.NeverFocus {
 					c = iter
 				}
 			}
@@ -167,6 +205,7 @@ func (wm *WM) FocusMon(arg *config.Arg) {
 	wm.Unfocus(wm.SelMon.Sel, false)
 	wm.SelMon = m
 	wm.Focus(nil)
+	wm.publishCurrentDesktop()
 }
 
 // Spatial focus helpers
@@ -178,7 +217,7 @@ func (wm *WM) getUpClient(c *Client) *Client {
 
 	best := c
 	for iter := wm.NextTiled(wm.SelMon.Clients); iter != nil; iter = wm.NextTiled(iter.Next) {
-		if iter == c || !iter.IsVisible() {
+		if iter == c || !wm.clientVisible(iter) {
 			continue
 		}
 		temp := wm.getDownClient(iter)
@@ -200,7 +239,7 @@ func (wm *WM) getDownClient(c *Client) *Client {
 
 	best := c
 	for iter := wm.NextTiled(wm.SelMon.Clients); iter != nil; iter = wm.NextTiled(iter.Next) {
-		if iter == c || !iter.IsVisible() {
+		if iter == c || !wm.clientVisible(iter) {
 			continue
 		}
 		if iter.X == targetX && iter.Y == targetY {
@@ -219,7 +258,7 @@ func (wm *WM) getLeftClient(c *Client) *Client {
 	best := c
 	bestYDev := 999999
 	for iter := wm.NextTiled(wm.SelMon.Clients); iter != nil; iter = wm.NextTiled(iter.Next) {
-		if iter.X >= c.X || !iter.IsVisible() {
+		if iter.X >= c.X || !wm.clientVisible(iter) {
 			continue
 		}
 		yDev := abs(c.Y - iter.Y)
@@ -239,7 +278,7 @@ func (wm *WM) getRightClient(c *Client) *Client {
 	best := c
 	bestYDev := 999999
 	for iter := wm.NextTiled(wm.SelMon.Clients); iter != nil; iter = wm.NextTiled(iter.Next) {
-		if iter == c || !iter.IsVisible() {
+		if iter == c || !wm.clientVisible(iter) {
 			continue
 		}
 		if iter.X > c.X {
@@ -254,14 +293,16 @@ func (wm *WM) getRightClient(c *Client) *Client {
 }
 
 func (wm *WM) setFocus(c *Client) {
+	timestamp := wm.LastUserTime
+	if timestamp == 0 {
+		timestamp = uint32(xproto.TimeCurrentTime)
+	}
 	if !c.NeverFocus {
 		xproto.SetInputFocus(wm.Conn, xproto.InputFocusPointerRoot,
-			c.Win, xproto.TimeCurrentTime)
-		xproto.ChangeProperty(wm.Conn, xproto.PropModeReplace, wm.Root,
-			wm.NetAtom[NetActiveWindow], xproto.AtomWindow, 32, 1,
-			uint32ToBytes(uint32(c.Win)))
+			c.Win, xproto.Timestamp(timestamp))
 	}
-	wm.sendEvent(c, wm.WMAtom[WMTakeFocus])
+	wm.setRootWindow(NetActiveWindow, c.Win)
+	wm.sendProtocol(c, wm.Atoms.Get(WMTakeFocus), timestamp, 0, 0)
 }
 
 func (wm *WM) logSelClientInfo() {

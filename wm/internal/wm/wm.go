@@ -30,6 +30,7 @@ func New() *WM {
 		Actions:       make(map[string]config.ActionFunc),
 		TitlebarMap:   make(map[xproto.Window]*Client),
 		FrameMap:      make(map[xproto.Window]*Client),
+		DockStruts:    make(map[xproto.Window][12]uint32),
 		QuitCh:        make(chan struct{}),
 	}
 	wm.Running.Store(true)
@@ -63,34 +64,35 @@ func (wm *WM) Setup() {
 	wm.SW = int(wm.Screen.WidthInPixels)
 	wm.SH = int(wm.Screen.HeightInPixels)
 
-	wm.updateGeom()
 	wm.internAtoms()
+	wm.initRandR()
+	wm.updateGeom()
 	wm.createCursors()
 	wm.allocColors()
+	wm.initXlibDpy()
 
 	// Create wmcheckwin
 	wm.WMCheckWin, _ = xproto.NewWindowId(wm.Conn)
 	xproto.CreateWindow(wm.Conn, wm.Screen.RootDepth, wm.WMCheckWin, wm.Root,
 		0, 0, 1, 1, 0, xproto.WindowClassInputOutput, wm.Screen.RootVisual, 0, nil)
+	wm.claimWMSelection()
 
 	// Set _NET_SUPPORTING_WM_CHECK on both root and check window
 	xproto.ChangeProperty(wm.Conn, xproto.PropModeReplace, wm.WMCheckWin,
-		wm.NetAtom[NetWMCheck], xproto.AtomWindow, 32, 1, uint32ToBytes(uint32(wm.WMCheckWin)))
-	xproto.ChangeProperty(wm.Conn, xproto.PropModeReplace, wm.WMCheckWin,
-		wm.NetAtom[NetWMName], wm.UTF8, 8, uint32(len("sadewm")), []byte("sadewm"))
+		wm.Atoms.Get(NetWMCheck), xproto.AtomWindow, 32, 1, uint32ToBytes(uint32(wm.WMCheckWin)))
+	wm.setWindowUTF8(wm.WMCheckWin, NetWMName, "sadewm")
 	xproto.ChangeProperty(wm.Conn, xproto.PropModeReplace, wm.Root,
-		wm.NetAtom[NetWMCheck], xproto.AtomWindow, 32, 1, uint32ToBytes(uint32(wm.WMCheckWin)))
+		wm.Atoms.Get(NetWMCheck), xproto.AtomWindow, 32, 1, uint32ToBytes(uint32(wm.WMCheckWin)))
 
-	// Set _NET_SUPPORTED
-	atomData := make([]byte, 4*NetLast)
-	for i := 0; i < NetLast; i++ {
-		putUint32(atomData[i*4:], uint32(wm.NetAtom[i]))
-	}
+	wm.publishSupported()
+	wm.publishDesktopProperties()
+
+	// Publish empty client lists immediately; EWMH consumers should not need
+	// to distinguish "no clients" from an absent WM-owned property.
 	xproto.ChangeProperty(wm.Conn, xproto.PropModeReplace, wm.Root,
-		wm.NetAtom[NetSupported], xproto.AtomAtom, 32, uint32(NetLast), atomData)
-
-	// Delete _NET_CLIENT_LIST
-	xproto.DeleteProperty(wm.Conn, wm.Root, wm.NetAtom[NetClientList])
+		wm.Atoms.Get(NetClientList), xproto.AtomWindow, 32, 0, nil)
+	xproto.ChangeProperty(wm.Conn, xproto.PropModeReplace, wm.Root,
+		wm.Atoms.Get(NetClientListStacking), xproto.AtomWindow, 32, 0, nil)
 
 	// Select events on root
 	xproto.ChangeWindowAttributes(wm.Conn, wm.Root, xproto.CwEventMask|xproto.CwCursor,
@@ -110,7 +112,6 @@ func (wm *WM) Setup() {
 	wm.Focus(nil)
 
 	wm.RegisterActions()
-	wm.initXlibDpy()
 }
 
 func (wm *WM) checkOtherWM() {
@@ -126,51 +127,52 @@ func (wm *WM) checkOtherWM() {
 }
 
 func (wm *WM) internAtoms() {
-	atomNames := map[int]string{
-		NetSupported:                "_NET_SUPPORTED",
-		NetWMName:                   "_NET_WM_NAME",
-		NetWMState:                  "_NET_WM_STATE",
-		NetWMCheck:                  "_NET_SUPPORTING_WM_CHECK",
-		NetWMFullscreen:             "_NET_WM_STATE_FULLSCREEN",
-		NetActiveWindow:             "_NET_ACTIVE_WINDOW",
-		NetWMWindowType:             "_NET_WM_WINDOW_TYPE",
-		NetWMStateAbove:             "_NET_WM_STATE_ABOVE",
-		NetWMStateStaysOnTop:        "_NET_WM_STATE_STAYS_ON_TOP",
-		NetWMWindowTypeDialog:       "_NET_WM_WINDOW_TYPE_DIALOG",
-		NetWMWindowTypeDock:         "_NET_WM_WINDOW_TYPE_DOCK",
-		NetClientList:               "_NET_CLIENT_LIST",
-		NetWMWindowTypeUtility:      "_NET_WM_WINDOW_TYPE_UTILITY",
-		NetWMWindowTypeSplash:       "_NET_WM_WINDOW_TYPE_SPLASH",
-		NetWMWindowTypeToolbar:      "_NET_WM_WINDOW_TYPE_TOOLBAR",
-		NetWMWindowTypePopupMenu:    "_NET_WM_WINDOW_TYPE_POPUP_MENU",
-		NetWMWindowTypeDropdownMenu: "_NET_WM_WINDOW_TYPE_DROPDOWN_MENU",
-		NetWMWindowTypeTooltip:      "_NET_WM_WINDOW_TYPE_TOOLTIP",
-		NetWMWindowTypeNotification: "_NET_WM_WINDOW_TYPE_NOTIFICATION",
-		NetFrameExtents:             "_NET_FRAME_EXTENTS",
+	atoms, err := internAtomRegistry(wm.Conn)
+	if err != nil {
+		util.Die("sadewm: cannot initialize atoms: %v", err)
 	}
-	for idx, name := range atomNames {
-		reply, err := xproto.InternAtom(wm.Conn, false, uint16(len(name)), name).Reply()
-		if err == nil {
-			wm.NetAtom[idx] = reply.Atom
-		}
-	}
+	wm.Atoms = atoms
+}
 
-	wmAtomNames := map[int]string{
-		WMProtocols: "WM_PROTOCOLS",
-		WMDelete:    "WM_DELETE_WINDOW",
-		WMState:     "WM_STATE",
-		WMTakeFocus: "WM_TAKE_FOCUS",
+func (wm *WM) claimWMSelection() {
+	name := fmt.Sprintf("WM_S%d", wm.X.Conn().DefaultScreen)
+	reply, err := xproto.InternAtom(wm.Conn, false, uint16(len(name)), name).Reply()
+	if err != nil {
+		util.Die("sadewm: cannot intern %s: %v", name, err)
 	}
-	for idx, name := range wmAtomNames {
-		reply, err := xproto.InternAtom(wm.Conn, false, uint16(len(name)), name).Reply()
-		if err == nil {
-			wm.WMAtom[idx] = reply.Atom
-		}
+	wm.WMSelection = reply.Atom
+	wm.SelectionTime = wm.serverTimestamp()
+	xproto.SetSelectionOwner(wm.Conn, wm.WMCheckWin, wm.WMSelection, xproto.Timestamp(wm.SelectionTime))
+	owner, err := xproto.GetSelectionOwner(wm.Conn, wm.WMSelection).Reply()
+	if err != nil || owner.Owner != wm.WMCheckWin {
+		util.Die("sadewm: failed to own %s", name)
 	}
+	event := xproto.ClientMessageEvent{
+		Format: 32,
+		Window: wm.Root,
+		Type:   wm.Atoms.Get(Manager),
+		Data: xproto.ClientMessageDataUnionData32New([]uint32{
+			wm.SelectionTime, uint32(wm.WMSelection), uint32(wm.WMCheckWin), 0, 0,
+		}),
+	}
+	xproto.SendEvent(wm.Conn, false, wm.Root, xproto.EventMaskStructureNotify, string(event.Bytes()))
+}
 
-	reply, err := xproto.InternAtom(wm.Conn, false, uint16(len("UTF8_STRING")), "UTF8_STRING").Reply()
-	if err == nil {
-		wm.UTF8 = reply.Atom
+func (wm *WM) serverTimestamp() uint32 {
+	xproto.ChangeWindowAttributes(wm.Conn, wm.WMCheckWin, xproto.CwEventMask,
+		[]uint32{xproto.EventMaskPropertyChange})
+	xproto.ChangeProperty(wm.Conn, xproto.PropModeAppend, wm.WMCheckWin,
+		wm.Atoms.Get(Manager), xproto.AtomCardinal, 32, 0, nil)
+	for {
+		event, err := wm.Conn.WaitForEvent()
+		if err != nil || event == nil {
+			return uint32(xproto.TimeCurrentTime)
+		}
+		if property, ok := event.(xproto.PropertyNotifyEvent); ok &&
+			property.Window == wm.WMCheckWin && property.Atom == wm.Atoms.Get(Manager) {
+			xproto.DeleteProperty(wm.Conn, wm.WMCheckWin, wm.Atoms.Get(Manager))
+			return uint32(property.Time)
+		}
 	}
 }
 
@@ -261,6 +263,8 @@ func (wm *WM) Run(ipcServer *ipc.Server) {
 	wm.startEventPump()
 	powerTicker := time.NewTicker(powerPollInterval)
 	defer powerTicker.Stop()
+	protocolTicker := time.NewTicker(time.Second)
+	defer protocolTicker.Stop()
 
 	for wm.Running.Load() {
 		// Drain all immediately-available X events before blocking.
@@ -274,6 +278,8 @@ func (wm *WM) Run(ipcServer *ipc.Server) {
 				wm.dispatchXEv(xev)
 			case <-powerTicker.C:
 				wm.checkIdleSleep()
+			case now := <-protocolTicker.C:
+				wm.checkProtocolTimeouts(now)
 			default:
 				break drainX
 			}
@@ -293,6 +299,8 @@ func (wm *WM) Run(ipcServer *ipc.Server) {
 				req.ResponseCh <- resp
 			case <-powerTicker.C:
 				wm.checkIdleSleep()
+			case now := <-protocolTicker.C:
+				wm.checkProtocolTimeouts(now)
 			}
 		} else {
 			select {
@@ -303,6 +311,8 @@ func (wm *WM) Run(ipcServer *ipc.Server) {
 				wm.dispatchXEv(xev)
 			case <-powerTicker.C:
 				wm.checkIdleSleep()
+			case now := <-protocolTicker.C:
+				wm.checkProtocolTimeouts(now)
 			}
 		}
 
@@ -319,6 +329,8 @@ func (wm *WM) Run(ipcServer *ipc.Server) {
 					req.ResponseCh <- resp
 				case <-powerTicker.C:
 					wm.checkIdleSleep()
+				case now := <-protocolTicker.C:
+					wm.checkProtocolTimeouts(now)
 				default:
 					break drainIPC
 				}
@@ -363,7 +375,13 @@ func (wm *WM) Scan() {
 	// First pass: non-transient windows
 	for _, win := range reply.Children {
 		attrs, err := xproto.GetWindowAttributes(wm.Conn, win).Reply()
-		if err != nil || attrs.OverrideRedirect {
+		if err != nil {
+			continue
+		}
+		if attrs.OverrideRedirect {
+			if attrs.MapState == xproto.MapStateViewable {
+				wm.updateExternalDockStrut(win)
+			}
 			continue
 		}
 
@@ -382,7 +400,7 @@ func (wm *WM) Scan() {
 	// Second pass: transient windows
 	for _, win := range reply.Children {
 		attrs, err := xproto.GetWindowAttributes(wm.Conn, win).Reply()
-		if err != nil {
+		if err != nil || attrs.OverrideRedirect {
 			continue
 		}
 
@@ -716,6 +734,7 @@ func (wm *WM) refreshRootGeometry() {
 
 // Cleanup tears down the WM.
 func (wm *WM) Cleanup() {
+	wm.ShuttingDown = true
 	// View all tags
 	wm.View(&config.Arg{UI: ^uint32(0)})
 
@@ -742,6 +761,14 @@ func (wm *WM) Cleanup() {
 	}
 
 	// Destroy check window
+	if wm.WMSelection != xproto.AtomNone {
+		// SelectionClear means a replacement WM already owns WM_Sn. Never
+		// overwrite that owner during shutdown; release only if we still own it.
+		if owner, err := xproto.GetSelectionOwner(wm.Conn, wm.WMSelection).Reply(); err == nil &&
+			owner.Owner == wm.WMCheckWin {
+			xproto.SetSelectionOwner(wm.Conn, xproto.WindowNone, wm.WMSelection, xproto.TimeCurrentTime)
+		}
+	}
 	xproto.DestroyWindow(wm.Conn, wm.WMCheckWin)
 
 	if wm.WallpaperPixmap != 0 {
@@ -756,21 +783,24 @@ func (wm *WM) Cleanup() {
 	}
 
 	xproto.SetInputFocus(wm.Conn, xproto.InputFocusPointerRoot, xproto.InputFocusPointerRoot, xproto.TimeCurrentTime)
-	xproto.DeleteProperty(wm.Conn, wm.Root, wm.NetAtom[NetActiveWindow])
+	for _, property := range []AtomName{NetSupported, NetClientList, NetClientListStacking,
+		NetNumberOfDesktops, NetDesktopGeometry, NetDesktopViewport, NetCurrentDesktop,
+		NetDesktopNames, NetActiveWindow, NetWorkarea, NetWMCheck, NetShowingDesktop} {
+		xproto.DeleteProperty(wm.Conn, wm.Root, wm.Atoms.Get(property))
+	}
+	wm.closeXlibDpy()
 }
 
 // SetTopOffset adjusts the working area of all monitors.
 func (wm *WM) SetTopOffset(offset uint) {
 	wm.TopOffset = offset
-	wm.recomputeWorkAreas()
-	wm.Arrange(nil)
+	wm.publishWorkareaFromStruts()
 }
 
 // SetBottomOffset adjusts the working area of all monitors.
 func (wm *WM) SetBottomOffset(offset uint) {
 	wm.BottomOffset = offset
-	wm.recomputeWorkAreas()
-	wm.Arrange(nil)
+	wm.publishWorkareaFromStruts()
 }
 
 func (wm *WM) recomputeWorkAreas() {

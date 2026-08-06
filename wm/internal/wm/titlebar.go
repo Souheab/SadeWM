@@ -11,9 +11,11 @@ package wm
 #cgo pkg-config: cairo x11 xext
 #include <X11/Xlib.h>
 #include <X11/extensions/shape.h>
+#include <X11/extensions/sync.h>
 #include <cairo/cairo.h>
 #include <cairo/cairo-xlib.h>
 #include <stdlib.h>
+#include <stdint.h>
 #include <string.h>
 #include <math.h>
 
@@ -40,6 +42,10 @@ static Display* tb_open_display(const char* name) {
     return XOpenDisplay(name);
 }
 
+static void tb_close_display(Display* dpy) {
+    if (dpy) XCloseDisplay(dpy);
+}
+
 // Non-fatal X error handler so that Cairo RENDER errors (e.g. freeing a
 // picture for a destroyed window) do not kill the WM via exit(1).
 static int tb_xerror_handler(Display *dpy, XErrorEvent *ev) {
@@ -49,6 +55,21 @@ static int tb_xerror_handler(Display *dpy, XErrorEvent *ev) {
 
 static void tb_install_error_handler() {
     XSetErrorHandler(tb_xerror_handler);
+}
+
+static int tb_sync_init(Display *dpy) {
+    int event_base = 0, error_base = 0;
+    int major = 3, minor = 1;
+    return XSyncQueryExtension(dpy, &event_base, &error_base) &&
+           XSyncInitialize(dpy, &major, &minor);
+}
+
+static int tb_sync_query(Display *dpy, XID counter, uint64_t *result) {
+    XSyncValue value;
+    if (!XSyncQueryCounter(dpy, (XSyncCounter)counter, &value)) return 0;
+    *result = ((uint64_t)(uint32_t)XSyncValueHigh32(value) << 32) |
+              (uint32_t)XSyncValueLow32(value);
+    return 1;
 }
 
 // Apply a rounded-top-corner shape mask to the titlebar window.
@@ -195,6 +216,7 @@ import "C"
 import (
 	"fmt"
 	"os"
+	"time"
 	"unsafe"
 
 	"github.com/jezek/xgb/xproto"
@@ -236,6 +258,24 @@ func (wm *WM) initXlibDpy() {
 	// call exit(1) via Xlib's default handler.
 	C.tb_install_error_handler()
 	wm.XlibDpy = unsafe.Pointer(dpy)
+	wm.XSyncAvailable = C.tb_sync_init(dpy) != 0
+}
+
+func (wm *WM) querySyncCounter(counter uint32) (uint64, bool) {
+	if !wm.XSyncAvailable || wm.XlibDpy == nil || counter == 0 {
+		return 0, false
+	}
+	var value C.uint64_t
+	ok := C.tb_sync_query((*C.Display)(wm.XlibDpy), C.XID(counter), &value) != 0
+	return uint64(value), ok
+}
+
+func (wm *WM) closeXlibDpy() {
+	if wm.XlibDpy != nil {
+		C.tb_close_display((*C.Display)(wm.XlibDpy))
+		wm.XlibDpy = nil
+		wm.XSyncAvailable = false
+	}
 }
 
 // ── Titlebar map ──────────────────────────────────────────────────────────────
@@ -669,11 +709,30 @@ func (wm *WM) handleTitlebarButtonPress(e xproto.ButtonPressEvent, c *Client) {
 
 // killClient kills the given client (used from titlebar without SelMon.Sel dependency).
 func (wm *WM) killClient(c *Client) {
+	wm.closeClient(c, wm.LastUserTime)
+}
+
+func (wm *WM) closeClient(c *Client, timestamp uint32) {
 	if c == nil {
 		return
 	}
-	if !wm.sendEvent(c, wm.WMAtom[WMDelete]) {
+	if c.Unresponsive && c.PingPending {
 		xproto.KillClient(wm.Conn, uint32(c.Win))
+		return
+	}
+	if !wm.sendProtocol(c, wm.Atoms.Get(WMDelete), timestamp, 0, 0) {
+		xproto.KillClient(wm.Conn, uint32(c.Win))
+		return
+	}
+	if wm.supportsProtocol(c, wm.Atoms.Get(NetWMPing)) {
+		if timestamp == 0 {
+			timestamp = uint32(xproto.TimeCurrentTime)
+		}
+		if wm.sendProtocol(c, wm.Atoms.Get(NetWMPing), timestamp, uint32(c.Win), 0) {
+			c.PingPending = true
+			c.PingTimestamp = timestamp
+			c.PingDeadline = time.Now().Add(5 * time.Second)
+		}
 	}
 }
 

@@ -79,6 +79,24 @@ def test_notification_limits_and_timeout_defaults(notifications):
         assert not notifications._active[ident]["timer"].isActive()
 
 
+def test_notification_stop_cancels_deferred_expiry_work():
+    import gc
+    from PySide6.QtCore import QEvent
+    with mock.patch.object(NotificationService, "_start_server"):
+        service = NotificationService()
+    ident = add(service, 1)
+    service.toastShown(ident)
+    wait_for(lambda: ident not in service._active)
+    assert service._popup_sync_timer.isActive()
+    service.stop()
+    assert not service._popup_sync_timer.isActive()
+    service.deleteLater()
+    service = None
+    gc.collect()
+    QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+    QCoreApplication.processEvents()
+
+
 def test_ssid_deduplication_prefers_connected_then_strongest():
     def ap(strength):
         return {AP: dict(Ssid=list(b"same"), Strength=strength, Flags=1)}
@@ -153,6 +171,42 @@ def test_async_results_are_queued_and_device_commands_serialized():
         service.stop()
     finally:
         worker.stop()
+
+
+def test_private_image_byte_limit_evicts_oldest(tmp_path, monkeypatch):
+    from PIL import Image
+    from collections import OrderedDict
+    monkeypatch.setattr(picker, "_CACHE_DIR", str(tmp_path))
+    monkeypatch.setattr(picker, "_CACHE_CLOSED", False)
+    monkeypatch.setattr(picker, "_OWNED_FILES", OrderedDict())
+    # Exercise byte accounting without allocating 34 MiB in the test process.
+    monkeypatch.setattr(picker.os.path, "getsize", lambda path: 17 * 1024 * 1024)
+    image = Image.new("RGB", (1, 1))
+    first = picker._save_cached_png(image, "first.png")
+    second = picker._save_cached_png(image, "second.png")
+    assert not (tmp_path / "first.png").exists()
+    assert (tmp_path / "second.png").exists()
+    assert list(picker._OWNED_FILES) == [second]
+    assert first not in picker._OWNED_FILES
+
+
+def test_picker_viewport_scheduling_is_bounded_and_close_cancels_pending():
+    with mock.patch.object(picker, "ThreadPoolExecutor"), mock.patch.object(picker, "_cleanup_cache"):
+        service = picker.WindowPickerService()
+        service._windows = [dict(winId=index, name=str(index)) for index in range(50)]
+        service._asset_cache = {index: picker._WindowAssets(wm_class="Test") for index in range(50)}
+        try:
+            service.setRequestedWindows("normal", list(range(10)), True)
+            assert len(service._inflight) == 2
+            assert len(service._pending) == 8
+            for _ in range(10):
+                service.setRequestedWindows("normal", list(range(10, 20)), True)
+            assert len(service._inflight) == 2
+            assert set(service._pending) == set(range(10, 20))
+            service.setRequestedWindows("normal", [], False)
+            assert not service._pending
+        finally:
+            service.stop()
 
 
 def test_media_metadata_changes_notify_all_players():

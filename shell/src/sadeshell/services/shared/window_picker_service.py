@@ -2,8 +2,8 @@
 
 Uses:
 - sadewm IPC socket to enumerate clients (get_clients) and focus them (focus_window)
-- python-xlib to read _NET_WM_ICON for per-window icons, with XDG theme fallback
-- python-xlib get_image() + Pillow for window thumbnails (no external tools needed)
+- worker-owned XCB connections for icons and server-scaled XRender thumbnails
+- bounded Pillow fallback when Render is unavailable, with shared XDG icon lookup
 - Images are saved to a private per-process runtime directory and exposed as file:// URIs
 """
 

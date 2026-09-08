@@ -108,6 +108,9 @@ class NotificationService(QObject):
         self._server_future = None
         self._dbus_iface = None
         self._bus_worker = None
+        self._popup_sync_timer = QTimer(self)
+        self._popup_sync_timer.setSingleShot(True)
+        self._popup_sync_timer.timeout.connect(self._sync_popups)
         self._notificationReceived.connect(self._commit_notification)
         self._closeReceived.connect(self._close_from_dbus, Qt.ConnectionType.QueuedConnection)
         self.notificationClosed.connect(self._forward_closed)
@@ -172,7 +175,8 @@ class NotificationService(QObject):
             previous["timer"].deleteLater()
         timer = QTimer(self)
         timer.setSingleShot(True)
-        timer.timeout.connect(lambda: self._close(ident, 1, animate=True))
+        timer.setProperty("notificationId", ident)
+        timer.timeout.connect(self._expire)
         self._active[ident] = dict(entry=entry, timer=timer, shown=shown, paused=paused,
                                    remaining=entry["expireTimeout"], deadline=0)
         for index, old in enumerate(self._notifications):
@@ -191,12 +195,21 @@ class NotificationService(QObject):
             self._arm(ident)
         self._notify()
 
+    @Slot()
+    def _expire(self):
+        timer = self.sender()
+        if timer is not None and not self._stopped:
+            self._close(timer.property("notificationId"), 1, animate=True)
+
     def _notify(self):
         self.notificationsChanged.emit()
         self.popupQueueChanged.emit()
         self.unreadCountChanged.emit()
 
+    @Slot()
     def _sync_popups(self):
+        if self._stopped:
+            return
         desired = [state["entry"] for state in reversed(self._active.values())][:5]
         desired_ids = {entry["id"] for entry in desired}
         for entry in list(self._popup_model.entries):
@@ -255,7 +268,7 @@ class NotificationService(QObject):
             self._notifications = [entry for entry in self._notifications if entry["id"] != ident]
         if animate and state:
             self.toastExpired.emit(ident)
-            QTimer.singleShot(300, self._sync_popups)
+            self._popup_sync_timer.start(300)
         else:
             self._sync_popups()
         self._notify()
@@ -296,6 +309,7 @@ class NotificationService(QObject):
         if self._stopped:
             return
         self._stopped = True
+        self._popup_sync_timer.stop()
         for state in self._active.values():
             state["timer"].stop()
         self._active.clear()

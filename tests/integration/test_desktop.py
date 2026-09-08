@@ -115,10 +115,14 @@ def test_minimize_restore_and_capture(desktop, style):
                     event_mask=X.SubstructureRedirectMask | X.SubstructureNotifyMask)
     connection.sync()
     wait_for(lambda: win.get_attributes().map_state != X.IsViewable)
+    assert ipc(cmd="view", mask=2)["ok"]
     assert ipc(cmd="focus_window", win_id=win.id)["ok"]
     wait_for(lambda: win.get_attributes().map_state == X.IsViewable)
     state = win.get_full_property(connection.intern_atom("WM_STATE"), X.AnyPropertyType)
     assert state.value[0] == 1
+    if style == "fullscreen":
+        state = win.get_full_property(connection.intern_atom("_NET_WM_STATE"), Xatom.ATOM)
+        assert connection.intern_atom("_NET_WM_STATE_FULLSCREEN") in state.value
     capture = CaptureConnection()
     try:
         assert capture.render is not None
@@ -204,6 +208,51 @@ def test_focus_request_budget(desktop, count):
         assert focused <= 20
 
 
+def test_property_republication_class_updates_and_stacking(desktop):
+    connection, _, _ = desktop
+    root = connection.screen().root
+    # Keep focus-follows-mouse out of the overlapping dialog raise sequence.
+    root.warp_pointer(connection.screen().width_in_pixels - 1,
+                      connection.screen().height_in_pixels - 1)
+    connection.sync()
+    clients = [window(connection, str(index), style="floating") for index in range(3)]
+    ids = [client.id for client in clients]
+
+    def values(win, name):
+        prop = win.get_full_property(connection.intern_atom(name), X.AnyPropertyType)
+        return list(prop.value) if prop is not None else []
+
+    assert values(root, "_NET_CLIENT_LIST") == ids
+    for name in ("_NET_CLIENT_LIST", "_NET_CLIENT_LIST_STACKING"):
+        root.delete_property(connection.intern_atom(name))
+        connection.sync()
+        wait_for(lambda: set(values(root, name)) == set(ids))
+    clients[0].set_wm_class("changed-instance", "ChangedClass")
+    connection.sync()
+    wait_for(lambda: any(c["win_id"] == ids[0] and c["class"] == "ChangedClass"
+                         for c in ipc(cmd="get_clients")["clients"]))
+    assert ipc(cmd="focus_window", win_id=ids[0])["ok"]
+    focused_atom = connection.intern_atom("_NET_WM_STATE_FOCUSED")
+    clients[0].delete_property(connection.intern_atom("_NET_WM_STATE"))
+    connection.sync()
+    wait_for(lambda: focused_atom in values(clients[0], "_NET_WM_STATE"))
+
+    # Reinstall the same server modifier mapping to exercise MappingNotify
+    # without modifying the user's keyboard (this is a private X server).
+    connection.set_modifier_mapping(connection.get_modifier_mapping())
+    connection.sync()
+    for client in clients:
+        assert ipc(cmd="focus_window", win_id=client.id)["ok"]
+        assert values(root, "_NET_CLIENT_LIST") == ids
+        frames = {c.query_tree().parent.id: c.id for c in clients}
+        expected = [frames.get(child.id, child.id) for child in root.query_tree().children
+                    if child.id in frames or child.id in ids]
+        assert values(root, "_NET_CLIENT_LIST_STACKING") == expected
+        # Separate GetProperty replies are not an atomic server snapshot; a
+        # queued EnterNotify may otherwise change focus between those replies.
+        wait_for(lambda: sum(focused_atom in values(c, "_NET_WM_STATE") for c in clients) == 1)
+
+
 def test_large_capture_bounds_and_x_resources(desktop):
     import xcffib.res as res
     from sadeshell.services.shared.thumbnail_capture import CaptureConnection
@@ -232,3 +281,102 @@ def test_large_capture_bounds_and_x_resources(desktop):
         capture.close()
         win.destroy()
         connection.sync()
+
+
+@pytest.mark.parametrize("count", [1, 10, 50])
+def test_shell_resource_measurements(desktop, count):
+    """Measure readiness and idle work without hardware-specific time gates.
+
+    The audit hook records Python subprocess launches, including short-lived
+    children that /proc polling would miss. Qt/native child launches are outside
+    this counter. All commands address this fixture's socket directly.
+    """
+    connection, _, tmp_path = desktop
+    for index in range(count):
+        window(connection, str(index))
+    runner = (
+        "import json,os,runpy,sys,time\n"
+        "def audit(event,args):\n"
+        " if event == 'subprocess.Popen':\n"
+        "  os.write(1,('SUBPROCESS '+json.dumps([time.monotonic(),str(args[0])])+'\\n').encode())\n"
+        "sys.addaudithook(audit)\n"
+        "runpy.run_module('sadeshell.main',run_name='__main__')\n"
+    )
+    env = dict(os.environ, QT_QPA_PLATFORM="xcb", QT_QUICK_BACKEND="software")
+    # A pre-change package can be supplied without modifying the checkout.
+    baseline = os.environ.get("SADESHELL_BENCH_SOURCE")
+    if baseline:
+        env["PYTHONPATH"] = baseline
+    log_path = tmp_path / "measurements.log"
+    root = connection.screen().root
+    pid_atom = connection.intern_atom("_NET_WM_PID")
+
+    def visible_shell_windows(pid):
+        found = set()
+        for child in root.query_tree().children:
+            try:
+                prop = child.get_full_property(pid_atom, Xatom.CARDINAL)
+                if prop is not None and prop.value[0] == pid and child.get_attributes().map_state == X.IsViewable:
+                    found.add(child.id)
+            except Exception:  # Native windows may disappear between queries.
+                continue
+        return found
+
+    def cpu_ticks(pid):
+        fields = Path(f"/proc/{pid}/stat").read_text().rsplit(")", 1)[1].split()
+        return int(fields[11]) + int(fields[12])
+
+    from sadeshell.services.shared.ipc_service import _ipc_socket_path
+    def toggle_picker():
+        with socket.socket(socket.AF_UNIX) as client:
+            client.settimeout(5)
+            client.connect(_ipc_socket_path())
+            client.sendall(b"open-window-picker")
+            assert client.recv(1024).strip() == b"ok"
+
+    with log_path.open("w") as log:
+        started = time.monotonic()
+        process = subprocess.Popen([sys.executable, "-c", runner], env=env, stdout=log, stderr=log)
+        try:
+            wait_for(lambda: visible_shell_windows(process.pid) and Path(_ipc_socket_path()).exists(), 20)
+            startup_ms = (time.monotonic() - started) * 1000
+            bar_windows = visible_shell_windows(process.pid)
+            started = time.monotonic()
+            toggle_picker()
+            wait_for(lambda: visible_shell_windows(process.pid) - bar_windows)
+            picker_ms = (time.monotonic() - started) * 1000
+            time.sleep(1)
+            toggle_picker()
+            wait_for(lambda: visible_shell_windows(process.pid) == bar_windows)
+            time.sleep(1)
+            before_fds = len(list(Path(f"/proc/{process.pid}/fd").iterdir()))
+            before_ticks = cpu_ticks(process.pid)
+            idle_start = time.monotonic()
+            time.sleep(12)  # Covers the former eight-/ten-second CLI poll timers.
+            idle_end = time.monotonic()
+            cpu_percent = ((cpu_ticks(process.pid) - before_ticks) / os.sysconf("SC_CLK_TCK") /
+                           (idle_end - idle_start) * 100)
+            launches = [json.loads(line.removeprefix("SUBPROCESS "))
+                        for line in log_path.read_text().splitlines() if line.startswith("SUBPROCESS ")]
+            idle_launches = [name for stamp, name in launches if idle_start <= stamp <= idle_end]
+            images = list(tmp_path.glob("sadeshell-winpicker-*/*.png"))
+            cache_bytes = sum(path.stat().st_size for path in images)
+            after_fds = len(list(Path(f"/proc/{process.pid}/fd").iterdir()))
+            print(json.dumps(dict(shell_windows=count, startup_ms=startup_ms, picker_map_ms=picker_ms,
+                                  idle_cpu_percent=cpu_percent, idle_seconds=idle_end-idle_start,
+                                  idle_subprocesses=idle_launches, total_subprocesses=len(launches),
+                                  cache_files=len(images), cache_bytes=cache_bytes,
+                                  fd_before=before_fds, fd_after=after_fds)))
+            assert process.poll() is None, log_path.read_text()
+            if not baseline:
+                assert idle_launches == []
+                assert len(images) <= 128 and cache_bytes <= 32 * 1024 * 1024
+                assert after_fds <= before_fds
+        finally:
+            process.terminate()
+            try:
+                process.wait(timeout=20)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                process.wait(timeout=5)
+                raise

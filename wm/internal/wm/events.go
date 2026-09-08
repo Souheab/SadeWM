@@ -647,11 +647,6 @@ func (wm *WM) manage(w xproto.Window, wa *xproto.GetWindowAttributesReply) {
 	xproto.ChangeSaveSet(wm.Conn, xproto.SetModeInsert, c.Win)
 	wm.applyInitialState(c)
 
-	// Append to _NET_CLIENT_LIST
-	xproto.ChangeProperty(wm.Conn, xproto.PropModeAppend, wm.Root,
-		wm.Atoms.Get(NetClientList), xproto.AtomWindow, 32, 1,
-		uint32ToBytes(uint32(c.Win)))
-
 	// Move off-screen initially (trick from dwm)
 	xproto.ConfigureWindow(wm.Conn, c.Win,
 		xproto.ConfigWindowX|xproto.ConfigWindowY|

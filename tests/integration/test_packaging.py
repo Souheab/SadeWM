@@ -21,13 +21,17 @@ def test_installed_wheel_and_sdist_contain_resources(tmp_path):
     with tarfile.open(next(dist.glob("*.tar.gz"))) as archive:
         files = {"/".join(name.split("/")[2:]) for name in archive.getnames() if "/src/" in name}
         assert expected <= files
-    installed = tmp_path / "installed"
-    subprocess.run([sys.executable, "-m", "pip", "install", "--no-deps", "--no-compile",
-                    "--target", str(installed), str(wheel)], check=True, capture_output=True)
     script = """import pathlib, sys, sadeshell, sadeshell.main
 assert pathlib.Path(sadeshell.__file__).is_relative_to(sys.argv[1])
 assert 'PySide6' not in sys.modules
 assert (pathlib.Path(sadeshell.__file__).parent / 'components/bar/Shell.qml').is_file()
 """
-    subprocess.run([sys.executable, "-c", script, str(installed)], cwd=tmp_path,
-                   env=dict(os.environ, PYTHONPATH=str(installed)), check=True)
+    for artifact in (wheel, next(dist.glob("*.tar.gz"))):
+        installed = tmp_path / ("installed-" + artifact.suffix)
+        subprocess.run([sys.executable, "-m", "pip", "install", "--no-deps", "--no-compile",
+                        "--no-build-isolation", "--target", str(installed), str(artifact)],
+                       check=True, capture_output=True)
+        assert (installed / "bin/sadeshell").is_file()
+        assert all((installed / resource).is_file() for resource in expected)
+        subprocess.run([sys.executable, "-c", script, str(installed)], cwd=tmp_path,
+                       env=dict(os.environ, PYTHONPATH=str(installed)), check=True)

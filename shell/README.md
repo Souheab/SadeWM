@@ -58,3 +58,6 @@ dbus-run-session --config-file=tests/integration/session.conf -- \
 The checks start private X servers and a private session bus, use temporary XDG
 directories, and terminate only processes they started. They do not require a
 running user desktop.
+
+See [the validation report](../VALIDATION.md) for final results, baseline/final
+performance samples, Xephyr/picom commands, and explicit hardware coverage gaps.

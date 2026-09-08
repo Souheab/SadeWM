@@ -182,6 +182,7 @@ func (wm *WM) raiseClient(c *Client) {
 }
 
 func (wm *WM) raiseWindow(win xproto.Window) {
+	wm.stackingDirty = true
 	// External docks bypass client management. Keep client raises below a dock
 	// instead of making the shell repeatedly raise itself. This also preserves
 	// popup windows above the dock and covers direct fullscreen/client raises.
@@ -418,13 +419,7 @@ func (wm *WM) honorSizeHints(c *Client) bool {
 		return false
 	}
 
-	classReply, err := xproto.GetProperty(wm.Conn, false, c.Win,
-		xproto.AtomWmClass, xproto.AtomString, 0, 256).Reply()
-	if err != nil || classReply.ValueLen == 0 {
-		return false
-	}
-
-	parts := splitWMClass(classReply.Value)
+	parts := []string{c.Class, c.Instance}
 	for _, allowed := range config.SizeHintsWhitelist {
 		for _, part := range parts {
 			if part == allowed {

@@ -1,7 +1,7 @@
 package wm
 
 import (
-	"sort"
+	"slices"
 	"strings"
 
 	"github.com/jezek/xgb/xproto"
@@ -72,6 +72,11 @@ func atomsToBytes(atoms []xproto.Atom) []byte {
 }
 
 func (wm *WM) setNetWMState(c *Client, states []xproto.Atom) {
+	if c.statePublished && slices.Equal(c.publishedState, states) {
+		return
+	}
+	c.publishedState = slices.Clone(states)
+	c.statePublished = true
 	xproto.ChangeProperty(wm.Conn, xproto.PropModeReplace, c.Win,
 		wm.Atoms.Get(NetWMState), xproto.AtomAtom, 32, uint32(len(states)), atomsToBytes(states))
 }
@@ -434,23 +439,13 @@ func (wm *WM) updateTitle(c *Client) {
 
 // updateClientList rebuilds _NET_CLIENT_LIST.
 func (wm *WM) updateClientList() {
-	// Count clients to pre-allocate.
-	count := 0
-	for m := wm.Mons; m != nil; m = m.Next {
-		for c := m.Clients; c != nil; c = c.Next {
-			count++
-		}
-	}
-	data := make([]byte, count*4)
-	i := 0
-	for m := wm.Mons; m != nil; m = m.Next {
-		for c := m.Clients; c != nil; c = c.Next {
-			putUint32(data[i*4:], uint32(c.Win))
-			i++
-		}
+	mapping := make([]uint32, len(wm.ManageOrder))
+	for i, c := range wm.ManageOrder {
+		mapping[i] = uint32(c.Win)
 	}
 	xproto.ChangeProperty(wm.Conn, xproto.PropModeReplace, wm.Root,
-		wm.Atoms.Get(NetClientList), xproto.AtomWindow, 32, uint32(count), data)
+		wm.Atoms.Get(NetClientList), xproto.AtomWindow, 32, uint32(len(mapping)), uint32sToBytes(mapping))
+	wm.stackingDirty = true
 }
 
 func uint32sToBytes(values []uint32) []byte {
@@ -612,25 +607,19 @@ func (wm *WM) publishClientState(c *Client) {
 	add(c.IsAbove, NetWMStateAbove)
 	add(c.IsBelow, NetWMStateBelow)
 	add(c.DemandsAttention, NetWMStateDemandsAttention)
-	add(c.Mon != nil && wm.SelMon == c.Mon && c.Mon.Sel == c, NetWMStateFocused)
+	add(wm.Focused == c, NetWMStateFocused)
 	wm.setNetWMState(c, states)
 }
 
-func (wm *WM) updateClientListStacking() {
-	clients := make([]*Client, 0)
-	for m := wm.Mons; m != nil; m = m.Next {
-		for c := m.Clients; c != nil; c = c.Next {
-			clients = append(clients, c)
-		}
-	}
-	sort.SliceStable(clients, func(i, j int) bool { return clients[i].ManageSeq < clients[j].ManageSeq })
-	mapping := make([]uint32, len(clients))
-	for i, c := range clients {
-		mapping[i] = uint32(c.Win)
-	}
-	xproto.ChangeProperty(wm.Conn, xproto.PropModeReplace, wm.Root,
-		wm.Atoms.Get(NetClientList), xproto.AtomWindow, 32, uint32(len(mapping)), uint32sToBytes(mapping))
+// Invalidate now; publish once at the end of an event batch.
+func (wm *WM) updateClientListStacking() { wm.stackingDirty = true }
 
+func (wm *WM) flushClientListStacking() {
+	if !wm.stackingDirty {
+		return
+	}
+	wm.stackingDirty = false
+	clients := wm.ManageOrder
 	stacking := make([]uint32, 0, len(clients))
 	seen := make(map[*Client]bool, len(clients))
 	if tree, err := xproto.QueryTree(wm.Conn, wm.Root).Reply(); err == nil {
@@ -650,6 +639,11 @@ func (wm *WM) updateClientListStacking() {
 			stacking = append(stacking, uint32(c.Win))
 		}
 	}
+	if wm.stackingPublished && slices.Equal(wm.lastStacking, stacking) {
+		return
+	}
+	wm.lastStacking = slices.Clone(stacking)
+	wm.stackingPublished = true
 	xproto.ChangeProperty(wm.Conn, xproto.PropModeReplace, wm.Root,
 		wm.Atoms.Get(NetClientListStacking), xproto.AtomWindow, 32, uint32(len(stacking)), uint32sToBytes(stacking))
 }
@@ -690,4 +684,20 @@ func (wm *WM) setUrgent(c *Client, urg bool) {
 func init() {
 	_ = util.LogDebug
 	_ = config.Tags
+}
+
+func (wm *WM) updateWMClass(c *Client) {
+	c.Class, c.Instance = "", ""
+	reply, err := xproto.GetProperty(wm.Conn, false, c.Win, xproto.AtomWmClass, xproto.AtomString, 0, 256).Reply()
+	if err != nil || reply == nil {
+		return
+	}
+	parts := splitWMClass(reply.Value)
+	if len(parts) > 0 {
+		c.Instance = parts[0]
+		c.Class = parts[0]
+	}
+	if len(parts) > 1 {
+		c.Class = parts[1]
+	}
 }

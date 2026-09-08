@@ -2,7 +2,7 @@ import pytest
 
 tomlkit = pytest.importorskip("tomlkit")
 
-from sadesettings import config_store
+from sadesettings import config_store  # noqa: E402 -- dependency check above
 
 
 def test_wm_defaults_are_created():

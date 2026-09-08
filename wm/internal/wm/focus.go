@@ -17,8 +17,9 @@ func (wm *WM) Focus(c *Client) {
 		}
 	}
 
-	if wm.SelMon.Sel != nil && wm.SelMon.Sel != c {
-		wm.Unfocus(wm.SelMon.Sel, false)
+	previous := wm.Focused
+	if previous != nil && previous != c {
+		wm.Unfocus(previous, false)
 	}
 
 	if c != nil {
@@ -43,16 +44,13 @@ func (wm *WM) Focus(c *Client) {
 		wm.setRootWindow(NetActiveWindow, xproto.WindowNone)
 	}
 	wm.SelMon.Sel = c
+	wm.Focused = c
 	if c != nil {
 		c.DemandsAttention = false
 		wm.publishClientState(c)
 	}
-	for m := wm.Mons; m != nil; m = m.Next {
-		for other := m.Clients; other != nil; other = other.Next {
-			if other != c {
-				wm.publishClientState(other)
-			}
-		}
+	if previous != nil && previous != c {
+		wm.publishClientState(previous)
 	}
 	wm.logSelClientInfo()
 }

@@ -1,7 +1,7 @@
 # sadewm Themes
 
 Dark blue-purple themes matching the sadeshell status bar aesthetic.
-All colors are sourced from `shell/src/components/shared/Theme.qml`.
+All colors are sourced from `shell/src/sadeshell/components/shared/Theme.qml`.
 
 ## Files
 

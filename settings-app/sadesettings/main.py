@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import argparse
+import copy
+from concurrent.futures import ThreadPoolExecutor
 import sys
 from importlib import resources
 from pathlib import Path
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, Signal, Slot, QTimer
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
     QApplication,
@@ -87,6 +89,9 @@ def apply_sade_appearance(app: QApplication) -> None:
 
 
 class SettingsWindow(QMainWindow):
+    _displaysReady = Signal(object)
+    _applyReady = Signal(str)
+
     def __init__(self, config_dir: Path):
         super().__init__()
         self.config_dir = config_dir
@@ -98,7 +103,13 @@ class SettingsWindow(QMainWindow):
         config_store.ensure_power_defaults(self.settings_doc)
 
         self.wm_widgets: dict[str, QWidget] = {}
-        self.outputs = display.query_outputs()
+        self.outputs = []
+        self._applying = False
+        self._closed = False
+        self._executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="sadesettings")
+        self._displaysReady.connect(self._accept_outputs, Qt.ConnectionType.QueuedConnection)
+        self._applyReady.connect(self._accept_apply, Qt.ConnectionType.QueuedConnection)
+        QTimer.singleShot(0, self._discover_outputs)
 
         self.setWindowFlag(Qt.Dialog, True)
         self.setWindowTitle("SADE Settings")
@@ -135,7 +146,7 @@ class SettingsWindow(QMainWindow):
         actions = QHBoxLayout()
         self.status = QLabel("")
         actions.addWidget(self.status, 1)
-        apply_button = QPushButton("Apply")
+        self.apply_button = apply_button = QPushButton("Apply")
         apply_button.clicked.connect(self.apply)
         actions.addWidget(apply_button)
         outer.addLayout(actions)
@@ -316,6 +327,8 @@ class SettingsWindow(QMainWindow):
         return dialog.exec() == QMessageBox.StandardButton.Apply
 
     def apply(self) -> None:
+        if self._applying:
+            return
         if not self._confirm_apply():
             self.status.setText("Apply canceled")
             return
@@ -348,14 +361,66 @@ class SettingsWindow(QMainWindow):
             },
         )
 
-        config_store.save_toml(self.wm_path, self.wm_doc)
-        config_store.save_toml(self.settings_path, self.settings_doc)
+        wm_doc, settings_doc = copy.deepcopy(self.wm_doc), copy.deepcopy(self.settings_doc)
+        self._applying = True
+        self.apply_button.setEnabled(False)
+        self.status.setText("Saving…")
 
-        response = ipc.send_reload()
-        if response.get("ok") is True:
-            self.status.setText("Saved and applied")
-        else:
-            self.status.setText(f"Saved, not applied: {response.get('error', 'unknown IPC error')}")
+        def save_and_reload():
+            saved = []
+            try:
+                config_store.save_toml(self.wm_path, wm_doc)
+                saved.append(self.wm_path.name)
+                config_store.save_toml(self.settings_path, settings_doc)
+            except Exception as exc:
+                detail = f" ({', '.join(saved)} saved)" if saved else ""
+                result = f"Save failed{detail}: {exc}"
+            else:
+                try:
+                    response = ipc.send_reload()
+                    result = "Saved and applied" if response.get("ok") is True else f"Saved, not applied: {response.get('error', 'unknown IPC error')}"
+                except Exception as exc:
+                    result = f"Saved, not applied: {exc}"
+            if not self._closed:
+                self._applyReady.emit(result)
+        self._executor.submit(save_and_reload)
+
+    @Slot(str)
+    def _accept_apply(self, result):
+        self._applying = False
+        self.apply_button.setEnabled(True)
+        self.status.setText(result)
+
+    def _discover_outputs(self):
+        def query():
+            try:
+                outputs = display.query_outputs()
+            except Exception:
+                outputs = []
+            if not self._closed:
+                self._displaysReady.emit(outputs)
+        self._executor.submit(query)
+
+    @Slot(object)
+    def _accept_outputs(self, outputs):
+        # Do not reset fields the user may have edited while discovery ran.
+        selected = self.display_output.currentText()
+        resolution = self.display_resolution.currentText()
+        refresh = self.display_refresh.currentText()
+        self.outputs = outputs
+        if not outputs and not self.status.text():
+            self.status.setText("No connected displays found; check xrandr")
+        self.display_output.clear()
+        self.display_output.addItems([output.name for output in outputs] or ["default"])
+        self._set_combo_text(self.display_output, selected)
+        self._sync_display_modes()
+        self._set_combo_text(self.display_resolution, resolution)
+        self._set_combo_text(self.display_refresh, refresh)
+
+    def closeEvent(self, event):
+        self._closed = True
+        self._executor.shutdown(wait=False, cancel_futures=True)
+        super().closeEvent(event)
 
 
 def main(argv: list[str] | None = None) -> int:

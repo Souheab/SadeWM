@@ -16,13 +16,15 @@
         # ── sadeshell (PySide6/QML status bar) ───────────────────────────────
         pythonEnv = python.withPackages (ps: with ps; [
           pyside6
-          tomlkit
           dbus-next
           pulsectl
           emoji
           xlib
           pillow
+          xcffib
         ]);
+
+        settingsPythonEnv = python.withPackages (ps: with ps; [ pyside6 tomlkit ]);
 
         # ── dev/testing Python env (not shipped in sadeshell) ─────────────────
         devPythonEnv = python.withPackages (ps: with ps; [
@@ -30,12 +32,24 @@
           xlib
           pillow
           emoji
+          pyside6
+          tomlkit
+          dbus-next
+          pulsectl
+          xcffib
+          build
+          setuptools
+          pip
+          ruff
         ]);
 
         shellSrc = pkgs.lib.cleanSourceWith {
           src    = ./shell;
           filter = path: _type:
             let rel = pkgs.lib.removePrefix (toString ./shell + "/") (toString path); in
+            baseNameOf path != "result" &&
+            ! pkgs.lib.hasPrefix "build" rel &&
+            ! pkgs.lib.hasPrefix "dist" rel &&
             ! pkgs.lib.hasPrefix "src/.venv"    rel &&
             ! pkgs.lib.hasPrefix "src/.qt_path" rel &&
             ! pkgs.lib.hasInfix  "__pycache__"  rel &&
@@ -78,7 +92,7 @@
           installPhase = ''
             runHook preInstall
             mkdir -p $out/lib
-            cp -r src $out/lib/sadeshell
+            cp -r src/sadeshell $out/lib/sadeshell
             runHook postInstall
           '';
 
@@ -138,7 +152,7 @@
 
           postFixup = ''
             mkdir -p $out/bin
-            makeWrapper ${pythonEnv}/bin/python3 $out/bin/sadesettings       \
+            makeWrapper ${settingsPythonEnv}/bin/python3 $out/bin/sadesettings       \
               --add-flags    "-m sadesettings.main"                         \
               --unset        PYTHONPATH                                      \
               --unset        PYTHONHOME                                      \
@@ -287,9 +301,7 @@
             wmctrl
             cairo
             libxscrnsaver
-            python3
             # Shell libraries
-            pythonEnv
             # Dev/testing tools
             devPythonEnv
             qt6.qtbase
@@ -303,8 +315,7 @@
 
           shellHook = ''
             # Make sadeshell importable during development
-            ln -sfn src shell/sadeshell 2>/dev/null || true
-            export PYTHONPATH="$PWD/shell:$PWD/settings-app:$PWD/xdrive''${PYTHONPATH:+:$PYTHONPATH}"
+            export PYTHONPATH="$PWD/shell/src:$PWD/settings-app:$PWD/xdrive''${PYTHONPATH:+:$PYTHONPATH}"
 
             echo "sadewm + sadeshell dev shell ready"
             echo "  WM:    cd wm && make"

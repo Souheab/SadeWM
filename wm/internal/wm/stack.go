@@ -40,13 +40,17 @@ func (wm *WM) Restore(arg *config.Arg) {
 	}
 	n := len(wm.MinimizeStack)
 	c := wm.MinimizeStack[n-1]
-	wm.MinimizeStack = wm.MinimizeStack[:n-1]
 	wm.restoreClient(c)
 }
 
 func (wm *WM) restoreClient(c *Client) {
 	if c == nil || !c.Minimized {
 		return
+	}
+	for i := len(wm.MinimizeStack) - 1; i >= 0; i-- {
+		if wm.MinimizeStack[i] == c {
+			wm.MinimizeStack = append(wm.MinimizeStack[:i], wm.MinimizeStack[i+1:]...)
+		}
 	}
 	c.Minimized = false
 	c.HasMapped = true
@@ -57,10 +61,9 @@ func (wm *WM) restoreClient(c *Client) {
 		wm.showTitlebar(c)
 	}
 	wm.publishClientState(c)
-	wm.Arrange(c.Mon)
 	wm.forwardWindowOpacity(c)
 	wm.Focus(c)
-	wm.Restack(c.Mon)
+	wm.Arrange(c.Mon)
 	if c.IsFloating {
 		wm.showTitlebar(c)
 		wm.raiseTitlebar(c)

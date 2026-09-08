@@ -18,7 +18,10 @@ var _ = unsafe.Pointer(nil)
 
 // Client represents a managed window.
 type Client struct {
-	Name string
+	Name            string
+	Class, Instance string
+	publishedState  []xproto.Atom
+	statePublished  bool
 	// Aspect ratio hints
 	MinA, MaxA float32
 	// Current geometry
@@ -130,9 +133,15 @@ type Monitor struct {
 
 // WM holds the entire window manager state.
 type WM struct {
-	X    *xgbutil.XUtil
-	Conn *xgb.Conn // raw connection
-	Root xproto.Window
+	ClientMap         map[xproto.Window]*Client
+	ManageOrder       []*Client
+	Focused           *Client
+	stackingDirty     bool
+	stackingPublished bool
+	lastStacking      []uint32
+	X                 *xgbutil.XUtil
+	Conn              *xgb.Conn // raw connection
+	Root              xproto.Window
 
 	Screen     *xproto.ScreenInfo
 	SW, SH     int // screen width, height
@@ -172,13 +181,14 @@ type WM struct {
 	BottomOffset uint
 
 	// Config
-	ActiveRules  []config.Rule
-	ActiveKeys   []config.Key
-	Layouts      []config.Layout
-	CfgPath      string
-	SettingsPath string
-	StartupPath  string
-	NoConfig     bool
+	ActiveRules      []config.Rule
+	ActiveKeys       []config.Key
+	Layouts          []config.Layout
+	CfgPath          string
+	SettingsPath     string
+	LastDisplayError string
+	StartupPath      string
+	NoConfig         bool
 
 	// X11 session power settings
 	sleepTimeoutMinutes int

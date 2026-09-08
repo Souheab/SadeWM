@@ -324,6 +324,7 @@ func (wm *WM) createTitlebar(c *Client) {
 	if wm.FrameMap == nil {
 		wm.FrameMap = make(map[xproto.Window]*Client)
 	}
+	wm.stackingDirty = true
 	wm.FrameMap[frame] = c
 
 	tbX, tbY, tbW, tbH := wm.titlebarGeom(c)
@@ -387,6 +388,7 @@ func (wm *WM) destroyTitlebar(c *Client) {
 		c.TitleWin = 0
 	}
 	if c.FrameWin != 0 {
+		wm.stackingDirty = true
 		delete(wm.FrameMap, c.FrameWin)
 		wm.expectReparentUnmap(c)
 		xproto.ReparentWindow(wm.Conn, c.Win, wm.Root, int16(c.X), int16(c.Y))

@@ -32,7 +32,6 @@ func (wm *WM) GrabKeys() {
 
 // GrabButtons grabs mouse buttons on a client window.
 func (wm *WM) GrabButtons(c *Client, focused bool) {
-	wm.updateNumlockMask()
 	modifiers := []uint16{0, xproto.ModMaskLock, wm.NumlockMask, wm.NumlockMask | xproto.ModMaskLock}
 
 	xproto.UngrabButton(wm.Conn, xproto.ButtonIndexAny, c.Win, xproto.ModMaskAny)

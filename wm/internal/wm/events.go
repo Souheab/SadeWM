@@ -258,6 +258,7 @@ func (wm *WM) handleConfigureRequest(e xproto.ConfigureRequestEvent) {
 			mask |= xproto.ConfigWindowSibling
 		}
 		if e.ValueMask&xproto.ConfigWindowStackMode != 0 {
+			wm.stackingDirty = true
 			values = append(values, uint32(e.StackMode))
 			mask |= xproto.ConfigWindowStackMode
 		}
@@ -371,9 +372,11 @@ func (wm *WM) handleKeyPress(e xproto.KeyPressEvent) {
 }
 
 func (wm *WM) handleMappingNotify(e xproto.MappingNotifyEvent) {
-	if e.Request == xproto.MappingKeyboard {
-		keybind.Initialize(wm.X)
+	if e.Request == xproto.MappingKeyboard || e.Request == xproto.MappingModifier {
 		wm.GrabKeys()
+		for _, c := range wm.ManageOrder {
+			wm.GrabButtons(c, c == wm.Focused)
+		}
 	}
 }
 
@@ -423,6 +426,15 @@ func (wm *WM) handleLeaveNotify(e xproto.LeaveNotifyEvent) {
 
 func (wm *WM) handlePropertyNotify(e xproto.PropertyNotifyEvent) {
 	if e.Window == wm.Root {
+		if e.State == xproto.PropertyDelete {
+			if e.Atom == wm.Atoms.Get(NetClientList) {
+				wm.updateClientList()
+			}
+			if e.Atom == wm.Atoms.Get(NetClientListStacking) {
+				wm.stackingPublished = false
+				wm.stackingDirty = true
+			}
+		}
 		if e.Atom == wm.Atoms.Get(NetDesktopNames) && e.State != xproto.PropertyDelete {
 			wm.acceptDesktopNames()
 		}
@@ -458,6 +470,8 @@ func (wm *WM) handlePropertyNotify(e xproto.PropertyNotifyEvent) {
 				wm.Arrange(c.Mon)
 			}
 		}
+	case xproto.AtomWmClass:
+		wm.updateWMClass(c)
 	case xproto.AtomWmNormalHints:
 		c.HintsValid = false
 		wm.updateSizeHints(c)
@@ -480,6 +494,7 @@ func (wm *WM) handlePropertyNotify(e xproto.PropertyNotifyEvent) {
 		wm.Restack(c.Mon)
 	}
 	if e.Atom == wm.Atoms.Get(NetWMState) && e.State == xproto.PropertyDelete {
+		c.statePublished = false
 		wm.publishClientState(c)
 	}
 	if e.Atom == wm.Atoms.Get(NetWMDesktop) && e.State == xproto.PropertyDelete {
@@ -545,6 +560,7 @@ func (wm *WM) manage(w xproto.Window, wa *xproto.GetWindowAttributesReply) {
 		OldBW: int(geom.BorderWidth),
 	}
 
+	wm.updateWMClass(c)
 	wm.updateTitle(c)
 
 	// Check transient
@@ -602,6 +618,9 @@ func (wm *WM) manage(w xproto.Window, wa *xproto.GetWindowAttributesReply) {
 	wm.updateColormapWindows(c)
 	initialIconic := c.InitialIconic || wasIconic
 	c.Minimized = false
+	wm.ClientMap[c.Win] = c
+	wm.ManageOrder = append(wm.ManageOrder, c)
+	wm.updateClientList()
 	wm.NextManageSeq++
 	c.ManageSeq = wm.NextManageSeq
 	wm.applyInitialDesktop(c)
@@ -682,6 +701,17 @@ func (wm *WM) manage(w xproto.Window, wa *xproto.GetWindowAttributesReply) {
 // unmanage removes a client.
 func (wm *WM) unmanage(c *Client, destroyed bool) {
 	m := c.Mon
+	delete(wm.ClientMap, c.Win)
+	for i, candidate := range wm.ManageOrder {
+		if candidate == c {
+			wm.ManageOrder = append(wm.ManageOrder[:i], wm.ManageOrder[i+1:]...)
+			break
+		}
+	}
+	wm.updateClientList()
+	if wm.Focused == c {
+		wm.Focused = nil
+	}
 	if wm.ShowDesktopFocus == c {
 		wm.ShowDesktopFocus = nil
 	}
@@ -731,20 +761,7 @@ func (wm *WM) applyRules(c *Client) {
 	c.IsFloating = false
 	c.Tags = 0
 
-	classProp, err := xproto.GetProperty(wm.Conn, false, c.Win,
-		xproto.AtomWmClass, xproto.AtomString, 0, 256).Reply()
-
-	class, instance := "broken", "broken"
-	if err == nil && classProp.ValueLen > 0 {
-		parts := splitWMClass(classProp.Value)
-		if len(parts) >= 2 {
-			instance = parts[0]
-			class = parts[1]
-		} else if len(parts) == 1 {
-			instance = parts[0]
-			class = parts[0]
-		}
-	}
+	class, instance := c.Class, c.Instance
 
 	for _, r := range wm.ActiveRules {
 		titleMatch := r.Title == "" || (c.Name != "" && contains(c.Name, r.Title))

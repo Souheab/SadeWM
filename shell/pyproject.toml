@@ -1,0 +1,32 @@
+[project]
+name = "sadeshell"
+version = "0.1.0"
+description = "PySide6 desktop status bar for X11 (dwm/sadewm)"
+requires-python = ">=3.11"
+dependencies = [
+    "PySide6>=6.6",
+    "dbus-next>=0.2.3",
+    "pulsectl>=24.1.0",
+    "emoji>=2.0",
+    "python-xlib>=0.33",
+    "Pillow>=10.0",
+    "xcffib>=1.5",
+]
+
+[project.scripts]
+sadeshell = "sadeshell.main:main"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["sadeshell*"]
+namespaces = false
+
+[tool.setuptools.package-data]
+sadeshell = ["components/*/*.qml", "components/*/qmldir", "assets/*"]
+
+[project.optional-dependencies]
+test = ["pytest>=7", "build", "ruff"]

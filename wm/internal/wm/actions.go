@@ -489,14 +489,7 @@ func (wm *WM) winToClient(w xproto.Window) *Client {
 	if c := wm.FrameMap[w]; c != nil {
 		return c
 	}
-	for m := wm.Mons; m != nil; m = m.Next {
-		for c := m.Clients; c != nil; c = c.Next {
-			if c.Win == w {
-				return c
-			}
-		}
-	}
-	return nil
+	return wm.ClientMap[w]
 }
 
 func init() {

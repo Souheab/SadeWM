@@ -1,6 +1,7 @@
 package wm
 
 import (
+	"context"
 	"fmt"
 	"image"
 	_ "image/jpeg"
@@ -30,6 +31,7 @@ func New() *WM {
 		Actions:       make(map[string]config.ActionFunc),
 		TitlebarMap:   make(map[xproto.Window]*Client),
 		FrameMap:      make(map[xproto.Window]*Client),
+		ClientMap:     make(map[xproto.Window]*Client),
 		DockStruts:    make(map[xproto.Window][12]uint32),
 		QuitCh:        make(chan struct{}),
 	}
@@ -239,7 +241,12 @@ func (wm *WM) startEventPump() {
 	go func() {
 		for {
 			ev, err := wm.Conn.WaitForEvent()
-			wm.XEvCh <- xgbEvent{ev, err}
+			select {
+			case wm.XEvCh <- xgbEvent{ev, err}:
+			case <-wm.QuitCh:
+				// Keep draining protocol events during cleanup. Blocking here
+				// can fill xgb's event queue and prevent synchronous replies.
+			}
 			// A nil ev and nil err signals connection closed.
 			if ev == nil && err == nil {
 				return
@@ -250,6 +257,7 @@ func (wm *WM) startEventPump() {
 
 // Run is the main event loop.
 func (wm *WM) Run(ipcServer *ipc.Server) {
+	defer wm.RequestQuit()
 	var ipcCh <-chan *ipc.IPCRequest
 	if wm.QuitCh == nil {
 		wm.QuitCh = make(chan struct{})
@@ -269,7 +277,7 @@ func (wm *WM) Run(ipcServer *ipc.Server) {
 	for wm.Running.Load() {
 		// Drain all immediately-available X events before blocking.
 	drainX:
-		for {
+		for batch := 0; batch < 64; batch++ {
 			select {
 			case <-wm.QuitCh:
 				wm.Running.Store(false)
@@ -284,6 +292,7 @@ func (wm *WM) Run(ipcServer *ipc.Server) {
 				break drainX
 			}
 		}
+		wm.flushClientListStacking()
 		wm.publishTagsIfChanged(ipcServer)
 
 		// Block until either an X event or an IPC request arrives.
@@ -319,7 +328,7 @@ func (wm *WM) Run(ipcServer *ipc.Server) {
 		// After each event, drain any remaining IPC requests (non-blocking).
 		if ipcCh != nil {
 		drainIPC:
-			for {
+			for batch := 0; batch < 64; batch++ {
 				select {
 				case <-wm.QuitCh:
 					wm.Running.Store(false)
@@ -336,6 +345,7 @@ func (wm *WM) Run(ipcServer *ipc.Server) {
 				}
 			}
 		}
+		wm.flushClientListStacking()
 		wm.publishTagsIfChanged(ipcServer)
 	}
 }
@@ -693,6 +703,7 @@ func align(n, alignment int) int {
 }
 
 func (wm *WM) ApplyDisplaySettings() {
+	wm.LastDisplayError = ""
 	if wm.NoConfig || wm.SettingsPath == "" {
 		return
 	}
@@ -701,8 +712,11 @@ func (wm *WM) ApplyDisplaySettings() {
 		return
 	}
 
-	query, err := exec.Command("xrandr", "--query").Output()
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	query, err := runDisplayCommand(ctx, "--query")
 	if err != nil {
+		wm.LastDisplayError = fmt.Sprintf("xrandr query failed: %v", err)
 		util.LogDebug("display settings: xrandr query failed: %v", err)
 		return
 	}
@@ -710,7 +724,8 @@ func (wm *WM) ApplyDisplaySettings() {
 	if !ok {
 		return
 	}
-	if err := exec.Command("xrandr", args...).Run(); err != nil {
+	if _, err := runDisplayCommand(ctx, args...); err != nil {
+		wm.LastDisplayError = fmt.Sprintf("xrandr apply failed: %v", err)
 		util.LogDebug("display settings: xrandr apply failed: %v", err)
 		return
 	}
@@ -867,6 +882,7 @@ func getUint32(b []byte) uint32 {
 
 // handleIPCRequest processes an IPC request from the socket server.
 func (wm *WM) handleIPCRequest(req *ipc.IPCRequest) *ipc.Response {
+	defer wm.flushClientListStacking()
 	switch req.Cmd {
 	case "get_state":
 		return wm.ipcGetState()
@@ -891,6 +907,9 @@ func (wm *WM) handleIPCRequest(req *ipc.IPCRequest) *ipc.Response {
 		return &ipc.Response{OK: true}
 	case "reload":
 		wm.ReloadConfig(nil)
+		if wm.LastDisplayError != "" {
+			return &ipc.Response{OK: false, Error: wm.LastDisplayError}
+		}
 		return &ipc.Response{OK: true}
 	case "quit":
 		wm.Quit(nil)
@@ -919,6 +938,13 @@ func (wm *WM) handleIPCRequest(req *ipc.IPCRequest) *ipc.Response {
 	}
 }
 
+// Bound both the process and pipes held open by descendants.
+func runDisplayCommand(ctx context.Context, args ...string) ([]byte, error) {
+	command := exec.CommandContext(ctx, "xrandr", args...)
+	command.WaitDelay = time.Second
+	return command.Output()
+}
+
 func (wm *WM) ipcGetState() *ipc.Response {
 	resp := &ipc.Response{
 		OK:        true,
@@ -935,7 +961,7 @@ func (wm *WM) ipcGetState() *ipc.Response {
 		resp.Clients = append(resp.Clients, ipc.ClientDTO{
 			Name:      c.Name,
 			WinID:     uint32(c.Win),
-			Class:     wm.getWMClass(c.Win),
+			Class:     c.Class,
 			Tags:      c.Tags,
 			Width:     c.W,
 			Height:    c.H,
@@ -1030,7 +1056,7 @@ func (wm *WM) ipcGetClients() *ipc.Response {
 			clients = append(clients, ipc.ClientDTO{
 				Name:      c.Name,
 				WinID:     uint32(c.Win),
-				Class:     wm.getWMClass(c.Win),
+				Class:     c.Class,
 				Tags:      c.Tags,
 				Width:     c.W,
 				Height:    c.H,
@@ -1051,19 +1077,7 @@ func (wm *WM) ipcFocusWindow(winID uint32) *ipc.Response {
 	}
 	target := xproto.Window(winID)
 
-	// Find the client across all monitors
-	var found *Client
-	for m := wm.Mons; m != nil; m = m.Next {
-		for c := m.Clients; c != nil; c = c.Next {
-			if c.Win == target {
-				found = c
-				break
-			}
-		}
-		if found != nil {
-			break
-		}
-	}
+	found := wm.winToClient(target)
 
 	if found == nil {
 		return &ipc.Response{OK: false, Error: "window not found"}
@@ -1085,25 +1099,12 @@ func (wm *WM) ipcFocusWindow(winID uint32) *ipc.Response {
 		wm.View(&config.Arg{UI: tagMask})
 	}
 
-	// If minimized, restore it
 	if found.Minimized {
-		// Remove from minimize stack if present
-		for i, mc := range wm.MinimizeStack {
-			if mc == found {
-				wm.MinimizeStack = append(wm.MinimizeStack[:i], wm.MinimizeStack[i+1:]...)
-				break
-			}
-		}
-		found.Minimized = false
-		if found.IsFloating {
-			wm.showTitlebar(found)
-			wm.raiseTitlebar(found)
-		}
+		wm.restoreClient(found)
+	} else {
+		wm.Focus(found)
+		wm.Restack(found.Mon)
 	}
-
-	wm.Focus(found)
-	wm.Restack(found.Mon)
-	wm.Arrange(found.Mon)
 	return &ipc.Response{OK: true}
 }
 

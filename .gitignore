@@ -12,6 +12,9 @@ shell/__pycache__/
 shell/.venv
 shell/src/.qt_path_cache.env
 shell/debug_artifacts/
+shell/build/
+shell/dist/
+shell/src/*.egg-info/
 shell/result
 shell/*.env
 

@@ -10,7 +10,7 @@ QML under [`qml/`](qml).
 
 * Same palette / spacing / radii as the sadeshell bar (see
   [`qml/Theme.qml`](qml/Theme.qml) vs
-  [`../shell/src/components/shared/Theme.qml`](../shell/src/components/shared/Theme.qml)).
+  [`../shell/src/sadeshell/components/shared/Theme.qml`](../shell/src/sadeshell/components/shared/Theme.qml)).
 * Fullscreen frameless window, vertical gradient backdrop with a soft
   accent glow behind a centered login card.
 * Top-left: large live clock + date.

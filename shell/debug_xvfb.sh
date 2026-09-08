@@ -3,8 +3,8 @@
 # Usage: ./debug_xvfb.sh [--screenshot]
 set -euo pipefail
 
-REPO_ROOT="$(cd "$(dirname "$0")" && pwd)"
-ARTIFACT_DIR="$REPO_ROOT/debug_artifacts"
+REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+ARTIFACT_DIR="$REPO_ROOT/shell/debug_artifacts"
 DISPLAY_NUM=97
 DISPLAY_ENV=":$DISPLAY_NUM"
 SCREENSHOT="$ARTIFACT_DIR/sadeshell_xvfb.png"
@@ -36,8 +36,9 @@ take_screenshot() {
 }
 
 # ── kill any leftover Xvfb on our display ─────────────────────────────────
-pkill -f "Xvfb $DISPLAY_ENV" 2>/dev/null || true
-sleep 0.3
+if xdpyinfo -display "$DISPLAY_ENV" >/dev/null 2>&1; then
+    die "Display $DISPLAY_ENV is already in use"
+fi
 
 # ── start Xvfb ────────────────────────────────────────────────────────────
 echo "Starting Xvfb $DISPLAY_ENV ..."
@@ -49,10 +50,10 @@ sleep 1
 # ── build if needed ───────────────────────────────────────────────────────
 if [[ ! -x "$REPO_ROOT/result/bin/sadeshell" ]]; then
     echo "Building sadeshell flake..."
-    nix build "$REPO_ROOT" --no-link 2>&1 | tee "$ARTIFACT_DIR/nix_build.log" || \
+    nix build "path:$REPO_ROOT#sadeshell" --no-link 2>&1 | tee "$ARTIFACT_DIR/nix_build.log" || \
         die "nix build failed — see $ARTIFACT_DIR/nix_build.log"
     # symlink result
-    nix build "$REPO_ROOT" 2>&1 | tail -3
+    nix build "path:$REPO_ROOT#sadeshell" 2>&1 | tail -3
 fi
 
 PYSHELL="$REPO_ROOT/result/bin/sadeshell"

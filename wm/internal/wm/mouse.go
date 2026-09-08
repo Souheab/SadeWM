@@ -177,7 +177,7 @@ func (wm *WM) MoveMouse(arg *config.Arg) {
 	ptrX, ptrY := wm.getRootPtr()
 
 	wm.dragging = true
-	defer func() { wm.dragging = false }()
+	defer func() { wm.dragging = false; wm.flushClientListStacking() }()
 
 	var lastSwapTarget *Client // guard: only swap when entering a NEW tiled window
 
@@ -288,7 +288,7 @@ func (wm *WM) ResizeMouse(arg *config.Arg) {
 	}
 
 	wm.dragging = true
-	defer func() { wm.dragging = false }()
+	defer func() { wm.dragging = false; wm.flushClientListStacking() }()
 
 	// Warp pointer to bottom-right corner of the window.
 	xproto.WarpPointer(wm.Conn, xproto.WindowNone, c.Win,

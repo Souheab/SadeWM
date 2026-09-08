@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"runtime"
 	"runtime/debug"
 	"syscall"
@@ -54,9 +55,13 @@ func main() {
 	}
 
 	// Initialize logging (file + FIFO for live log access)
-	if home := util.HomePath(); home != "" {
-		util.LogInit(home + "/.local/share/sadewm/sadewm.log")
-		util.StartFIFOLog(home + "/.local/share/sadewm/sadewm.fifo")
+	dataDir := os.Getenv("XDG_DATA_HOME")
+	if dataDir == "" && util.HomePath() != "" {
+		dataDir = filepath.Join(util.HomePath(), ".local", "share")
+	}
+	if dataDir != "" {
+		util.LogInit(filepath.Join(dataDir, "sadewm", "sadewm.log"))
+		util.StartFIFOLog(filepath.Join(dataDir, "sadewm", "sadewm.fifo"))
 	} else {
 		util.LogInit("")
 	}

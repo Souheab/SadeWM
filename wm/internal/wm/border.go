@@ -39,6 +39,9 @@ func (wm *WM) applyBorderShape(c *Client, w, h int) {
 	if bw <= 0 || w <= 0 || h <= 0 {
 		return
 	}
+	if c.BorderShapeW == w && c.BorderShapeH == h && c.BorderShapeBW == bw {
+		return
+	}
 	rects := []xproto.Rectangle{{X: 0, Y: 0, Width: uint16(w), Height: uint16(h)}}
 	if w > 2*bw && h > 2*bw {
 		innerH := h - 2*bw
@@ -49,7 +52,8 @@ func (wm *WM) applyBorderShape(c *Client, w, h int) {
 			{X: int16(w - bw), Y: int16(bw), Width: uint16(bw), Height: uint16(innerH)},
 		}
 	}
-	_ = shape.RectanglesChecked(wm.Conn, shape.SoSet, shape.SkBounding, 0, c.BorderWin, 0, 0, rects).Check()
+	shape.Rectangles(wm.Conn, shape.SoSet, shape.SkBounding, 0, c.BorderWin, 0, 0, rects)
+	c.BorderShapeW, c.BorderShapeH, c.BorderShapeBW = w, h, bw
 }
 
 func (wm *WM) paintBorderWindow(c *Client) {
@@ -99,6 +103,7 @@ func (wm *WM) destroyBorderWindow(c *Client) {
 	}
 	xproto.DestroyWindow(wm.Conn, c.BorderWin)
 	c.BorderWin = 0
+	c.BorderShapeW, c.BorderShapeH, c.BorderShapeBW = 0, 0, 0
 }
 
 func (wm *WM) ensureBorderWindow(c *Client) {

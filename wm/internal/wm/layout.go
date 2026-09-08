@@ -182,6 +182,21 @@ func (wm *WM) raiseClient(c *Client) {
 }
 
 func (wm *WM) raiseWindow(win xproto.Window) {
+	// External docks bypass client management. Keep client raises below a dock
+	// instead of making the shell repeatedly raise itself. This also preserves
+	// popup windows above the dock and covers direct fullscreen/client raises.
+	var ceiling xproto.Window
+	for dock := range wm.DockStruts {
+		if dock != win && wm.winToClient(dock) == nil && (ceiling == 0 || dock < ceiling) {
+			ceiling = dock
+		}
+	}
+	if ceiling != 0 {
+		xproto.ConfigureWindow(wm.Conn, win,
+			xproto.ConfigWindowSibling|xproto.ConfigWindowStackMode,
+			[]uint32{uint32(ceiling), uint32(xproto.StackModeBelow)})
+		return
+	}
 	xproto.ConfigureWindow(wm.Conn, win,
 		xproto.ConfigWindowStackMode,
 		[]uint32{uint32(xproto.StackModeAbove)})

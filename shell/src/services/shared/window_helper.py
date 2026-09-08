@@ -5,7 +5,7 @@ import ctypes.util
 import os
 import subprocess
 
-from PySide6.QtCore import QObject, QTimer, Slot
+from PySide6.QtCore import QObject, Slot
 from PySide6.QtGui import QCursor, QGuiApplication
 
 
@@ -102,7 +102,6 @@ class WindowHelper(QObject):
         self._libxext = None
         self._libs_ready = False
         self._display = None
-        self._raise_timer = None
 
     def _ensure_libs(self):
         if self._libs_ready:
@@ -170,7 +169,7 @@ class WindowHelper(QObject):
 
         libx11 = self._libx11
         
-        # Keep display open for persistent raising
+        # Reuse the connection for X11 setup.
         if not self._display:
             _raw = libx11.XOpenDisplay(None)
             if not _raw:
@@ -265,34 +264,8 @@ class WindowHelper(QObject):
         except Exception as e:
             print(f"WindowHelper._set_x11_properties error: {e}")
 
-        # Start persistent raising timer
-        self._start_raise_timer()
-
-    def _start_raise_timer(self):
-        """Start a timer to repeatedly raise the window to keep it on top."""
-        if not self._wid or not self._ensure_libs() or not self._libx11:
-            return
-        
-        if self._raise_timer is None:
-            self._raise_timer = QTimer(self)
-            self._raise_timer.timeout.connect(self._raise_window)
-            self._raise_timer.start(100)  # Raise every 100ms
-            print("WindowHelper: started persistent raising timer")
-
-    def _raise_window(self):
-        """Raise the window to ensure it stays on top persistently."""
-        if not self._wid or not self._display or not self._libx11:
-            return
-        
-        try:
-            libx11 = self._libx11
-            libx11.XRaiseWindow.restype = ctypes.c_int
-            libx11.XRaiseWindow.argtypes = [ctypes.c_void_p, ctypes.c_ulong]
-            
-            libx11.XRaiseWindow(self._display, self._wid)
-            libx11.XSync(self._display, False)
-        except Exception as e:
-            print(f"WindowHelper: error raising window: {e}")
+        # sadewm keeps managed clients below external docks. No polling raise
+        # is needed; the initial raise above establishes the shell's position.
 
     @Slot("QVariant")
     def focusKeyboard(self, window):

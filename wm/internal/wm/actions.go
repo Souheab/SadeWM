@@ -147,6 +147,11 @@ func (wm *WM) SetMFact(arg *config.Arg) {
 		t.MFact = f
 		wm.SelMon.MFact = t.MFact
 	}
+	if wm.dragging {
+		// Changing the split changes geometry only, not visibility or stacking.
+		wm.arrangeMon(wm.SelMon)
+		return
+	}
 	wm.Arrange(wm.SelMon)
 }
 

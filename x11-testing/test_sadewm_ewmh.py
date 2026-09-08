@@ -21,6 +21,41 @@ def _state_atoms(win):
     return set(prop.value.tolist())
 
 
+def test_external_shell_dock_stays_above_clients_without_raise_timer(xd):
+    dpy = xd._xdisplay
+    root = dpy.screen().root
+    dock = root.create_window(
+        0, 0, 1280, 800, 0, X.CopyFromParent, X.InputOutput,
+        X.CopyFromParent, override_redirect=True,
+    )
+    dock.change_property(dpy.intern_atom("_NET_WM_WINDOW_TYPE"), Xatom.ATOM,
+                         32, [dpy.intern_atom("_NET_WM_WINDOW_TYPE_DOCK")])
+    dock.change_property(dpy.intern_atom("_NET_WM_STRUT"), Xatom.CARDINAL,
+                         32, [0, 0, 40, 0])
+    dock.map()
+    dpy.sync()
+    time.sleep(0.2)
+    win = None
+    try:
+        win = xd.new_window(title="test-shell-stacking", size=(400, 300))
+        xd.wait_for_layout()
+        def client_below_dock():
+            children = [w.id for w in root.query_tree().children]
+            return children.index(win.id) < children.index(dock.id)
+        xd.wait_for(client_below_dock, timeout=3.0)
+        win.set_fullscreen(True)
+        xd.wait_for_layout()
+        assert client_below_dock()
+        win.set_fullscreen(False)
+        xd.wait_for_layout()
+        assert client_below_dock()
+    finally:
+        if win is not None:
+            win.close()
+        dock.destroy()
+        dpy.sync()
+
+
 def _new_window_with_types(xd, title, atom_names):
     dpy = xd._xdisplay
     root = dpy.screen().root

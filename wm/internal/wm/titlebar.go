@@ -497,8 +497,7 @@ func (wm *WM) raiseTitlebar(c *Client) {
 	if c.FrameWin == 0 {
 		return
 	}
-	xproto.ConfigureWindow(wm.Conn, c.FrameWin,
-		xproto.ConfigWindowStackMode, []uint32{uint32(xproto.StackModeAbove)})
+	wm.raiseWindow(c.FrameWin)
 }
 
 // ── Cairo rendering ───────────────────────────────────────────────────────────

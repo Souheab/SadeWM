@@ -355,6 +355,9 @@ func (wm *WM) ResizeMouse(arg *config.Arg) {
 done:
 	xproto.WarpPointer(wm.Conn, xproto.WindowNone, c.Win,
 		0, 0, 0, 0, int16(c.W+c.BW-1), int16(c.H+c.BW-1))
+	if !c.IsFloating && c.Mon.Lt.Arrange != nil {
+		wm.Arrange(c.Mon)
+	}
 	xproto.UngrabPointer(wm.Conn, xproto.TimeCurrentTime)
 	wm.applyTitlebarShape(c)
 	wm.drawTitlebar(c)

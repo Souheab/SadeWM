@@ -22,3 +22,4 @@ Use `sadewm -c /path/to/wm.toml` to load a specific window manager config, `sade
 - Settings app scrolling on numerical selector causes numerical change
 - Weird floating window and titlebar behavior
 - Systray not working correctly for some apps (Qt apps)
+- Picom needs to be run with --no-frame-pacing

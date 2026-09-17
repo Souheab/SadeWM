@@ -104,6 +104,65 @@ def window(connection, title="integration", style="tiled"):
     return result
 
 
+def test_mouse_focus_after_client_refreshes_keyboard_focus(desktop):
+    """Check real X keyboard focus, not just the WM's selected-window property."""
+    from Xlib import XK
+    from Xlib.ext import xtest
+
+    connection, _, _ = desktop
+    root = connection.screen().root
+    root.warp_pointer(0, 0)
+    source = window(connection, "focus-source")
+    target = window(connection, "focus-target")
+    active_atom = connection.intern_atom("_NET_ACTIVE_WINDOW")
+
+    def active():
+        return root.get_full_property(active_atom, Xatom.WINDOW).value[0]
+
+    source.warp_pointer(50, 50)
+    connection.sync()
+    wait_for(lambda: active() == source.id)
+
+    # A real WM keybinding seeds LastUserTime. Super+k may change the selected
+    # client; the IPC request puts focus back without advancing that timestamp.
+    super_key = connection.keysym_to_keycode(XK.string_to_keysym("Super_L"))
+    key = connection.keysym_to_keycode(XK.string_to_keysym("k"))
+    for kind, code in ((X.KeyPress, super_key), (X.KeyPress, key),
+                       (X.KeyRelease, key), (X.KeyRelease, super_key)):
+        xtest.fake_input(connection, kind, code)
+    connection.sync()
+    time.sleep(0.05)
+    assert ipc(cmd="focus_window", win_id=source.id)["ok"]
+    wait_for(lambda: active() == source.id)
+
+    # Toolkits can renew focus while the user interacts with the same window.
+    # This advances X's last-focus-change time beyond the WM's cached key time.
+    time.sleep(0.05)
+    source.set_input_focus(X.RevertToPointerRoot, X.CurrentTime)
+    connection.sync()
+    assert connection.get_input_focus().focus.id == source.id
+
+    target.warp_pointer(50, 50)
+    connection.sync()
+    wait_for(lambda: active() == target.id)
+    assert connection.get_input_focus().focus.id == target.id, (
+        "Mouse focus updated _NET_ACTIVE_WINDOW but left keyboard input on the old window"
+    )
+
+    # Verify delivery as well: the next ordinary key must reach the new client.
+    target.change_attributes(event_mask=X.KeyPressMask)
+    connection.sync()
+    while connection.pending_events():
+        connection.next_event()
+    key = connection.keysym_to_keycode(XK.string_to_keysym("a"))
+    xtest.fake_input(connection, X.KeyPress, key)
+    xtest.fake_input(connection, X.KeyRelease, key)
+    connection.sync()
+    wait_for(lambda: connection.pending_events() > 0)
+    received = connection.next_event()
+    assert received.type == X.KeyPress and received.window.id == target.id
+
+
 @pytest.mark.parametrize("style", ["tiled", "floating", "fullscreen"])
 def test_minimize_restore_and_capture(desktop, style):
     from sadeshell.services.shared.thumbnail_capture import CaptureConnection

@@ -322,6 +322,10 @@ func (wm *WM) handleEnterNotify(e xproto.EnterNotifyEvent) {
 	if wm.titlebarToClient(e.Event) != nil {
 		return
 	}
+	// X ignores focus requests older than its last focus change. A client may
+	// have refreshed keyboard focus since our last key/button event, so use
+	// this crossing's time for both SetInputFocus and WM_TAKE_FOCUS.
+	wm.recordUserTime(uint32(e.Time))
 
 	c := wm.winToClient(e.Event)
 	var m *Monitor
@@ -332,7 +336,8 @@ func (wm *WM) handleEnterNotify(e xproto.EnterNotifyEvent) {
 	}
 
 	if m != wm.SelMon {
-		wm.Unfocus(wm.SelMon.Sel, true)
+		// Focus below unfocuses the old client. Focusing root with CurrentTime
+		// here could make this crossing's timestamp stale before we use it.
 		wm.SelMon = m
 	} else if c == nil || c == wm.SelMon.Sel {
 		return
@@ -407,9 +412,10 @@ func (wm *WM) handleMotionNotify(e xproto.MotionNotifyEvent) {
 	if e.Event != wm.Root {
 		return
 	}
+	wm.recordUserTime(uint32(e.Time))
 	m := wm.RectToMon(int(e.RootX), int(e.RootY), 1, 1)
 	if m != wm.SelMon {
-		wm.Unfocus(wm.SelMon.Sel, true)
+		// Transfer focus directly, preserving the motion event's timestamp.
 		wm.SelMon = m
 		wm.Focus(nil)
 	}

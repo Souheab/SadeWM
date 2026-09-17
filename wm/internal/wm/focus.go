@@ -40,7 +40,7 @@ func (wm *WM) Focus(c *Client) {
 		wm.drawTitlebar(c)
 	} else {
 		xproto.SetInputFocus(wm.Conn, xproto.InputFocusPointerRoot,
-			wm.Root, xproto.TimeCurrentTime)
+			wm.Root, xproto.Timestamp(wm.focusTimestamp()))
 		wm.setRootWindow(NetActiveWindow, xproto.WindowNone)
 	}
 	wm.SelMon.Sel = c
@@ -89,7 +89,7 @@ func (wm *WM) Unfocus(c *Client, setFocusToRoot bool) {
 	wm.setBorderWindowColor(c, wm.BorderNorm)
 	if setFocusToRoot {
 		xproto.SetInputFocus(wm.Conn, xproto.InputFocusPointerRoot,
-			wm.Root, xproto.TimeCurrentTime)
+			wm.Root, xproto.Timestamp(wm.focusTimestamp()))
 		wm.setRootWindow(NetActiveWindow, xproto.WindowNone)
 	}
 	wm.drawTitlebar(c)
@@ -291,16 +291,24 @@ func (wm *WM) getRightClient(c *Client) *Client {
 }
 
 func (wm *WM) setFocus(c *Client) {
-	timestamp := wm.LastUserTime
-	if timestamp == 0 {
-		timestamp = uint32(xproto.TimeCurrentTime)
-	}
-	if !c.NeverFocus {
+	timestamp := wm.focusTimestamp()
+	if !c.TypeNeverFocus && !c.InputNeverFocus {
 		xproto.SetInputFocus(wm.Conn, xproto.InputFocusPointerRoot,
 			c.Win, xproto.Timestamp(timestamp))
 	}
 	wm.setRootWindow(NetActiveWindow, c.Win)
-	wm.sendProtocol(c, wm.Atoms.Get(WMTakeFocus), timestamp, 0, 0)
+	if c.TakeFocus && timestamp != 0 {
+		wm.sendProtocol(c, wm.Atoms.Get(WMTakeFocus), timestamp, 0, 0)
+	}
+}
+
+func (c *Client) refreshFocusEligibility() {
+	c.NeverFocus = c.TypeNeverFocus || (c.InputNeverFocus && !c.TakeFocus)
+}
+
+func (wm *WM) updateFocusProtocols(c *Client) {
+	c.TakeFocus = wm.supportsProtocol(c, wm.Atoms.Get(WMTakeFocus))
+	c.refreshFocusEligibility()
 }
 
 func (wm *WM) logSelClientInfo() {

@@ -25,14 +25,10 @@ func (wm *WM) getAtomProps(c *Client, prop xproto.Atom, maxN uint32) []xproto.At
 }
 
 func (wm *WM) getWindowAtomProps(w xproto.Window, prop xproto.Atom, maxN uint32) []xproto.Atom {
-	reply, err := xproto.GetProperty(wm.Conn, false, w, prop,
-		xproto.AtomAtom, 0, maxN).Reply()
-	if err != nil || reply.ValueLen == 0 {
-		return nil
-	}
-	atoms := make([]xproto.Atom, reply.ValueLen)
-	for i := uint32(0); i < reply.ValueLen; i++ {
-		atoms[i] = xproto.Atom(getUint32(reply.Value[i*4:]))
+	values := wm.windowProperty32(w, prop, xproto.AtomAtom, 1, maxN)
+	atoms := make([]xproto.Atom, len(values))
+	for i, value := range values {
+		atoms[i] = xproto.Atom(value)
 	}
 	return atoms
 }
@@ -91,7 +87,7 @@ func (wm *WM) setFrameExtents(c *Client, top uint32) {
 func (wm *WM) getState(w xproto.Window) int {
 	reply, err := xproto.GetProperty(wm.Conn, false, w,
 		wm.Atoms.Get(WMState), wm.Atoms.Get(WMState), 0, 2).Reply()
-	if err != nil || reply.ValueLen == 0 {
+	if err != nil || !validProperty32(reply, wm.Atoms.Get(WMState), 2, 2) {
 		return -1
 	}
 	return int(getUint32(reply.Value))
@@ -119,25 +115,13 @@ func (wm *WM) sendEvent(c *Client, proto xproto.Atom) bool {
 }
 
 func (wm *WM) supportsProtocol(c *Client, proto xproto.Atom) bool {
-	reply, err := xproto.GetProperty(wm.Conn, false, c.Win,
-		wm.Atoms.Get(WMProtocols), xproto.AtomAtom, 0, 32).Reply()
-	if err != nil || reply.ValueLen == 0 {
-		return false
-	}
-
-	exists := false
-	for i := uint32(0); i < reply.ValueLen; i++ {
-		a := xproto.Atom(getUint32(reply.Value[i*4:]))
-		if a == proto {
-			exists = true
-			break
-		}
-	}
-
-	return exists
+	return atomListContains(wm.getAtomProps(c, wm.Atoms.Get(WMProtocols), 256), proto)
 }
 
 func (wm *WM) sendProtocol(c *Client, proto xproto.Atom, timestamp, data2, data3 uint32) bool {
+	if proto == wm.Atoms.Get(WMTakeFocus) && timestamp == 0 {
+		return false
+	}
 	if !wm.supportsProtocol(c, proto) {
 		return false
 	}
@@ -195,7 +179,7 @@ func (wm *WM) updateWindowType(c *Client) {
 	if wm.hasFloatingWindowType(wtypes) {
 		c.IsFloating = true
 	}
-	c.NeverFocus = c.TypeNeverFocus || c.InputNeverFocus
+	c.refreshFocusEligibility()
 	wm.publishAllowedActions(c)
 }
 
@@ -242,15 +226,28 @@ func (wm *WM) hasFloatingWindowType(wtypes []xproto.Atom) bool {
 // updateSizeHints reads ICCCM size hints.
 func (wm *WM) updateSizeHints(c *Client) {
 	c.HasPositionHint = false
+	c.BaseW, c.BaseH, c.IncW, c.IncH = 0, 0, 0, 0
+	c.MinW, c.MinH, c.MaxW, c.MaxH = 0, 0, 0, 0
+	c.MinA, c.MaxA = 0, 0
+	c.IsFixed = false
+	c.WinGravity = xproto.GravityNorthWest
+	c.HintsValid = true
 
 	reply, err := xproto.GetProperty(wm.Conn, false, c.Win,
 		xproto.AtomWmNormalHints, xproto.AtomWmSizeHints, 0, 18).Reply()
-	if err != nil || reply.ValueLen < 18 {
+	if err != nil || !validProperty32(reply, xproto.AtomWmSizeHints, 15, 18) {
 		return
 	}
 
 	v := reply.Value
 	flags := getUint32(v[0:])
+	// Pre-ICCCM size hints contain 15 words, without base size or gravity.
+	if reply.ValueLen < 17 {
+		flags &^= 1 << 8
+	}
+	if reply.ValueLen < 18 {
+		flags &^= 1 << 9
+	}
 	const (
 		usPosition  = 1 << 0
 		pPosition   = 1 << 2
@@ -330,7 +327,7 @@ func (wm *WM) updateColormapWindows(c *Client) {
 	reply, err := xproto.GetProperty(wm.Conn, false, c.Win, wm.Atoms.Get(WMColormapWindows),
 		xproto.AtomWindow, 0, 256).Reply()
 	c.ColormapWindows = c.ColormapWindows[:0]
-	if err == nil {
+	if err == nil && validProperty32(reply, xproto.AtomWindow, 1, 256) {
 		for i := uint32(0); i < reply.ValueLen; i++ {
 			win := xproto.Window(getUint32(reply.Value[i*4:]))
 			c.ColormapWindows = append(c.ColormapWindows, win)
@@ -378,13 +375,14 @@ func (wm *WM) clientForColormapWindow(win xproto.Window) *Client {
 
 // updateWMHints reads ICCCM WM_HINTS.
 func (wm *WM) updateWMHints(c *Client) {
+	c.InputNeverFocus = false
+	c.IsUrgent = false
+	c.WindowGroup = xproto.WindowNone
+	c.InitialIconic = false
+	defer c.refreshFocusEligibility()
 	reply, err := xproto.GetProperty(wm.Conn, false, c.Win,
 		xproto.AtomWmHints, xproto.AtomWmHints, 0, 9).Reply()
-	if err != nil || reply.ValueLen == 0 {
-		c.InputNeverFocus = false
-		c.NeverFocus = c.TypeNeverFocus
-		c.IsUrgent = false
-		c.WindowGroup = xproto.WindowNone
+	if err != nil || !validProperty32(reply, xproto.AtomWmHints, 8, 9) {
 		return
 	}
 
@@ -414,7 +412,6 @@ func (wm *WM) updateWMHints(c *Client) {
 	} else {
 		c.InputNeverFocus = false
 	}
-	c.NeverFocus = c.TypeNeverFocus || c.InputNeverFocus
 	if flags&windowGroupHint != 0 && reply.ValueLen >= 9 {
 		c.WindowGroup = xproto.Window(getUint32(v[32:]))
 	}
@@ -660,7 +657,7 @@ func (wm *WM) setUrgent(c *Client, urg bool) {
 	const urgencyHint = 1 << 8
 	v := reply.Value
 	valueLen := reply.ValueLen
-	if valueLen == 0 {
+	if !validProperty32(reply, xproto.AtomWmHints, 8, 9) {
 		if !urg {
 			return
 		}

@@ -10,6 +10,19 @@ import (
 )
 
 func (wm *WM) handleEvent(ev xgb.Event) {
+	previousTime := wm.focusEventTime
+	wm.focusEventTime = 0
+	switch e := ev.(type) {
+	case xproto.KeyPressEvent:
+		wm.focusEventTime = uint32(e.Time)
+	case xproto.ButtonPressEvent:
+		wm.focusEventTime = uint32(e.Time)
+	case xproto.EnterNotifyEvent:
+		wm.focusEventTime = uint32(e.Time)
+	case xproto.MotionNotifyEvent:
+		wm.focusEventTime = uint32(e.Time)
+	}
+	defer func() { wm.focusEventTime = previousTime }()
 	switch e := ev.(type) {
 	case randrNotifyEvent:
 		wm.refreshRootGeometry()
@@ -198,6 +211,10 @@ func (wm *WM) handleConfigureRequest(e xproto.ConfigureRequestEvent) {
 		if c.IsDock {
 			return
 		}
+		if c.IsFullscreen {
+			wm.configure(c)
+			return
+		}
 		valueMask := e.ValueMask &^ xproto.ConfigWindowBorderWidth
 		if c.IsFloating || wm.SelMon.Lt.Arrange == nil {
 			m := c.Mon
@@ -303,6 +320,7 @@ func (wm *WM) handleDestroyNotify(e xproto.DestroyNotifyEvent) {
 		for c := m.Clients; c != nil; c = c.Next {
 			if c.UserTimeWindow == e.Window {
 				c.UserTimeWindow = xproto.WindowNone
+				c.UserTime, c.HasUserTime = 0, false
 			}
 		}
 	}
@@ -346,9 +364,29 @@ func (wm *WM) handleEnterNotify(e xproto.EnterNotifyEvent) {
 }
 
 func (wm *WM) handleFocusIn(e xproto.FocusInEvent) {
-	if wm.SelMon.Sel != nil && e.Event != wm.SelMon.Sel.Win {
-		wm.setFocus(wm.SelMon.Sel)
+	// Grabs and focus transitions through ancestors are not focus stealing.
+	if e.Mode != xproto.NotifyModeNormal || e.Detail == xproto.NotifyDetailInferior {
+		return
 	}
+	c := wm.Focused
+	if c == nil || e.Event == c.Win {
+		return
+	}
+	// Consult the current server state: queued FocusIn events can already be
+	// obsolete, and toolkits may legitimately focus a descendant widget.
+	if focus, err := xproto.GetInputFocus(wm.Conn).Reply(); err == nil && focus != nil {
+		for win := focus.Focus; win != 0 && win != wm.Root && win != xproto.InputFocusPointerRoot; {
+			if win == c.Win {
+				return
+			}
+			tree, err := xproto.QueryTree(wm.Conn, win).Reply()
+			if err != nil || tree == nil || tree.Parent == win {
+				break
+			}
+			win = tree.Parent
+		}
+	}
+	wm.setFocus(c)
 }
 
 func (wm *WM) handleExpose(e xproto.ExposeEvent) {
@@ -469,7 +507,7 @@ func (wm *WM) handlePropertyNotify(e xproto.PropertyNotifyEvent) {
 		prop, err := xproto.GetProperty(wm.Conn, false, c.Win,
 			xproto.AtomWmTransientFor, xproto.AtomWindow, 0, 1).Reply()
 		c.TransientFor = xproto.WindowNone
-		if err == nil && prop.ValueLen > 0 {
+		if err == nil && validProperty32(prop, xproto.AtomWindow, 1, 1) {
 			c.TransientFor = xproto.Window(getUint32(prop.Value))
 			if wm.winToClient(c.TransientFor) != nil && !c.IsFloating {
 				c.IsFloating = true
@@ -484,6 +522,14 @@ func (wm *WM) handlePropertyNotify(e xproto.PropertyNotifyEvent) {
 		wm.publishAllowedActions(c)
 	case xproto.AtomWmHints:
 		wm.updateWMHints(c)
+		if c == wm.Focused && c.NeverFocus {
+			wm.Focus(nil)
+		}
+	case wm.Atoms.Get(WMProtocols):
+		wm.updateFocusProtocols(c)
+		if c == wm.Focused && c.NeverFocus {
+			wm.Focus(nil)
+		}
 	case wm.Atoms.Get(WMColormapWindows):
 		wm.updateColormapWindows(c)
 	}
@@ -572,7 +618,7 @@ func (wm *WM) manage(w xproto.Window, wa *xproto.GetWindowAttributesReply) {
 	// Check transient
 	transProp, err := xproto.GetProperty(wm.Conn, false, w,
 		xproto.AtomWmTransientFor, xproto.AtomWindow, 0, 1).Reply()
-	if err == nil && transProp.ValueLen > 0 {
+	if err == nil && validProperty32(transProp, xproto.AtomWindow, 1, 1) {
 		transWin := xproto.Window(getUint32(transProp.Value))
 		c.TransientFor = transWin
 		if t := wm.winToClient(transWin); t != nil {
@@ -621,7 +667,23 @@ func (wm *WM) manage(w xproto.Window, wa *xproto.GetWindowAttributesReply) {
 	wm.updateWindowType(c)
 	wm.updateSizeHints(c)
 	wm.updateWMHints(c)
+	wm.updateFocusProtocols(c)
 	wm.updateColormapWindows(c)
+	wm.updateUserTime(c)
+	noInitialFocus := c.HasUserTime && c.UserTime == 0
+	if noInitialFocus && !wm.dragging {
+		// Mapping/retiling beneath a stationary pointer must not override the
+		// application's request. Grab crossings (including the ungrab) are
+		// ignored by focus-follows-mouse; subsequent real crossings still work.
+		if grab, err := xproto.GrabPointer(wm.Conn, false, wm.Root, 0,
+			xproto.GrabModeAsync, xproto.GrabModeAsync, 0, 0, xproto.TimeCurrentTime).Reply(); err == nil && grab != nil && grab.Status == xproto.GrabStatusSuccess {
+			wm.mapFocusSuppression++
+			defer func() {
+				wm.mapFocusSuppression--
+				xproto.UngrabPointer(wm.Conn, xproto.TimeCurrentTime)
+			}()
+		}
+	}
 	initialIconic := c.InitialIconic || wasIconic
 	c.Minimized = false
 	wm.ClientMap[c.Win] = c
@@ -633,7 +695,6 @@ func (wm *WM) manage(w xproto.Window, wa *xproto.GetWindowAttributesReply) {
 	wm.publishClientDesktop(c)
 	wm.publishAllowedActions(c)
 	wm.updateStrut(c)
-	wm.updateUserTime(c)
 	wm.updateFullscreenMonitors(c)
 	wm.updateSyncCounter(c)
 
@@ -642,7 +703,7 @@ func (wm *WM) manage(w xproto.Window, wa *xproto.GetWindowAttributesReply) {
 			xproto.EventMaskPropertyChange | xproto.EventMaskStructureNotify})
 	wm.GrabButtons(c, false)
 
-	isTransient := transProp != nil && transProp.ValueLen > 0
+	isTransient := validProperty32(transProp, xproto.AtomWindow, 1, 1)
 	if !c.IsFloating {
 		c.IsFloating = isTransient || c.IsFixed
 		c.OldState = c.IsFloating
@@ -650,6 +711,11 @@ func (wm *WM) manage(w xproto.Window, wa *xproto.GetWindowAttributesReply) {
 	wm.placeFloatingOnManage(c)
 	wm.attachBottom(c)
 	wm.attachStack(c)
+	if noInitialFocus && wm.Focused != nil && wm.Focused.Mon == c.Mon {
+		// Keep the current client as the fallback selected by Focus(nil).
+		wm.detachStack(wm.Focused)
+		wm.attachStack(wm.Focused)
+	}
 	xproto.ChangeSaveSet(wm.Conn, xproto.SetModeInsert, c.Win)
 	wm.applyInitialState(c)
 
@@ -667,10 +733,10 @@ func (wm *WM) manage(w xproto.Window, wa *xproto.GetWindowAttributesReply) {
 		wm.setClientState(c, icccmNormalState)
 	}
 
-	if c.Mon == wm.SelMon && !c.NeverFocus && !initialIconic {
+	if c.Mon == wm.SelMon && !c.NeverFocus && !initialIconic && !noInitialFocus {
 		wm.Unfocus(wm.SelMon.Sel, false)
 	}
-	if !c.NeverFocus && !initialIconic {
+	if !c.NeverFocus && !initialIconic && !noInitialFocus {
 		c.Mon.Sel = c
 	}
 	wm.Arrange(c.Mon)
@@ -678,14 +744,17 @@ func (wm *WM) manage(w xproto.Window, wa *xproto.GetWindowAttributesReply) {
 	if initialIconic {
 		wm.publishClientState(c)
 		wm.Focus(nil)
-	} else if c.NeverFocus {
+	} else if c.NeverFocus || noInitialFocus {
 		xproto.MapWindow(wm.Conn, c.Win)
 		c.HasMapped = true
 		wm.showBorderWindow(c)
 		if c.IsFloating && !c.IsDock && !c.IsFullscreen {
 			wm.createTitlebar(c)
 		}
-		wm.Focus(nil)
+		if !noInitialFocus {
+			wm.Focus(nil)
+		}
+		wm.publishClientState(c)
 	} else {
 		xproto.MapWindow(wm.Conn, c.Win)
 		c.HasMapped = true

@@ -42,6 +42,7 @@ type Client struct {
 	// State flags
 	IsFixed, IsFloating, IsUrgent, NeverFocus bool
 	TypeNeverFocus, InputNeverFocus           bool
+	TakeFocus                                 bool
 	InitialIconic                             bool
 	HasPositionHint                           bool
 	OldState                                  bool // was floating before fullscreen
@@ -64,6 +65,7 @@ type Client struct {
 	FullscreenMonitors                        [4]uint32
 	HasFullscreenMonitors                     bool
 	UserTime                                  uint32
+	HasUserTime                               bool
 	UserTimeWindow                            xproto.Window
 	Strut                                     [12]uint32
 	HasStrut                                  bool
@@ -217,24 +219,27 @@ type WM struct {
 	Actions map[string]config.ActionFunc
 
 	// Cairo titlebar support
-	XlibDpy           unsafe.Pointer // *C.Display – opened once for Cairo
-	ShapeAvailable    bool
-	XineramaAvailable bool
-	XSyncAvailable    bool
-	RandRAvailable    bool
-	RandROpcode       byte
-	RandREventBase    byte
-	ShowingDesktop    bool
-	LastUserTime      uint32
-	NextManageSeq     uint64
-	DesktopNames      []string
-	DockStruts        map[xproto.Window][12]uint32
-	ShowDesktopFocus  *Client
-	WMSelection       xproto.Atom
-	SelectionTime     uint32
-	ShuttingDown      bool
-	TitlebarMap       map[xproto.Window]*Client // titlebar win → owning client
-	FrameMap          map[xproto.Window]*Client // floating frame win → owning client
+	XlibDpy             unsafe.Pointer // *C.Display – opened once for Cairo
+	ShapeAvailable      bool
+	XineramaAvailable   bool
+	XSyncAvailable      bool
+	RandRAvailable      bool
+	RandROpcode         byte
+	RandREventBase      byte
+	ShowingDesktop      bool
+	LastUserTime        uint32
+	focusEventTime      uint32 // scoped to the event currently being dispatched
+	focusClock          *focusClock
+	mapFocusSuppression int // protects the temporary mapping pointer grab
+	NextManageSeq       uint64
+	DesktopNames        []string
+	DockStruts          map[xproto.Window][12]uint32
+	ShowDesktopFocus    *Client
+	WMSelection         xproto.Atom
+	SelectionTime       uint32
+	ShuttingDown        bool
+	TitlebarMap         map[xproto.Window]*Client // titlebar win → owning client
+	FrameMap            map[xproto.Window]*Client // floating frame win → owning client
 }
 
 // Cursor types

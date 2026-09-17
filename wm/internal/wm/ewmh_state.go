@@ -205,7 +205,7 @@ func (wm *WM) applyInitialDesktop(c *Client) {
 	}
 	reply, err := xproto.GetProperty(wm.Conn, false, c.Win, wm.Atoms.Get(NetWMDesktop),
 		xproto.AtomCardinal, 0, 1).Reply()
-	if err != nil || reply.ValueLen == 0 {
+	if err != nil || !validProperty32(reply, xproto.AtomCardinal, 1, 1) {
 		return
 	}
 	wm.moveClientToDesktop(c, getUint32(reply.Value))
@@ -594,16 +594,7 @@ func (wm *WM) updateExternalDockStrut(win xproto.Window) {
 }
 
 func (wm *WM) getWindowCardinals(win xproto.Window, name AtomName, count uint32) []uint32 {
-	reply, err := xproto.GetProperty(wm.Conn, false, win, wm.Atoms.Get(name),
-		xproto.AtomCardinal, 0, count).Reply()
-	if err != nil || reply.ValueLen == 0 {
-		return nil
-	}
-	values := make([]uint32, reply.ValueLen)
-	for i := range values {
-		values[i] = getUint32(reply.Value[i*4:])
-	}
-	return values
+	return wm.windowProperty32(win, wm.Atoms.Get(name), xproto.AtomCardinal, 1, count)
 }
 
 func (wm *WM) publishWorkareaFromStruts() {
@@ -675,7 +666,8 @@ func (wm *WM) forwardWindowOpacity(c *Client) {
 }
 
 func (wm *WM) updateUserTime(c *Client) {
-	if values := wm.getWindowCardinals(c.Win, NetWMUserTimeWindow, 1); len(values) == 1 {
+	c.UserTime, c.HasUserTime = 0, false
+	if values := wm.windowProperty32(c.Win, wm.Atoms.Get(NetWMUserTimeWindow), xproto.AtomWindow, 1, 1); len(values) == 1 {
 		c.UserTimeWindow = xproto.Window(values[0])
 	} else {
 		c.UserTimeWindow = xproto.WindowNone
@@ -687,7 +679,8 @@ func (wm *WM) updateUserTime(c *Client) {
 	}
 	reply, err := xproto.GetProperty(wm.Conn, false, source, wm.Atoms.Get(NetWMUserTime),
 		xproto.AtomCardinal, 0, 1).Reply()
-	if err == nil && reply.ValueLen == 1 {
+	if err == nil && validProperty32(reply, xproto.AtomCardinal, 1, 1) {
+		c.HasUserTime = true
 		c.UserTime = getUint32(reply.Value)
 	}
 }

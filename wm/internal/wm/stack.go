@@ -87,14 +87,14 @@ func (wm *WM) SetFullscreen(c *Client, fullscreen bool) {
 		// Grab pointer so EnterNotify events from the resize get Mode=WhileGrabbed
 		// and are ignored by handleEnterNotify, preventing focus-follows-mouse
 		// from stealing focus during the geometry change.
-		if !wm.dragging {
+		if !wm.dragging && wm.mapFocusSuppression == 0 {
 			xproto.GrabPointerUnchecked(wm.Conn, false, wm.Root, 0,
 				xproto.GrabModeAsync, xproto.GrabModeAsync,
 				xproto.WindowNone, xproto.CursorNone, xproto.TimeCurrentTime)
 		}
 		wm.applyFullscreenGeometry(c)
 		wm.raiseWindow(wm.stackWindow(c))
-		if !wm.dragging {
+		if !wm.dragging && wm.mapFocusSuppression == 0 {
 			xproto.UngrabPointer(wm.Conn, xproto.TimeCurrentTime)
 		}
 	} else if !fullscreen && c.IsFullscreen {
@@ -102,7 +102,7 @@ func (wm *WM) SetFullscreen(c *Client, fullscreen bool) {
 		c.IsFloating = c.OldState
 		c.BW = c.OldBW
 		x, y, width, height := c.fullscreenRestoreGeometry()
-		if !wm.dragging {
+		if !wm.dragging && wm.mapFocusSuppression == 0 {
 			xproto.GrabPointerUnchecked(wm.Conn, false, wm.Root, 0,
 				xproto.GrabModeAsync, xproto.GrabModeAsync,
 				xproto.WindowNone, xproto.CursorNone, xproto.TimeCurrentTime)
@@ -119,7 +119,7 @@ func (wm *WM) SetFullscreen(c *Client, fullscreen bool) {
 			wm.setShaded(c, true)
 		}
 		wm.Arrange(c.Mon)
-		if !wm.dragging {
+		if !wm.dragging && wm.mapFocusSuppression == 0 {
 			xproto.UngrabPointer(wm.Conn, xproto.TimeCurrentTime)
 		}
 	}
@@ -184,13 +184,13 @@ func (wm *WM) ToggleMaximize(arg *config.Arg) {
 	wm.setMaximizedAxes(c, maximized, maximized)
 	// Grab pointer so EnterNotify events from the layout change get
 	// Mode=WhileGrabbed and are ignored by handleEnterNotify.
-	if !wm.dragging {
+	if !wm.dragging && wm.mapFocusSuppression == 0 {
 		xproto.GrabPointerUnchecked(wm.Conn, false, wm.Root, 0,
 			xproto.GrabModeAsync, xproto.GrabModeAsync,
 			xproto.WindowNone, xproto.CursorNone, xproto.TimeCurrentTime)
 	}
 	wm.Arrange(wm.SelMon)
-	if !wm.dragging {
+	if !wm.dragging && wm.mapFocusSuppression == 0 {
 		xproto.UngrabPointer(wm.Conn, xproto.TimeCurrentTime)
 	}
 	wm.publishClientState(c)

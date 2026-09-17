@@ -70,6 +70,31 @@ func (wm *WM) pollDragEvent() xgb.Event {
 	}
 }
 
+// dragPosition returns the latest position and whether the drag has ended.
+// Never discard the final motion when a release is queued in the same batch.
+func (wm *WM) dragPosition(ev xgb.Event) (xproto.MotionNotifyEvent, bool) {
+	var motion xproto.MotionNotifyEvent
+	switch e := ev.(type) {
+	case xproto.ButtonReleaseEvent:
+		return xproto.MotionNotifyEvent{RootX: e.RootX, RootY: e.RootY, Time: e.Time}, true
+	case xproto.MotionNotifyEvent:
+		motion = e
+	}
+	for {
+		extra := wm.pollDragEvent()
+		switch e := extra.(type) {
+		case nil:
+			return motion, false
+		case xproto.MotionNotifyEvent:
+			motion = e
+		case xproto.ButtonReleaseEvent:
+			return xproto.MotionNotifyEvent{RootX: e.RootX, RootY: e.RootY, Time: e.Time}, true
+		default:
+			wm.pendingEvts = append(wm.pendingEvts, extra)
+		}
+	}
+}
+
 // replayPendingEvts dispatches all events that were buffered during a drag.
 func (wm *WM) replayPendingEvts() {
 	for _, ev := range wm.pendingEvts {
@@ -177,7 +202,12 @@ func (wm *WM) MoveMouse(arg *config.Arg) {
 	ptrX, ptrY := wm.getRootPtr()
 
 	wm.dragging = true
-	defer func() { wm.dragging = false; wm.flushClientListStacking() }()
+	previousTime := wm.focusEventTime
+	defer func() {
+		wm.focusEventTime = previousTime
+		wm.dragging = false
+		wm.flushClientListStacking()
+	}()
 
 	var lastSwapTarget *Client // guard: only swap when entering a NEW tiled window
 
@@ -189,29 +219,16 @@ func (wm *WM) MoveMouse(arg *config.Arg) {
 
 		switch e := ev.(type) {
 		case xproto.ConfigureRequestEvent:
-			wm.handleConfigureRequest(e)
+			wm.handleEvent(e)
 		case xproto.MapRequestEvent:
-			wm.handleMapRequest(e)
-		case xproto.MotionNotifyEvent:
-			util.LogDebug("MoveMouse: MotionNotify root=%d,%d", e.RootX, e.RootY)
-			// Coalesce: discard intermediate motion events, keep the latest.
-			for {
-				extra := wm.pollDragEvent()
-				if extra == nil {
-					break
-				}
-				if me, ok := extra.(xproto.MotionNotifyEvent); ok {
-					e = me
-				} else if _, ok := extra.(xproto.ButtonReleaseEvent); ok {
-					goto done
-				} else {
-					// Re-buffer ConfigureRequest / MapRequest / ButtonPress
-					wm.pendingEvts = append(wm.pendingEvts, extra)
-				}
-			}
+			wm.handleEvent(e)
+		case xproto.MotionNotifyEvent, xproto.ButtonReleaseEvent:
+			motion, released := wm.dragPosition(ev)
+			wm.focusEventTime = uint32(motion.Time)
+			wm.recordUserTime(uint32(motion.Time))
 
-			nx := ocx + (int(e.RootX) - ptrX)
-			ny := ocy + (int(e.RootY) - ptrY)
+			nx := ocx + (int(motion.RootX) - ptrX)
+			ny := ocy + (int(motion.RootY) - ptrY)
 
 			nx = wm.snapX(nx, ocx, c.Width())
 			ny = wm.snapClientY(c, ny, ocy)
@@ -224,8 +241,8 @@ func (wm *WM) MoveMouse(arg *config.Arg) {
 				var target *Client
 				for t := m.Clients; t != nil; t = t.Next {
 					if t != c && !t.IsFloating && wm.clientVisible(t) &&
-						int(e.RootX) >= t.X && int(e.RootX) < t.X+t.W &&
-						int(e.RootY) >= t.Y && int(e.RootY) < t.Y+t.H {
+						int(motion.RootX) >= t.X && int(motion.RootX) < t.X+t.W &&
+						int(motion.RootY) >= t.Y && int(motion.RootY) < t.Y+t.H {
 						target = t
 						break
 					}
@@ -240,8 +257,9 @@ func (wm *WM) MoveMouse(arg *config.Arg) {
 				wm.Resize(c, nx, ny, c.W, c.H, true)
 			}
 
-		case xproto.ButtonReleaseEvent:
-			goto done
+			if released {
+				goto done
+			}
 		}
 	}
 
@@ -288,7 +306,12 @@ func (wm *WM) ResizeMouse(arg *config.Arg) {
 	}
 
 	wm.dragging = true
-	defer func() { wm.dragging = false; wm.flushClientListStacking() }()
+	previousTime := wm.focusEventTime
+	defer func() {
+		wm.focusEventTime = previousTime
+		wm.dragging = false
+		wm.flushClientListStacking()
+	}()
 
 	// Warp pointer to bottom-right corner of the window.
 	xproto.WarpPointer(wm.Conn, xproto.WindowNone, c.Win,
@@ -302,38 +325,29 @@ func (wm *WM) ResizeMouse(arg *config.Arg) {
 
 		switch e := ev.(type) {
 		case xproto.ConfigureRequestEvent:
-			wm.handleConfigureRequest(e)
+			wm.handleEvent(e)
 		case xproto.MapRequestEvent:
-			wm.handleMapRequest(e)
-		case xproto.MotionNotifyEvent:
-			util.LogDebug("ResizeMouse: MotionNotify root=%d,%d", e.RootX, e.RootY)
-			// Coalesce intermediate motion events.
-			for {
-				extra := wm.pollDragEvent()
-				if extra == nil {
-					break
-				}
-				if me, ok := extra.(xproto.MotionNotifyEvent); ok {
-					e = me
-				} else if _, ok := extra.(xproto.ButtonReleaseEvent); ok {
-					goto done
-				} else {
-					wm.pendingEvts = append(wm.pendingEvts, extra)
-				}
-			}
+			wm.handleEvent(e)
+		case xproto.MotionNotifyEvent, xproto.ButtonReleaseEvent:
+			motion, released := wm.dragPosition(ev)
+			wm.focusEventTime = uint32(motion.Time)
+			wm.recordUserTime(uint32(motion.Time))
 
 			if !c.IsFloating && wm.SelMon.Lt.Arrange != nil {
 				// Tiled resize adjusts mfact.
-				f := float32(int(e.RootX)-wm.SelMon.WX) / float32(wm.SelMon.WW)
+				f := float32(int(motion.RootX)-wm.SelMon.WX) / float32(wm.SelMon.WW)
 				if wm.SelMon.IsRightTiled {
 					f = 1.0 - f
 				}
 				wm.SetMFact(&config.Arg{F: f + 1.0})
+				if released {
+					goto done
+				}
 				continue
 			}
 
-			nw := max(int(e.RootX)-ocx-2*c.BW+1, 1)
-			nh := max(int(e.RootY)-ocy-2*c.BW+1, 1)
+			nw := max(int(motion.RootX)-ocx-2*c.BW+1, 1)
+			nh := max(int(motion.RootY)-ocy-2*c.BW+1, 1)
 
 			if c.Mon.WX+nw >= wm.SelMon.WX && c.Mon.WX+nw <= wm.SelMon.WX+wm.SelMon.WW &&
 				c.Mon.WY+nh >= wm.SelMon.WY && c.Mon.WY+nh <= wm.SelMon.WY+wm.SelMon.WH {
@@ -347,8 +361,9 @@ func (wm *WM) ResizeMouse(arg *config.Arg) {
 				wm.Resize(c, c.X, c.Y, nw, nh, true)
 			}
 
-		case xproto.ButtonReleaseEvent:
-			goto done
+			if released {
+				goto done
+			}
 		}
 	}
 

@@ -398,7 +398,7 @@ func (wm *WM) Scan() {
 		// Check if transient
 		prop, err := xproto.GetProperty(wm.Conn, false, win,
 			xproto.AtomWmTransientFor, xproto.AtomWindow, 0, 1).Reply()
-		if err == nil && prop.ValueLen > 0 {
+		if err == nil && validProperty32(prop, xproto.AtomWindow, 1, 1) {
 			continue // handle transients in second pass
 		}
 
@@ -416,7 +416,7 @@ func (wm *WM) Scan() {
 
 		prop, err := xproto.GetProperty(wm.Conn, false, win,
 			xproto.AtomWmTransientFor, xproto.AtomWindow, 0, 1).Reply()
-		if err != nil || prop.ValueLen == 0 {
+		if err != nil || !validProperty32(prop, xproto.AtomWindow, 1, 1) {
 			continue
 		}
 
@@ -804,6 +804,10 @@ func (wm *WM) Cleanup() {
 		xproto.DeleteProperty(wm.Conn, wm.Root, wm.Atoms.Get(property))
 	}
 	wm.closeXlibDpy()
+	if wm.focusClock != nil {
+		wm.focusClock.conn.Close()
+		wm.focusClock = nil
+	}
 }
 
 // SetTopOffset adjusts the working area of all monitors.

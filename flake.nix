@@ -26,23 +26,6 @@
 
         settingsPythonEnv = python.withPackages (ps: with ps; [ pyside6 tomlkit ]);
 
-        # ── dev/testing Python env (not shipped in sadeshell) ─────────────────
-        devPythonEnv = python.withPackages (ps: with ps; [
-          pytest
-          xlib
-          pillow
-          emoji
-          pyside6
-          tomlkit
-          dbus-next
-          pulsectl
-          xcffib
-          build
-          setuptools
-          pip
-          ruff
-        ]);
-
         shellSrc = pkgs.lib.cleanSourceWith {
           src    = ./shell;
           filter = path: _type:
@@ -274,55 +257,8 @@
           program = "${sadewm-greeter}/bin/sadewm-greeter";
         };
 
-        devShells.default = pkgs.mkShell {
-          nativeBuildInputs = with pkgs; [
-            # WM build tools
-            gcc
-            gnumake
-            pkg-config
-            gdb
-            go
-            # Shell Qt wrapping
-            qt6.wrapQtAppsHook
-          ];
-
-          buildInputs = with pkgs; [
-            # WM libraries
-            libX11
-            libXinerama
-            xorgserver
-            xrandr
-            xprop
-            xdpyinfo
-            xwd
-            imagemagick
-            picom
-            xterm
-            wmctrl
-            cairo
-            libxscrnsaver
-            # Shell libraries
-            # Dev/testing tools
-            devPythonEnv
-            qt6.qtbase
-            qt6.qtdeclarative
-            qt6.qtsvg
-            libx11
-            libxext
-            libpulseaudio
-            xcb-util-cursor
-          ];
-
-          shellHook = ''
-            # Make sadeshell importable during development
-            export PYTHONPATH="$PWD/shell/src:$PWD/settings-app:$PWD/xdrive''${PYTHONPATH:+:$PYTHONPATH}"
-
-            echo "sadewm + sadeshell dev shell ready"
-            echo "  WM:    cd wm && make"
-            echo "  Shell: python -m sadeshell.main"
-            echo "  Settings: python -m sadesettings.main"
-          '';
-        };
+        # Keep nix develop and nix-shell on the same development environment.
+        devShells.default = import ./shell.nix { inherit pkgs; };
 
         devShells.sadewm-greeter = pkgs.mkShell {
           nativeBuildInputs = with pkgs; [

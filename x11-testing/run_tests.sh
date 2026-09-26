@@ -2,11 +2,12 @@
 # run_tests.sh — Build sadewm and run the X11 test suite.
 # Xvfb and sadewm are started/stopped by conftest.py via xdrive.
 #
-# Usage: ./x11-testing/run_tests.sh [-t test_file.py]
+# Usage: ./x11-testing/run_tests.sh [--backend go|rust] [-t test_file.py]
 #   -t   run only the specified test file (default: all tests)
 set -euo pipefail
 
 TEST_FILE=""
+BACKEND="go"
 LOG_FILE="/tmp/sadewm_headless.log"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
@@ -14,10 +15,13 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 while [[ $# -gt 0 ]]; do
     case "$1" in
         -t) TEST_FILE="$2"; shift ;;
-        *)  echo "Usage: $0 [-t test_file.py]"; exit 1 ;;
+        --backend) BACKEND="$2"; shift ;;
+        *)  echo "Usage: $0 [--backend go|rust] [-t test_file.py]"; exit 1 ;;
     esac
     shift
 done
+
+case "$BACKEND" in go|rust) ;; *) echo "Unknown backend: $BACKEND" >&2; exit 1 ;; esac
 
 # ── Preflight checks ─────────────────────────────────────────────────────────
 if ! command -v python3 &>/dev/null; then
@@ -30,10 +34,18 @@ python3 -c "import Xlib" 2>/dev/null || {
 }
 
 # ── Build sadewm ─────────────────────────────────────────────────────────────
-echo "==> Building sadewm..."
-cd "$REPO_ROOT/wm"
-make -s 2>&1
-WM_BIN="$REPO_ROOT/wm/sadewm"
+if [[ -n "${SADEWM_BIN:-${SADEWM_TEST_BINARY:-}}" ]]; then
+    WM_BIN="${SADEWM_BIN:-$SADEWM_TEST_BINARY}"
+elif [[ "$BACKEND" == "rust" ]]; then
+    cargo build --manifest-path "$REPO_ROOT/wm-rs/Cargo.toml"
+    WM_BIN="$REPO_ROOT/wm-rs/target/debug/sadewm-rs"
+elif [[ "$BACKEND" == "go" ]]; then
+    make -s -C "$REPO_ROOT/wm"
+    WM_BIN="$REPO_ROOT/wm/sadewm"
+else
+    echo "Unknown backend: $BACKEND" >&2
+    exit 1
+fi
 if [[ ! -x "$WM_BIN" ]]; then
     echo "ERROR: sadewm binary not found at $WM_BIN" >&2
     exit 1
@@ -51,10 +63,10 @@ EXIT_CODE=0
 
 if [[ -n "$TEST_FILE" ]]; then
     echo "==> Running test: $TEST_FILE"
-    python3 -m pytest "$TEST_FILE" -v || EXIT_CODE=$?
+    dbus-run-session --config-file="$REPO_ROOT/tests/integration/session.conf" -- python3 -m pytest "$TEST_FILE" -v || EXIT_CODE=$?
 else
     echo "==> Running all tests in $SCRIPT_DIR/"
-    python3 -m pytest "$SCRIPT_DIR" -v || EXIT_CODE=$?
+    dbus-run-session --config-file="$REPO_ROOT/tests/integration/session.conf" -- python3 -m pytest "$SCRIPT_DIR" -v || EXIT_CODE=$?
 fi
 
 # ── Dump WM log on failure ───────────────────────────────────────────────────

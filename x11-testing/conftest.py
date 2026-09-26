@@ -23,6 +23,26 @@ from xdrive import XDrive
 from xdrive.display import VirtualDisplay
 
 
+@pytest.fixture(scope="session", autouse=True)
+def isolated_session_environment(tmp_path_factory):
+    """Never load a real startup script or share IPC/logs in headless tests."""
+    binary = os.environ.get("SADEWM_BIN") or os.environ.get("SADEWM_TEST_BINARY")
+    if not binary:
+        yield
+        return
+    directory = tmp_path_factory.mktemp("sadewm-session")
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setenv("SADEWM_BIN", binary)
+        patch.setenv("HOME", str(directory))
+        for name, child in (("XDG_CONFIG_HOME", "config"), ("XDG_DATA_HOME", "data"),
+                            ("XDG_CACHE_HOME", "cache"), ("XDG_RUNTIME_DIR", "runtime")):
+            path = directory / child
+            path.mkdir(mode=0o700)
+            patch.setenv(name, str(path))
+        patch.setenv("SADEWM_SOCKET", str(directory / "wm.sock"))
+        yield
+
+
 @pytest.fixture(scope="session")
 def xd():
     """Session-scoped XDrive instance with Xvfb + sadewm lifecycle management.

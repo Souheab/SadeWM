@@ -44,12 +44,13 @@ def desktop(tmp_path, monkeypatch):
             time.sleep(0.3)
             assert compositor.poll() is None
         monkeypatch.setenv("SADEWM_SOCKET", str(tmp_path / "wm.sock"))
+        monkeypatch.setenv("HOME", str(tmp_path))
         monkeypatch.setenv("XDG_RUNTIME_DIR", str(tmp_path))
         monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config"))
         monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "data"))
         monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "cache"))
         log = (tmp_path / "wm.log").open("w")
-        process = subprocess.Popen([os.environ.get("SADEWM_TEST_BINARY", "/tmp/sadewm-validation"), "--no-config"], stdout=log, stderr=log)
+        process = subprocess.Popen([(os.environ.get("SADEWM_TEST_BINARY") or os.environ.get("SADEWM_BIN", "/tmp/sadewm-validation")), "--no-config"], stdout=log, stderr=log)
         try:
             wait_for(lambda: (tmp_path / "wm.sock").exists())
             connection = display.Display()

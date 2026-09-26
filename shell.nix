@@ -25,6 +25,10 @@ pkgs.mkShell {
     pkg-config
     gdb
     go
+    cargo
+    rustc
+    rustfmt
+    clippy
     # Shell Qt wrapping
     qt6.wrapQtAppsHook
   ];
@@ -62,6 +66,7 @@ pkgs.mkShell {
 
     echo "sadewm + sadeshell dev shell ready"
     echo "  WM:       cd wm && make"
+    echo "  Rust WM:  cargo build --manifest-path wm-rs/Cargo.toml"
     echo "  Shell:    python -m sadeshell.main"
     echo "  Settings: python -m sadesettings.main"
   '';

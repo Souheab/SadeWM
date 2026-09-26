@@ -1,0 +1,313 @@
+{
+  "environment": "Linux-7.2.6-zen2-x86_64-with-glibc2.42",
+  "idle_seconds": 3,
+  "note": "Single local run; Xvfb, release binaries, debug logging disabled. Not a hardware or compositor performance claim.",
+  "go": [
+    {
+      "windows": 1,
+      "layout": "tiled",
+      "rss_empty_kib": 11572,
+      "rss_loaded_kib": 11636,
+      "rss_after_cleanup_kib": 13216,
+      "idle_cpu_percent": 0.0,
+      "ipc": {
+        "p50_ms": 0.062,
+        "p95_ms": 0.11
+      },
+      "focus": {
+        "p50_ms": 0.936,
+        "p95_ms": 1.173
+      },
+      "property_writes_100_focuses": {
+        "_NET_ACTIVE_WINDOW": 100
+      },
+      "resources_before": {
+        "WINDOW": 2,
+        "GC": 1,
+        "CURSOR": 3,
+        "COLORMAP ENTRY": 1,
+        "OTHER CLIENT": 1,
+        "PASSIVE GRAB": 324,
+        "RandRClient": 1
+      },
+      "resources_after": {
+        "WINDOW": 2,
+        "GC": 1,
+        "CURSOR": 3,
+        "COLORMAP ENTRY": 1,
+        "OTHER CLIENT": 1,
+        "PASSIVE GRAB": 324,
+        "RandRClient": 1
+      },
+      "threads": 9,
+      "fds": 12
+    },
+    {
+      "windows": 20,
+      "layout": "tiled",
+      "rss_empty_kib": 11648,
+      "rss_loaded_kib": 14588,
+      "rss_after_cleanup_kib": 16328,
+      "idle_cpu_percent": 0.0,
+      "ipc": {
+        "p50_ms": 0.207,
+        "p95_ms": 0.326
+      },
+      "focus": {
+        "p50_ms": 1.765,
+        "p95_ms": 2.275
+      },
+      "property_writes_100_focuses": {
+        "_NET_ACTIVE_WINDOW": 100,
+        "_NET_WM_STATE": 200,
+        "_NET_CLIENT_LIST_STACKING": 100
+      },
+      "resources_before": {
+        "WINDOW": 2,
+        "GC": 1,
+        "CURSOR": 3,
+        "COLORMAP ENTRY": 1,
+        "OTHER CLIENT": 1,
+        "PASSIVE GRAB": 324,
+        "RandRClient": 1
+      },
+      "resources_after": {
+        "WINDOW": 2,
+        "GC": 1,
+        "CURSOR": 3,
+        "COLORMAP ENTRY": 1,
+        "OTHER CLIENT": 1,
+        "PASSIVE GRAB": 324,
+        "RandRClient": 1
+      },
+      "threads": 13,
+      "fds": 12
+    },
+    {
+      "windows": 1,
+      "layout": "floating",
+      "rss_empty_kib": 11688,
+      "rss_loaded_kib": 22628,
+      "rss_after_cleanup_kib": 23980,
+      "idle_cpu_percent": 0.0,
+      "ipc": {
+        "p50_ms": 0.105,
+        "p95_ms": 0.232
+      },
+      "focus": {
+        "p50_ms": 1.05,
+        "p95_ms": 1.332
+      },
+      "property_writes_100_focuses": {
+        "_NET_ACTIVE_WINDOW": 100
+      },
+      "resources_before": {
+        "WINDOW": 2,
+        "GC": 1,
+        "CURSOR": 3,
+        "COLORMAP ENTRY": 1,
+        "OTHER CLIENT": 1,
+        "PASSIVE GRAB": 324,
+        "RandRClient": 1
+      },
+      "resources_after": {
+        "WINDOW": 2,
+        "GC": 1,
+        "CURSOR": 3,
+        "COLORMAP ENTRY": 1,
+        "OTHER CLIENT": 1,
+        "PASSIVE GRAB": 324,
+        "RandRClient": 1
+      },
+      "threads": 9,
+      "fds": 12
+    },
+    {
+      "windows": 20,
+      "layout": "floating",
+      "rss_empty_kib": 11676,
+      "rss_loaded_kib": 25464,
+      "rss_after_cleanup_kib": 27360,
+      "idle_cpu_percent": 0.333,
+      "ipc": {
+        "p50_ms": 0.211,
+        "p95_ms": 0.447
+      },
+      "focus": {
+        "p50_ms": 3.697,
+        "p95_ms": 5.244
+      },
+      "property_writes_100_focuses": {
+        "_NET_ACTIVE_WINDOW": 100,
+        "_NET_WM_STATE": 200,
+        "_NET_CLIENT_LIST_STACKING": 100
+      },
+      "resources_before": {
+        "WINDOW": 2,
+        "GC": 1,
+        "CURSOR": 3,
+        "COLORMAP ENTRY": 1,
+        "OTHER CLIENT": 1,
+        "PASSIVE GRAB": 324,
+        "RandRClient": 1
+      },
+      "resources_after": {
+        "WINDOW": 2,
+        "GC": 1,
+        "CURSOR": 3,
+        "COLORMAP ENTRY": 1,
+        "OTHER CLIENT": 1,
+        "PASSIVE GRAB": 324,
+        "RandRClient": 1
+      },
+      "threads": 15,
+      "fds": 12
+    }
+  ],
+  "rust": [
+    {
+      "windows": 1,
+      "layout": "tiled",
+      "rss_empty_kib": 8696,
+      "rss_loaded_kib": 8696,
+      "rss_after_cleanup_kib": 8764,
+      "idle_cpu_percent": 0.0,
+      "ipc": {
+        "p50_ms": 0.072,
+        "p95_ms": 0.085
+      },
+      "focus": {
+        "p50_ms": 0.337,
+        "p95_ms": 0.771
+      },
+      "property_writes_100_focuses": {
+        "_NET_ACTIVE_WINDOW": 100
+      },
+      "resources_before": {
+        "WINDOW": 1,
+        "CURSOR": 3,
+        "OTHER CLIENT": 1,
+        "PASSIVE GRAB": 324,
+        "RandRClient": 1
+      },
+      "resources_after": {
+        "WINDOW": 1,
+        "CURSOR": 3,
+        "OTHER CLIENT": 1,
+        "PASSIVE GRAB": 324,
+        "RandRClient": 1
+      },
+      "threads": 3,
+      "fds": 12
+    },
+    {
+      "windows": 20,
+      "layout": "tiled",
+      "rss_empty_kib": 8796,
+      "rss_loaded_kib": 8812,
+      "rss_after_cleanup_kib": 9072,
+      "idle_cpu_percent": 0.0,
+      "ipc": {
+        "p50_ms": 0.269,
+        "p95_ms": 0.424
+      },
+      "focus": {
+        "p50_ms": 0.25,
+        "p95_ms": 1.188
+      },
+      "property_writes_100_focuses": {
+        "_NET_ACTIVE_WINDOW": 100,
+        "_NET_WM_STATE": 200,
+        "_NET_CLIENT_LIST_STACKING": 100
+      },
+      "resources_before": {
+        "WINDOW": 1,
+        "CURSOR": 3,
+        "OTHER CLIENT": 1,
+        "PASSIVE GRAB": 324,
+        "RandRClient": 1
+      },
+      "resources_after": {
+        "WINDOW": 1,
+        "CURSOR": 3,
+        "OTHER CLIENT": 1,
+        "PASSIVE GRAB": 324,
+        "RandRClient": 1
+      },
+      "threads": 3,
+      "fds": 12
+    },
+    {
+      "windows": 1,
+      "layout": "floating",
+      "rss_empty_kib": 8744,
+      "rss_loaded_kib": 10272,
+      "rss_after_cleanup_kib": 10276,
+      "idle_cpu_percent": 0.0,
+      "ipc": {
+        "p50_ms": 0.08,
+        "p95_ms": 0.118
+      },
+      "focus": {
+        "p50_ms": 0.168,
+        "p95_ms": 0.749
+      },
+      "property_writes_100_focuses": {
+        "_NET_ACTIVE_WINDOW": 100
+      },
+      "resources_before": {
+        "WINDOW": 1,
+        "CURSOR": 3,
+        "OTHER CLIENT": 1,
+        "PASSIVE GRAB": 324,
+        "RandRClient": 1
+      },
+      "resources_after": {
+        "WINDOW": 1,
+        "CURSOR": 3,
+        "OTHER CLIENT": 1,
+        "PASSIVE GRAB": 324,
+        "RandRClient": 1
+      },
+      "threads": 3,
+      "fds": 12
+    },
+    {
+      "windows": 20,
+      "layout": "floating",
+      "rss_empty_kib": 8704,
+      "rss_loaded_kib": 10412,
+      "rss_after_cleanup_kib": 10936,
+      "idle_cpu_percent": 0.0,
+      "ipc": {
+        "p50_ms": 0.263,
+        "p95_ms": 0.427
+      },
+      "focus": {
+        "p50_ms": 1.208,
+        "p95_ms": 2.698
+      },
+      "property_writes_100_focuses": {
+        "_NET_ACTIVE_WINDOW": 100,
+        "_NET_WM_STATE": 200,
+        "_NET_CLIENT_LIST_STACKING": 100
+      },
+      "resources_before": {
+        "WINDOW": 1,
+        "CURSOR": 3,
+        "OTHER CLIENT": 1,
+        "PASSIVE GRAB": 324,
+        "RandRClient": 1
+      },
+      "resources_after": {
+        "WINDOW": 1,
+        "CURSOR": 3,
+        "OTHER CLIENT": 1,
+        "PASSIVE GRAB": 324,
+        "RandRClient": 1
+      },
+      "threads": 3,
+      "fds": 12
+    }
+  ]
+}

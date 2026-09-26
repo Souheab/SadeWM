@@ -1,5 +1,18 @@
 just my hobby project building a basic X11 desktop environment
 
+## Window manager implementations
+
+The Go WM in `wm/` remains the default. An independent Rust implementation in
+[`wm-rs/`](wm-rs/README.md) builds as `sadewm-rs` and uses the same configuration,
+X11 identity, IPC, shell and settings app. Build it with `nix build .#sadewm-rs`
+or `cargo build --manifest-path wm-rs/Cargo.toml --release --locked`.
+
+NixOS users can opt in with
+`services.xserver.windowManager.sadewm.backend = "rust";` (default: `"go"`).
+See the [parity checklist](wm-rs/docs/parity.md) and
+[validation results](wm-rs/docs/validation.md) for tested behavior, documented
+differences and remaining hardware checks.
+
 ## Config
 
 sadewm looks for user configuration in `~/.config/sade` by default:

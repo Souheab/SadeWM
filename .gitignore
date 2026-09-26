@@ -4,6 +4,7 @@ wm/sadewm
 wm/*.tar.gz
 wm/compile_commands.json
 wm/.cache/
+wm-rs/target/
 
 # shell artifacts
 shell/pulse_monitor

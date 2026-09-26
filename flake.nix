@@ -193,6 +193,34 @@
           };
         };
 
+        sadewm-rs = pkgs.rustPlatform.buildRustPackage {
+          pname = "sadewm-rs";
+          version = "0.1.0";
+          src = pkgs.lib.cleanSourceWith {
+            src = ./wm-rs;
+            filter = path: type:
+              pkgs.lib.cleanSourceFilter path type &&
+              !(pkgs.lib.hasPrefix "target" (pkgs.lib.removePrefix (toString ./wm-rs + "/") (toString path)));
+          };
+          cargoLock.lockFile = ./wm-rs/Cargo.lock;
+          SADEWM_REVISION = gitRevision;
+          nativeBuildInputs = [ pkgs.makeWrapper ];
+          postInstall = ''
+            install -Dm644 assets/LICENSE-DejaVu $out/share/licenses/sadewm-rs/DejaVu
+            install -Dm644 assets/LICENSE-xgbutil $out/share/licenses/sadewm-rs/xgbutil
+          '';
+          postFixup = ''
+            wrapProgram $out/bin/sadewm-rs \
+              --prefix PATH : "${pkgs.lib.makeBinPath [ pkgs.xrandr pkgs.systemd ]}"
+          '';
+          meta = with pkgs.lib; {
+            description = "Rust SADE X11 window manager";
+            license = licenses.mit;
+            platforms = [ "x86_64-linux" "aarch64-linux" ];
+            mainProgram = "sadewm-rs";
+          };
+        };
+
         # ── sadewm-greeter (Qt5/QML LightDM greeter) ─────────────────────────
         sadewm-greeter = pkgs.stdenv.mkDerivation {
           pname   = "sadewm-greeter";
@@ -233,6 +261,7 @@
       in {
         packages.default        = combined;
         packages.sadewm         = combined;
+        packages.sadewm-rs      = sadewm-rs;
         packages.sadeshell      = sadeshell;
         packages.sadesettings   = sadesettings;
         packages.sadewm-greeter = sadewm-greeter;
@@ -245,6 +274,11 @@
         apps.sadeshell = {
           type    = "app";
           program = "${sadeshell}/bin/sadeshell";
+        };
+
+        apps.sadewm-rs = {
+          type = "app";
+          program = "${sadewm-rs}/bin/sadewm-rs";
         };
 
         apps.sadesettings = {
@@ -288,12 +322,19 @@
       nixosModules.default = { config, lib, pkgs, ... }:
         let
           cfg   = config.services.xserver.windowManager.sadewm;
-          wmPkg = self.packages.${pkgs.stdenv.hostPlatform.system}.sadewm;
+          packages = self.packages.${pkgs.stdenv.hostPlatform.system};
+          wmPkg = if cfg.backend == "rust" then packages.sadewm-rs else packages.sadewm;
+          wmExecutable = if cfg.backend == "rust" then "sadewm-rs" else "sadewm";
         in {
           imports = [ self.nixosModules.sadeshell self.nixosModules.sadewm-greeter ];
 
           options.services.xserver.windowManager.sadewm = {
             enable = lib.mkEnableOption "sadewm window manager";
+            backend = lib.mkOption {
+              type = lib.types.enum [ "go" "rust" ];
+              default = "go";
+              description = "Window manager implementation used by the SADE session.";
+            };
           };
 
           config = lib.mkIf cfg.enable {
@@ -302,7 +343,7 @@
                 name = "SADE";
                 managed = "desktop";
                 start = ''
-                  ${wmPkg}/bin/sadewm &
+                  ${wmPkg}/bin/${wmExecutable} &
                   waitPID=$!
 
                   systemctl --user start sade.target
@@ -311,7 +352,7 @@
               }
             ];
 
-            environment.systemPackages = [ wmPkg ];
+            environment.systemPackages = [ wmPkg ] ++ lib.optionals (cfg.backend == "rust") [ packages.sadeshell packages.sadesettings packages.sadewm-greeter ];
 
             systemd.user.targets.sade = {
               description = "SADE desktop session";

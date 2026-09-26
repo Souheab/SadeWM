@@ -28,6 +28,30 @@ files. The wallpaper remains `~/.config/sade/wp.jpg`, including under
 logs Rust state diagnostics. Logs and the FIFO remain under
 `$XDG_DATA_HOME/sadewm` (or `~/.local/share/sadewm`).
 
+## Interactive nested desktop
+
+From a terminal in your X11 desktop, run:
+
+```sh
+nix develop
+./wm-rs/scripts/run_xephyr_session.sh
+```
+
+This builds the Rust release binary and packaged SadeShell, then starts Xephyr
+on `:7` with picom's XRender backend, SadeShell and two test terminals. The
+window picker opens automatically; use Alt+S to toggle it. Qt uses software
+rendering. The session has a private D-Bus bus, WM socket, logs and control FIFO,
+and skips your WM configuration and `startup.sh`.
+
+Use `--display :8` if `:7` is occupied, `--screen 1600x900x24` to change the
+window size, or `--no-overlay --no-test-windows` for a clean desktop. After the
+first build, `--skip-build` reuses the existing Rust release binary and Nix
+SadeShell output. Run `--help` for all options.
+
+Press Ctrl+C in the launching terminal to stop the session's processes. Logs
+are retained in the printed `/tmp/sadewm-xephyr.*` directory. Xephyr, picom,
+X11 tools and D-Bus are provided by `nix develop`.
+
 ## Opt-in Nix package and session
 
 ```sh

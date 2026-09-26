@@ -9,6 +9,8 @@ or `cargo build --manifest-path wm-rs/Cargo.toml --release --locked`.
 
 NixOS users can opt in with
 `services.xserver.windowManager.sadewm.backend = "rust";` (default: `"go"`).
+For an interactive nested Rust desktop with Xephyr, picom and SadeShell, run
+`nix develop` followed by `./wm-rs/scripts/run_xephyr_session.sh`.
 See the [parity checklist](wm-rs/docs/parity.md) and
 [validation results](wm-rs/docs/validation.md) for tested behavior, documented
 differences and remaining hardware checks.

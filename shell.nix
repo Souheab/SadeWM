@@ -44,6 +44,7 @@ pkgs.mkShell {
     xwd
     imagemagick
     picom
+    dbus
     xterm
     wmctrl
     cairo

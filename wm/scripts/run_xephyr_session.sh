@@ -10,6 +10,8 @@ SCREEN="1280x800x24"
 OPEN_OVERLAY=true
 START_TEST_WINDOWS=true
 SKIP_BUILD=false
+BACKEND=go
+USE_CONFIG=true
 
 usage() {
     cat <<EOF
@@ -20,6 +22,8 @@ backend. By default, two test terminals are opened and the transparent
 Alt+S window-search overlay is displayed.
 
 Options:
+  --backend BACKEND   Window manager implementation: go or rust (default: go)
+  --no-config         Skip WM user configuration and startup scripts
   --display DISPLAY   Nested X display (default: :7)
   --screen GEOMETRY   Xephyr geometry/depth (default: 1280x800x24)
   --no-overlay        Do not open the window picker automatically
@@ -31,6 +35,15 @@ EOF
 
 while (($#)); do
     case "$1" in
+        --backend)
+            [[ $# -ge 2 ]] || { echo "ERROR: --backend needs a value" >&2; exit 2; }
+            BACKEND="$2"
+            shift 2
+            ;;
+        --no-config)
+            USE_CONFIG=false
+            shift
+            ;;
         --display)
             [[ $# -ge 2 ]] || { echo "ERROR: --display needs a value" >&2; exit 2; }
             NESTED_DISPLAY="$2"
@@ -70,7 +83,19 @@ done
     exit 2
 }
 
-required_commands=(Xephyr xdpyinfo picom nix make go)
+case "$BACKEND" in
+    go|rust) ;;
+    *) echo "ERROR: backend must be go or rust" >&2; exit 2 ;;
+esac
+
+required_commands=(Xephyr xdpyinfo picom nix)
+if ! "$SKIP_BUILD"; then
+    if [[ "$BACKEND" == rust ]]; then
+        required_commands+=(cargo)
+    else
+        required_commands+=(make go)
+    fi
+fi
 for command_name in "${required_commands[@]}"; do
     if ! command -v "$command_name" >/dev/null 2>&1; then
         echo "ERROR: '$command_name' is unavailable." >&2
@@ -121,7 +146,9 @@ cleanup() {
     echo "==> Logs retained in $SESSION_DIR"
     exit "$exit_code"
 }
-trap cleanup EXIT INT TERM
+trap cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
 
 build_output() {
     local package="$1"
@@ -132,18 +159,27 @@ build_output() {
     fi
 }
 
-if "$SKIP_BUILD"; then
-    echo "==> Reusing wm/sadewm and the latest sadeshell store output..."
+if [[ "$BACKEND" == rust ]]; then
+    WM_BIN="$REPO_ROOT/wm-rs/target/release/sadewm-rs"
 else
-    echo "==> Building sadewm..."
-    make -B -C "$REPO_ROOT/wm" build
+    WM_BIN="$REPO_ROOT/wm/sadewm"
+fi
+if "$SKIP_BUILD"; then
+    echo "==> Reusing $WM_BIN and the latest sadeshell store output..."
+else
+    echo "==> Building sadewm ($BACKEND)..."
+    if [[ "$BACKEND" == rust ]]; then
+        cargo build --manifest-path "$REPO_ROOT/wm-rs/Cargo.toml" \
+            --target-dir "$REPO_ROOT/wm-rs/target" --release --locked
+    else
+        make -B -C "$REPO_ROOT/wm" build
+    fi
 fi
 if ! "$SKIP_BUILD"; then
     echo "==> Building sadeshell..."
 fi
 SHELL_OUTPUT="$(build_output sadeshell)"
 
-WM_BIN="$REPO_ROOT/wm/sadewm"
 SHELL_BIN="$SHELL_OUTPUT/bin/sadeshell"
 [[ -x "$WM_BIN" ]] || { echo "ERROR: build did not produce $WM_BIN" >&2; exit 1; }
 [[ -x "$SHELL_BIN" ]] || { echo "ERROR: build did not produce $SHELL_BIN" >&2; exit 1; }
@@ -181,10 +217,13 @@ done
 
 export DISPLAY="$NESTED_DISPLAY"
 export XDG_RUNTIME_DIR="$RUNTIME_DIR"
+# Keep WM IPC, log files and its control FIFO separate from the live desktop.
+export SADEWM_SOCKET="$SESSION_DIR/sadewm.sock"
+export XDG_DATA_HOME="$SESSION_DIR/data"
 SHELL_BIN_DIR="$(dirname "$SHELL_BIN")"
 export PATH="$SHELL_BIN_DIR:$PATH"
 
-# Xephyr has no GLX extension. Qt Quick's software scene graph still creates
+# Avoid depending on GLX in Xephyr. Qt Quick's software scene graph creates
 # ARGB windows which Picom can composite over the Xephyr root window.
 export QT_QPA_PLATFORM=xcb
 export QT_QUICK_BACKEND=software
@@ -213,7 +252,7 @@ if [[ ! -S "$SHELL_SOCKET" ]]; then
 fi
 
 echo "==> Starting Picom (XRender)..."
-picom --config /dev/null --backend xrender \
+picom --config /dev/null --backend xrender --no-frame-pacing \
     >"$SESSION_DIR/picom.log" 2>&1 &
 PICOM_PID=$!
 CHILD_PIDS+=("$PICOM_PID")
@@ -223,8 +262,12 @@ if ! kill -0 "$PICOM_PID" 2>/dev/null; then
     exit 1
 fi
 
-echo "==> Starting sadewm..."
-"$WM_BIN" -d >"$SESSION_DIR/sadewm.log" 2>&1 &
+echo "==> Starting sadewm ($BACKEND)..."
+WM_ARGS=(-d)
+if ! "$USE_CONFIG"; then
+    WM_ARGS+=(-no-config)
+fi
+"$WM_BIN" "${WM_ARGS[@]}" >"$SESSION_DIR/sadewm.log" 2>&1 &
 WM_PID=$!
 CHILD_PIDS+=("$WM_PID")
 sleep 0.4

@@ -2,6 +2,9 @@ just my hobby project building a basic X11 desktop environment
 
 ## Window manager implementations
 
+Active window-manager development is focused on the Rust backend in `wm-rs/`.
+The Go backend in `wm/` is frozen for now and retained as a reference.
+
 The Go WM in `wm/` remains the default. An independent Rust implementation in
 [`wm-rs/`](wm-rs/README.md) builds as `sadewm-rs` and uses the same configuration,
 X11 identity, IPC, shell and settings app. Build it with `nix build .#sadewm-rs`

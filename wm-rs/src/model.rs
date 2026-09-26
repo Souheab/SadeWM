@@ -340,7 +340,7 @@ pub fn client_desktop(mask: u32) -> u32 {
 pub fn timestamp_current(value: u32, reference: u32) -> bool {
     value.wrapping_sub(reference) as i32 >= 0
 }
-pub fn tile(m: &Monitor, clients: &[(ClientId, i32, bool)]) -> Vec<(ClientId, Rect)> {
+pub fn tile(m: &Monitor, clients: &[(ClientId, i32)]) -> Vec<(ClientId, Rect)> {
     let n = clients.len();
     let mut result = Vec::new();
     if n == 0 {
@@ -361,15 +361,8 @@ pub fn tile(m: &Monitor, clients: &[(ClientId, i32, bool)]) -> Vec<(ClientId, Re
         (m.work.x + m.gap, m.work.x + mw + m.gap)
     };
     let (mut my, mut ty) = (m.gap, m.gap);
-    for (i, (id, border, maximized)) in clients.iter().enumerate() {
-        let r = if *maximized {
-            Rect::new(
-                m.work.x,
-                m.work.y,
-                m.work.w - 2 * border,
-                m.work.h - 2 * border,
-            )
-        } else if i < m.active.nmaster {
+    for (i, (id, border)) in clients.iter().enumerate() {
+        let r = if i < m.active.nmaster {
             let h = (m.work.h - my) / (n.min(m.active.nmaster) - i) as i32 - m.gap;
             let r = Rect::new(mx, m.work.y + my, mw - 2 * border - m.gap, h - 2 * border);
             my += h + m.gap;
@@ -534,7 +527,7 @@ mod tests {
     fn tiled_geometry_and_reverse() {
         let mut m = Monitor::new(0, Rect::new(0, 0, 1280, 800), &Config::default());
         m.work = Rect::new(0, 40, 1280, 760);
-        let rows = [(ClientId(1), 2, false), (ClientId(2), 2, false)];
+        let rows = [(ClientId(1), 2), (ClientId(2), 2)];
         let a = tile(&m, &rows);
         assert_eq!(a[0].1, Rect::new(10, 50, 626, 736));
         assert_eq!(a[1].1.x, 650);

@@ -296,6 +296,107 @@ tag = 8
 
 
 @pytest.mark.skipif(not RUST, reason="Rust binary required")
+@pytest.mark.parametrize("trigger", ["keyboard", "ewmh", "initial"])
+def test_tiled_maximize_keeps_tile_slot_and_no_titlebar(tmp_path, trigger):
+    from xdrive.window import Window
+
+    with desktop(RUST, tmp_path) as (xd, sock, process, env):
+        dpy = xd._xdisplay
+        root = dpy.screen().root
+        atom = dpy.intern_atom
+        axes = [atom("_NET_WM_STATE_MAXIMIZED_HORZ"), atom("_NET_WM_STATE_MAXIMIZED_VERT")]
+        peers = [xd.new_window(title=f"peer-{i}") for i in range(2)]
+        if trigger == "initial":
+            raw = root.create_window(100, 100, 400, 250, 0, X.CopyFromParent)
+            raw.set_wm_class("Navigator", "firefox")
+            raw.change_property(atom("_NET_WM_STATE"), Xatom.ATOM, 32, axes)
+            raw.map()
+            dpy.sync()
+            win = Window(raw, dpy)
+            xd.wait_for_layout()
+        else:
+            win = xd.new_window(title="tiled-maximize")
+            xd.wait_for_layout()
+        original = win.geometry
+        peer_geometry = [w.geometry for w in peers]
+        request(sock, "focus_window", win_id=win.id)
+        if trigger == "keyboard":
+            xd.keyboard.press("super+m")
+            xd.wait_for_layout()
+        elif trigger == "ewmh":
+            send(xd, win.id, "_NET_WM_STATE", [1, *axes])
+
+        client = next(c for c in request(sock, "get_clients")["clients"] if c["win_id"] == win.id)
+        assert client["maximized"] and not client["floating"]
+        assert win._xwindow.query_tree().parent.id == root.id
+        assert card(xd, win._xwindow, "_NET_FRAME_EXTENTS") == [0, 0, 0, 0]
+        assert set(axes).issubset(card(xd, win._xwindow, "_NET_WM_STATE"))
+        assert win.geometry.x == 0 and win.geometry.y == 40
+        assert win.geometry.width == 1276 and win.geometry.height == 756
+        assert [w.geometry for w in peers] == peer_geometry
+
+        if trigger == "keyboard":
+            xd.keyboard.press("super+m")
+            xd.wait_for_layout()
+        else:
+            send(xd, win.id, "_NET_WM_STATE", [0, *axes])
+        client = next(c for c in request(sock, "get_clients")["clients"] if c["win_id"] == win.id)
+        assert not client["maximized"] and not client["floating"]
+        assert not set(axes).intersection(card(xd, win._xwindow, "_NET_WM_STATE"))
+        assert win._xwindow.query_tree().parent.id == root.id
+        assert [w.geometry for w in peers] == peer_geometry
+        if trigger != "initial":
+            assert win.geometry == original
+        else:
+            assert win.geometry.width < 1276 and win.geometry.x > 0
+        win.kill()
+        for peer in peers:
+            peer.kill()
+
+
+@pytest.mark.skipif(not RUST, reason="Rust binary required")
+def test_tiled_maximize_axes_fullscreen_and_shade_restore(tmp_path):
+    with desktop(RUST, tmp_path) as (xd, sock, process, env):
+        xd.new_window(title="peer")
+        win = xd.new_window(title="tiled-axes")
+        xd.wait_for_layout()
+        original = win.geometry
+        atom = xd._xdisplay.intern_atom
+        horizontal = atom("_NET_WM_STATE_MAXIMIZED_HORZ")
+        vertical = atom("_NET_WM_STATE_MAXIMIZED_VERT")
+        send(xd, win.id, "_NET_WM_STATE", [1, horizontal])
+        assert win.geometry.width == 1276
+        assert (win.geometry.y, win.geometry.height) == (original.y, original.height)
+        send(xd, win.id, "_NET_WM_STATE", [1, vertical])
+        maximized = win.geometry
+        for state in ("_NET_WM_STATE_FULLSCREEN", "_NET_WM_STATE_SHADED"):
+            send(xd, win.id, "_NET_WM_STATE", [1, atom(state)])
+            send(xd, win.id, "_NET_WM_STATE", [0, atom(state)])
+            client = next(c for c in request(sock, "get_clients")["clients"] if c["win_id"] == win.id)
+            assert client["maximized"] and not client["floating"]
+            assert win.geometry == maximized
+            assert card(xd, win._xwindow, "_NET_FRAME_EXTENTS") == [0, 0, 0, 0]
+        send(xd, win.id, "_NET_WM_STATE", [0, horizontal])
+        assert (win.geometry.x, win.geometry.width) == (original.x, original.width)
+        assert win.geometry.y == 40 and win.geometry.height == 756
+        send(xd, win.id, "_NET_WM_STATE", [0, vertical])
+        assert win.geometry == original
+        send(xd, win.id, "_NET_WM_STATE", [1, horizontal, vertical])
+        extra = xd.new_window(title="opened-while-maximized")
+        xd.wait_for_layout()
+        assert win.geometry == maximized
+        send(xd, win.id, "_NET_WM_STATE", [0, horizontal, vertical])
+        assert (win.geometry.x, win.geometry.y, win.geometry.width) == (
+            original.x, original.y, original.width,
+        )
+        assert win.geometry.height == extra.geometry.height < original.height
+        assert extra.geometry.y > win.geometry.y + win.geometry.height
+        extra.kill()
+        xd.wait_for_layout()
+        assert win.geometry == original
+
+
+@pytest.mark.skipif(not RUST, reason="Rust binary required")
 def test_shade_maximize_axes_restore_and_frame_bounds(tmp_path):
     with desktop(RUST, tmp_path) as (xd, sock, process, env):
         win = xd.new_window(title="axes", size=(400, 250), position=(100, 200), type="dialog")

@@ -136,18 +136,21 @@ impl Wm {
                     .iter()
                     .filter_map(|id| {
                         let c = &self.clients[id];
-                        (!c.flags.floating && self.visible(*id)).then_some((
-                            *id,
-                            c.border,
-                            c.maximized(),
-                        ))
+                        (!c.flags.floating && self.visible(*id)).then_some((*id, c.border))
                     })
                     .collect();
                 positions.extend(tile(m, &rows));
             }
         }
         for (id, r) in positions {
-            self.resize(id, r, false)?;
+            let c = self.clients.get_mut(&id).unwrap();
+            if c.flags.max_h || c.flags.max_v {
+                // Reserve the tile slot and track its current geometry without
+                // briefly resizing the maximized window back into that slot.
+                c.normal = Some((r, false));
+            } else {
+                self.resize(id, r, false)?;
+            }
         }
         for id in ids {
             let c = self.clients[&id].clone();
@@ -591,12 +594,12 @@ impl Wm {
         } else {
             c.mapped = true;
             self.conn.map_window(id.0)?;
-            if !c.flags.max_h
-                && !c.flags.max_v
-                && let Some((r, f)) = c.normal.take()
-            {
-                c.geom = r;
+            if let Some((r, f)) = c.normal {
                 c.flags.floating = f;
+                if !c.flags.max_h && !c.flags.max_v {
+                    c.geom = r;
+                    c.normal = None;
+                }
             }
         }
         self.arrange()
@@ -605,7 +608,6 @@ impl Wm {
         let c = self.clients.get_mut(&id).unwrap();
         if h || v {
             c.remember_normal();
-            c.flags.floating = true;
         }
         c.flags.max_h = h;
         c.flags.max_v = v;
@@ -613,7 +615,9 @@ impl Wm {
             return Ok(());
         }
         if h || v {
-            self.frame(id, true)?;
+            let decorated =
+                c.flags.floating || self.monitors[c.monitor.0].active.layout == Layout::Float;
+            self.frame(id, decorated)?;
             self.apply_maximized(id)?;
         } else if let Some((r, f)) = c.normal.take() {
             c.flags.floating = f;

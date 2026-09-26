@@ -1,5 +1,25 @@
 # Validation record
 
+## Tiled maximization update (2026-09-26)
+
+Rust maximization now preserves tiled membership and omits the titlebar for tiled
+windows. The new keyboard regression first failed against the previous release
+because maximization set `floating=true`.
+
+Validation of the updated Rust backend in the pinned Nix development shell:
+
+- Cargo unit tests: 30 passed; formatting and Clippy (`-D warnings`) passed.
+- Release build and Ruff checks passed.
+- Targeted maximize tests: 5 passed, covering keyboard, EWMH and initial mapping
+  state, tile-slot restoration after layout changes, independent axes, fullscreen,
+  shade, and existing floating-frame behavior.
+- Existing X11 window-state and titlebar tests: 11 passed.
+
+X11 checks used private Xvfb servers. Actual Firefox and the live desktop were
+not restarted or tested. The Go backend was not modified.
+
+## Original backend validation
+
 Local validation on 2026-09-26, x86_64 Linux, using the pinned Nix development
 shell: Rust/Cargo/Clippy 1.94.0, Go 1.26.1 and Python 3.13.12. The Go reference is
 commit `941662afe41dc785d0f04e3bc6983f8ec7bb3b76`; `xdrive` was initialized at its

@@ -26,6 +26,13 @@ scrolling desktops or pager-owned desktop layout. Picom remains separate.
 
 ## Intentional differences and confirmed Go bugs
 
+* **Maximizing preserves tiling membership.** Rust expands tiled windows within
+  the work area without adding a titlebar or setting the floating flag, including
+  application requests and maximized state supplied before mapping. Their tile
+  slots remain reserved and track layout changes for restoration. Floating windows
+  retain their decorations and restore their previous geometry. Rust regressions
+  cover keyboard/application/startup requests, independent axes, fullscreen and
+  shade round trips.
 * **Startup key/rule overrides take effect immediately.** Go's `main` applies
   scalar TOML values, then `wm.New()` installs default keys/rules; custom
   keys/rules are first installed on reload. The Rust configuration scenario

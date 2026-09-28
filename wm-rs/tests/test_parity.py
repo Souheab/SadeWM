@@ -397,6 +397,67 @@ def test_tiled_maximize_axes_fullscreen_and_shade_restore(tmp_path):
 
 
 @pytest.mark.skipif(not RUST, reason="Rust binary required")
+@pytest.mark.parametrize("aspect", [(21, 9), (4, 3)], ids=["wide", "tall"])
+@pytest.mark.parametrize("resize_hints", [True, False], ids=["hints-on", "hints-off"])
+@pytest.mark.parametrize("trigger", ["ewmh", "keyboard"])
+def test_mpv_fullscreen_ignores_aspect_hints(tmp_path, aspect, resize_hints, trigger):
+    from Xlib import Xutil
+    from xdrive.window import Window
+
+    config = "[layout]\nresizehints = " + str(resize_hints).lower() + "\n"
+    with desktop(RUST, tmp_path, config=config) as (xd, sock, process, env):
+        dpy = xd._xdisplay
+        root = dpy.screen().root
+        atom = dpy.intern_atom
+        raw = root.create_window(100, 100, 420, 300, 0, X.CopyFromParent)
+        raw.set_wm_class("mpv", "mpv")
+        raw.change_property(atom("_NET_WM_WINDOW_TYPE"), Xatom.ATOM, 32,
+                            [atom("_NET_WM_WINDOW_TYPE_DIALOG")])
+        ratio = dict(num=aspect[0], denum=aspect[1])
+        raw.set_wm_normal_hints(flags=Xutil.PAspect, min_aspect=ratio, max_aspect=ratio)
+        raw.map()
+        dpy.sync()
+        win = Window(raw, dpy)
+        xd.wait_for_layout()
+
+        raw.configure(width=600, height=400)
+        dpy.sync()
+        xd.wait_for_layout()
+        original = win.geometry
+        assert abs(original.width * aspect[1] - original.height * aspect[0]) <= max(aspect)
+        request(sock, "focus_window", win_id=win.id)
+        fullscreen = atom("_NET_WM_STATE_FULLSCREEN")
+
+        def set_fullscreen(on):
+            if trigger == "keyboard":
+                xd.keyboard.press("super+f")
+                xd.wait_for_layout()
+            else:
+                send(xd, win.id, "_NET_WM_STATE", [int(on), fullscreen])
+
+        def assert_fullscreen_geometry():
+            geometry = win.geometry
+            screen = root.get_geometry()
+            assert (geometry.x, geometry.y, geometry.width, geometry.height) == (
+                0, 0, screen.width, screen.height,
+            )
+            assert fullscreen in card(xd, raw, "_NET_WM_STATE")
+
+        set_fullscreen(True)
+        assert_fullscreen_geometry()
+        peer = xd.new_window(title="arrange-while-mpv-fullscreen")
+        xd.wait_for_layout()
+        assert_fullscreen_geometry()
+        peer.kill()
+        xd.wait_for_layout()
+        request(sock, "focus_window", win_id=win.id)
+        set_fullscreen(False)
+        assert fullscreen not in card(xd, raw, "_NET_WM_STATE")
+        assert win.geometry == original
+        win.kill()
+
+
+@pytest.mark.skipif(not RUST, reason="Rust binary required")
 def test_shade_maximize_axes_restore_and_frame_bounds(tmp_path):
     with desktop(RUST, tmp_path) as (xd, sock, process, env):
         win = xd.new_window(title="axes", size=(400, 250), position=(100, 200), type="dialog")

@@ -193,7 +193,9 @@ impl Wm {
         let c = &self.clients[&id];
         rect.w = rect.w.clamp(3, 65535);
         rect.h = rect.h.clamp(3, 65535);
-        if (c.class == "mpv" || c.instance == "mpv")
+        // Fullscreen fills the monitor; mpv handles letterboxing inside it.
+        if !c.flags.fullscreen
+            && (c.class == "mpv" || c.instance == "mpv")
             && (self.config.resize_hints
                 || c.flags.floating
                 || self.monitors[c.monitor.0].active.layout == Layout::Float)

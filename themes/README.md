@@ -3,6 +3,39 @@
 Dark blue-purple themes matching the sadeshell status bar aesthetic.
 All colors are sourced from `shell/src/sadeshell/components/shared/Theme.qml`.
 
+## Application theme settings
+
+Open **SadeSettings → Appearance** to choose a GTK theme, Qt widget style, and
+Qt color scheme. The defaults are **Adwaita-dark** for GTK and **Breeze** with
+the **Breeze Dark** color scheme for Qt. The dark-appearance checkbox also sets
+the preference used by libadwaita when the GNOME GSettings schema is available.
+Applications with their own appearance settings can override these preferences.
+
+Apply saves the selection in `~/.config/sade/settings.toml` under `[appearance]`,
+updates GTK 3/4 `settings.ini` and KDE `kdeglobals`, and preserves unrelated
+settings. `XDG_CONFIG_HOME` is respected. GTK themes and Qt color schemes are
+discovered in the user and system XDG data directories (plus `~/.themes` for
+GTK). Install additional widget styles before entering their names.
+
+The SADE NixOS session includes Breeze and KDE platform integration for Qt 5/6
+and applies the saved selection, or the dark defaults, at login. Rebuild the
+session and log out/in once after upgrading; restart applications after later
+theme changes. SadeShell and SadeSettings retain their own SADE styling.
+
+For manually started sessions, install Breeze (including `BreezeDark.colors`)
+and KDE's Qt platform integration, then run these before starting the window
+manager and shell:
+
+```sh
+export QT_QPA_PLATFORMTHEME=kde
+sadesettings --apply-appearance
+```
+
+Remove conflicting `QT_STYLE_OVERRIDE` or `GTK_THEME` overrides if applications
+ignore the selection. Existing XSettings daemons or sandbox portals can also
+override per-user theme files. The theme assets below are optional SADE-specific
+themes; they are separate from the standard Adwaita/Breeze defaults.
+
 ## Files
 
 | File | Target |

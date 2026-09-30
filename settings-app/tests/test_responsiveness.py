@@ -38,6 +38,8 @@ def test_discovery_and_apply_are_off_thread_and_apply_is_serialized(tmp_path, mo
         gate.wait(2)
         return []
     monkeypatch.setattr(main.display, "query_outputs", discover)
+    monkeypatch.setattr(main.appearance, "prepare", lambda values: {})
+    monkeypatch.setattr(main.appearance, "apply", lambda values: [])
     window = main.SettingsWindow(tmp_path)
     window.show()
     try:
@@ -57,7 +59,7 @@ def test_discovery_and_apply_are_off_thread_and_apply_is_serialized(tmp_path, mo
         wait_for(lambda: not window._applying)
         assert len(calls) == 2
         assert all(ident != threading.get_ident() for _, ident in calls)
-        assert window.status.text() == "Saved, not applied: not running"
+        assert window.status.text() == "Settings saved; WM reload failed: not running. Themes saved; restart applications"
     finally:
         gate.set()
         window.close()

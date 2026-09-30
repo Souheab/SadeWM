@@ -28,11 +28,12 @@ from PySide6.QtWidgets import (
     QScrollArea,
     QSpinBox,
     QStackedWidget,
+    QStyleFactory,
     QVBoxLayout,
     QWidget,
 )
 
-from . import config_store, display, ipc
+from . import appearance, config_store, display, ipc
 
 
 class ColorButton(QPushButton):
@@ -125,7 +126,7 @@ class SettingsWindow(QMainWindow):
 
         self.nav = QListWidget()
         self.nav.setFixedWidth(160)
-        for name in ("WM", "Display", "Power"):
+        for name in ("WM", "Display", "Power", "Appearance"):
             item = QListWidgetItem(name)
             item.setTextAlignment(Qt.AlignVCenter)
             self.nav.addItem(item)
@@ -139,12 +140,14 @@ class SettingsWindow(QMainWindow):
         self.pages.addWidget(self._build_wm_page())
         self.pages.addWidget(self._build_display_page())
         self.pages.addWidget(self._build_power_page())
+        self.pages.addWidget(self._build_appearance_page())
         body.addWidget(self.pages, 1)
         self.nav.currentRowChanged.connect(self.pages.setCurrentIndex)
         self.nav.setCurrentRow(0)
 
         actions = QHBoxLayout()
         self.status = QLabel("")
+        self.status.setWordWrap(True)
         actions.addWidget(self.status, 1)
         self.apply_button = apply_button = QPushButton("Apply")
         apply_button.clicked.connect(self.apply)
@@ -248,6 +251,38 @@ class SettingsWindow(QMainWindow):
         form.addRow("Suspend system after", self.sleep_timeout)
         return page
 
+    def _build_appearance_page(self) -> QWidget:
+        page = QWidget()
+        form = QFormLayout(page)
+        self.gtk_theme = QComboBox()
+        self.gtk_theme.setEditable(True)
+        self.gtk_theme.addItems(appearance.gtk_themes())
+        self.qt_style = QComboBox()
+        self.qt_style.setEditable(True)
+        self.qt_style.addItems(sorted(set(["Breeze", *QStyleFactory.keys()]), key=str.casefold))
+        self.qt_style.setToolTip(
+            "Requires KDE platform integration, included in the SADE NixOS session. "
+            "Log out and back in after upgrading the session."
+        )
+        self.qt_color_scheme = QComboBox()
+        self.qt_color_scheme.addItem("Breeze Dark", "BreezeDark")
+        for name in sorted(appearance.qt_color_schemes(), key=str.casefold):
+            if name != "BreezeDark":
+                self.qt_color_scheme.addItem(name, name)
+        self.prefer_dark = QCheckBox("Prefer dark appearance")
+        form.addRow("GTK theme", self.gtk_theme)
+        form.addRow("Qt widget style", self.qt_style)
+        form.addRow("Qt color scheme", self.qt_color_scheme)
+        form.addRow("GTK / libadwaita", self.prefer_dark)
+        hint = QLabel(
+            "Defaults: Adwaita Dark for GTK and Breeze Dark for Qt. "
+            "Choose installed themes and styles. Restart applications after applying. "
+            "Applications with their own appearance settings may override these choices."
+        )
+        hint.setWordWrap(True)
+        form.addRow(hint)
+        return page
+
     def _load_values(self) -> None:
         values = config_store.get_wm_values(self.wm_doc)
         for key, widget in self.wm_widgets.items():
@@ -279,6 +314,17 @@ class SettingsWindow(QMainWindow):
         power_values = config_store.get_power_values(self.settings_doc)
         self.monitor_timeout.setValue(power_values["monitor_timeout_minutes"])
         self.sleep_timeout.setValue(power_values["sleep_timeout_minutes"])
+
+        theme_values = config_store.get_appearance_values(self.settings_doc)
+        self._set_combo_text(self.gtk_theme, str(theme_values["gtk_theme"]))
+        self._set_combo_text(self.qt_style, str(theme_values["qt_style"]))
+        scheme = str(theme_values["qt_color_scheme"])
+        index = self.qt_color_scheme.findData(scheme)
+        if index < 0:
+            self.qt_color_scheme.addItem(scheme, scheme)
+            index = self.qt_color_scheme.count() - 1
+        self.qt_color_scheme.setCurrentIndex(index)
+        self.prefer_dark.setChecked(bool(theme_values["prefer_dark"]))
 
     def _sync_display_modes(self) -> None:
         output_name = self.display_output.currentText()
@@ -318,7 +364,8 @@ class SettingsWindow(QMainWindow):
         dialog.setWindowTitle("Apply Settings")
         dialog.setText("Apply these settings?")
         dialog.setInformativeText(
-            "This will save the current WM, display, and power configuration, then reload sadewm."
+            "This will save the WM, display, power, and appearance configuration, "
+            "update your GTK and Qt themes, then reload sadewm."
         )
         dialog.setStandardButtons(
             QMessageBox.StandardButton.Cancel | QMessageBox.StandardButton.Apply
@@ -360,6 +407,12 @@ class SettingsWindow(QMainWindow):
                 "sleep_timeout_minutes": self.sleep_timeout.value(),
             },
         )
+        config_store.set_appearance_values(self.settings_doc, {
+            "gtk_theme": self.gtk_theme.currentText().strip(),
+            "qt_style": self.qt_style.currentText().strip(),
+            "qt_color_scheme": self.qt_color_scheme.currentData(),
+            "prefer_dark": self.prefer_dark.isChecked(),
+        })
 
         wm_doc, settings_doc = copy.deepcopy(self.wm_doc), copy.deepcopy(self.settings_doc)
         self._applying = True
@@ -369,18 +422,29 @@ class SettingsWindow(QMainWindow):
         def save_and_reload():
             saved = []
             try:
+                theme_values = config_store.get_appearance_values(settings_doc)
+                appearance.prepare(theme_values)
                 config_store.save_toml(self.wm_path, wm_doc)
                 saved.append(self.wm_path.name)
                 config_store.save_toml(self.settings_path, settings_doc)
+                saved.append(self.settings_path.name)
             except Exception as exc:
                 detail = f" ({', '.join(saved)} saved)" if saved else ""
                 result = f"Save failed{detail}: {exc}"
             else:
                 try:
-                    response = ipc.send_reload()
-                    result = "Saved and applied" if response.get("ok") is True else f"Saved, not applied: {response.get('error', 'unknown IPC error')}"
+                    warnings = appearance.apply(theme_values)
+                    theme_result = "Themes saved; restart applications"
+                    if warnings:
+                        theme_result += ". " + "; ".join(warnings)
                 except Exception as exc:
-                    result = f"Saved, not applied: {exc}"
+                    theme_result = f"Theme application failed (some files may have been updated): {exc}"
+                try:
+                    response = ipc.send_reload()
+                    result = "Settings saved; WM reloaded" if response.get("ok") is True else f"Settings saved; WM reload failed: {response.get('error', 'unknown IPC error')}"
+                except Exception as exc:
+                    result = f"Settings saved; WM reload failed: {exc}"
+                result += f". {theme_result}"
             if not self._closed:
                 self._applyReady.emit(result)
         self._executor.submit(save_and_reload)
@@ -426,7 +490,20 @@ class SettingsWindow(QMainWindow):
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--config-dir", default=str(config_store.DEFAULT_CONFIG_DIR))
+    parser.add_argument("--apply-appearance", action="store_true",
+                        help="Apply saved application themes (or dark defaults) without opening a window")
     args = parser.parse_args(argv)
+
+    if args.apply_appearance:
+        try:
+            _, path = config_store.config_paths(Path(args.config_dir).expanduser())
+            values = config_store.get_appearance_values(config_store.load_toml(path))
+            for warning in appearance.apply(values):
+                print(warning, file=sys.stderr)
+        except Exception as exc:
+            print(f"Could not apply appearance: {exc}", file=sys.stderr)
+            return 1
+        return 0
 
     app = QApplication(sys.argv if argv is None else ["sadesettings", *argv])
     apply_sade_appearance(app)

@@ -11,7 +11,14 @@ from typing import Any
 import tomlkit
 
 
-DEFAULT_CONFIG_DIR = Path.home() / ".config" / "sade"
+DEFAULT_CONFIG_DIR = Path(os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".config") / "sade"
+
+APPEARANCE_DEFAULTS = {
+    "gtk_theme": "Adwaita-dark",
+    "qt_style": "Breeze",
+    "qt_color_scheme": "BreezeDark",
+    "prefer_dark": True,
+}
 
 WM_DEFAULTS: dict[str, dict[str, Any]] = {
     "appearance": {
@@ -68,6 +75,10 @@ def load_toml(path: Path):
 
 
 def save_toml(path: Path, doc) -> None:
+    save_text(path, tomlkit.dumps(doc))
+
+
+def save_text(path: Path, text: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     fd, temporary = tempfile.mkstemp(prefix="." + path.name + "-", dir=path.parent)
     try:
@@ -75,7 +86,7 @@ def save_toml(path: Path, doc) -> None:
             os.fchmod(fd, stat.S_IMODE(path.stat().st_mode))
         with os.fdopen(fd, "w", encoding="utf-8") as stream:
             fd = -1
-            stream.write(tomlkit.dumps(doc))
+            stream.write(text)
             stream.flush()
             os.fsync(stream.fileno())
         os.replace(temporary, path)
@@ -94,6 +105,20 @@ def ensure_table(parent, key: str):
         value = tomlkit.table()
         parent[key] = value
     return value
+
+
+def get_appearance_values(doc) -> dict[str, Any]:
+    appearance = ensure_table(doc, "appearance")
+    for key, value in APPEARANCE_DEFAULTS.items():
+        appearance.setdefault(key, value)
+    return {key: appearance[key] for key in APPEARANCE_DEFAULTS}
+
+
+def set_appearance_values(doc, values: dict[str, Any]) -> None:
+    get_appearance_values(doc)
+    for key in APPEARANCE_DEFAULTS:
+        if key in values:
+            doc["appearance"][key] = values[key]
 
 
 def ensure_wm_defaults(doc) -> None:

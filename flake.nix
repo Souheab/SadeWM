@@ -118,6 +118,8 @@
           buildInputs = with pkgs; [
             qt6.qtbase
             qt6.qtdeclarative
+            kdePackages.breeze
+            kdePackages.plasma-integration
             libx11
             libxext
             xcb-util-cursor
@@ -140,6 +142,10 @@
               --unset        PYTHONPATH                                      \
               --unset        PYTHONHOME                                      \
               --set          PYTHONPATH "$out/lib"                          \
+              --set SADE_THEME_DATA_DIRS "${pkgs.kdePackages.breeze}/share" \
+              --prefix XDG_DATA_DIRS : "${pkgs.gsettings-desktop-schemas}/share/gsettings-schemas/${pkgs.gsettings-desktop-schemas.name}" \
+              --prefix GIO_EXTRA_MODULES : "${pkgs.dconf.lib}/lib/gio/modules" \
+              --prefix PATH : "${pkgs.glib.bin}/bin"                        \
               --prefix PATH : "${pkgs.xrandr}/bin"                          \
               --prefix LD_LIBRARY_PATH : "${pkgs.libx11}/lib"               \
               --prefix LD_LIBRARY_PATH : "${pkgs.libxext}/lib"              \
@@ -343,6 +349,8 @@
                 name = "SADE";
                 managed = "desktop";
                 start = ''
+                  export QT_QPA_PLATFORMTHEME=kde
+                  ${packages.sadesettings}/bin/sadesettings --apply-appearance || true
                   ${wmPkg}/bin/${wmExecutable} &
                   waitPID=$!
 
@@ -352,7 +360,18 @@
               }
             ];
 
-            environment.systemPackages = [ wmPkg ] ++ lib.optionals (cfg.backend == "rust") [ packages.sadeshell packages.sadesettings packages.sadewm-greeter ];
+            environment.systemPackages = [
+              wmPkg
+              pkgs.kdePackages.breeze
+              pkgs.kdePackages.breeze.qt5
+              pkgs.kdePackages.plasma-integration
+              pkgs.kdePackages.plasma-integration.qt5
+            ] ++ lib.optionals (cfg.backend == "rust") [ packages.sadeshell packages.sadesettings packages.sadewm-greeter ];
+
+            # Expose both Qt plugin versions without forcing a widget style;
+            # SadeSettings chooses the style and palette through kdeglobals.
+            qt.enable = lib.mkDefault true;
+            programs.dconf.enable = lib.mkDefault true;
 
             systemd.user.targets.sade = {
               description = "SADE desktop session";
@@ -389,6 +408,7 @@
               environment = {
                 PYTHONUNBUFFERED = "1";
                 XDG_CURRENT_DESKTOP = "SADE";
+                QT_QPA_PLATFORMTHEME = "kde";
                 PATH = lib.mkForce "/run/current-system/sw/bin:/etc/profiles/per-user/%u/bin:${lib.makeBinPath [ pkg ]}"; # TODO lib.makeBinPath doesn't do anything, app works fine though
               };
             };

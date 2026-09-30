@@ -1,6 +1,7 @@
 """Shared lazy XDG icon index, including cached misses and explicit invalidation."""
 import os
 from pathlib import Path
+import re
 import threading
 
 
@@ -43,12 +44,27 @@ class IconIndex:
                 visited.add(identity)
                 subdirs.sort()
                 self.directories.append(directory)
+                parts = Path(directory).relative_to(root).parts
+                # Prefer application-supplied hicolor icons to arbitrary
+                # installed themes (e.g. HighContrast), retaining XDG root
+                # precedence for user overrides.
+                theme_rank = int(bool(parts) and parts[0] != "hicolor")
+                # Prefer a raster large enough for launcher/picker icons,
+                # then the closest size. Unknown sizes remain a fallback.
+                size_rank = (2, 0)
+                for part in parts:
+                    match = re.fullmatch(r"(\d+)x(\d+)(?:@\d+)?", part)
+                    if match:
+                        size = min(int(match[1]), int(match[2]))
+                        size_rank = (0, size - 64) if size >= 64 else (1, -size)
+                        break
                 for filename in sorted(files):
                     stem, ext = os.path.splitext(filename)
                     if ext.lower() not in (".png", ".svg", ".xpm"):
                         continue
                     path = os.path.join(directory, filename)
-                    score = (priority, "/apps/" not in path, ext != ".svg", path)
+                    score = (priority, theme_rank, "apps" not in parts,
+                             ext.lower() != ".svg", size_rank, path)
                     for key in (stem.casefold(), filename.casefold()):
                         if key not in scores or score < scores[key]:
                             scores[key] = score

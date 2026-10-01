@@ -35,8 +35,8 @@ pkgs.mkShell {
 
   buildInputs = with pkgs; [
     # WM libraries and X11 development tools
-    libX11
-    libXinerama
+    libx11
+    libxinerama
     xorgserver
     xrandr
     xprop

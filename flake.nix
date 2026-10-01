@@ -80,20 +80,22 @@
           '';
 
           postFixup = ''
-            mkdir -p $out/bin
-            makeWrapper ${pythonEnv}/bin/python3 $out/bin/sadeshell       \
-              --add-flags    "-m sadeshell.main"                          \
+            mkdir -p $out/bin $out/libexec
+            # Capture the session before Qt/Python and private helpers alter it.
+            # AppService restores it for desktop entries, terminals and scopes.
+            makeWrapper ${pythonEnv}/bin/python3 $out/libexec/sadeshell-python \
+              --run ${pkgs.lib.escapeShellArg (builtins.readFile ./nix/save-session-environment.sh)} \
               --unset        PYTHONPATH                                    \
               --unset        PYTHONHOME                                    \
               --set          PYTHONPATH "$out/lib"                        \
-              --prefix PATH : "${pkgs.xrandr}/bin"                   \
-              --prefix PATH : "${pkgs.networkmanager}/bin"                 \
-              --prefix PATH : "${pkgs.bluez}/bin"                         \
+              --suffix PATH : "${pkgs.lib.makeBinPath [ pkgs.xrandr pkgs.networkmanager pkgs.bluez ]}" \
               --prefix LD_LIBRARY_PATH : "${pkgs.libx11}/lib"             \
               --prefix LD_LIBRARY_PATH : "${pkgs.libxext}/lib"            \
               --prefix LD_LIBRARY_PATH : "${pkgs.libpulseaudio}/lib"      \
               --prefix LD_LIBRARY_PATH : "${pkgs.xcb-util-cursor}/lib"    \
               "''${qtWrapperArgs[@]}"
+            makeWrapper $out/libexec/sadeshell-python $out/bin/sadeshell \
+              --add-flags "-m sadeshell.main"
           '';
 
           meta = with pkgs.lib; {
@@ -146,7 +148,7 @@
               --prefix XDG_DATA_DIRS : "${pkgs.gsettings-desktop-schemas}/share/gsettings-schemas/${pkgs.gsettings-desktop-schemas.name}" \
               --prefix GIO_EXTRA_MODULES : "${pkgs.dconf.lib}/lib/gio/modules" \
               --prefix PATH : "${pkgs.glib.bin}/bin"                        \
-              --prefix PATH : "${pkgs.xrandr}/bin"                          \
+              --suffix PATH : "${pkgs.xrandr}/bin"                          \
               --prefix LD_LIBRARY_PATH : "${pkgs.libx11}/lib"               \
               --prefix LD_LIBRARY_PATH : "${pkgs.libxext}/lib"              \
               --prefix LD_LIBRARY_PATH : "${pkgs.xcb-util-cursor}/lib"      \
@@ -176,8 +178,8 @@
           ];
 
           buildInputs = with pkgs; [
-            libX11
-            libXinerama
+            libx11
+            libxinerama
             libxcursor
             cairo
             libxext
@@ -188,7 +190,7 @@
 
           postFixup = ''
             wrapProgram $out/bin/sadewm \
-              --prefix PATH : "${pkgs.lib.makeBinPath [ pkgs.xrandr pkgs.systemd ]}"
+              --suffix PATH : "${pkgs.lib.makeBinPath [ pkgs.xrandr ]}"
           '';
 
           meta = with pkgs.lib; {
@@ -217,7 +219,7 @@
           '';
           postFixup = ''
             wrapProgram $out/bin/sadewm-rs \
-              --prefix PATH : "${pkgs.lib.makeBinPath [ pkgs.xrandr pkgs.systemd ]}"
+              --suffix PATH : "${pkgs.lib.makeBinPath [ pkgs.xrandr ]}"
           '';
           meta = with pkgs.lib; {
             description = "Rust SADE X11 window manager";
@@ -272,29 +274,53 @@
         packages.sadesettings   = sadesettings;
         packages.sadewm-greeter = sadewm-greeter;
 
+        checks.packages = combined;
+        checks.sadewm-rs = sadewm-rs;
+        checks.nixos-modules = import ./nix/check-modules.nix {
+          inherit pkgs nixpkgs system;
+          module = self.nixosModules.default;
+        };
+        checks.desktop-startup = pkgs.runCommand "sade-desktop-startup" {
+          nativeBuildInputs = [
+            (python.withPackages (ps: [ ps.xlib ]))
+            pkgs.xorgserver
+            pkgs.dbus
+          ];
+          TEST_SHELL = pkgs.runtimeShell;
+        } ''
+          dbus-run-session --config-file=${pkgs.dbus}/share/dbus-1/session.conf -- python ${./nix/check-packages.py} \
+            ${sadeshell} ${sadesettings} ${sadewm-greeter} ${sadewm} ${sadewm-rs}
+          touch $out
+        '';
+
         apps.default = {
           type    = "app";
           program = "${sadewm}/bin/sadewm";
+          meta = sadewm.meta;
         };
 
         apps.sadeshell = {
           type    = "app";
           program = "${sadeshell}/bin/sadeshell";
+          meta = sadeshell.meta;
         };
 
         apps.sadewm-rs = {
           type = "app";
           program = "${sadewm-rs}/bin/sadewm-rs";
+          meta = sadewm-rs.meta;
         };
 
         apps.sadesettings = {
           type    = "app";
           program = "${sadesettings}/bin/sadesettings";
+          meta = sadesettings.meta;
         };
 
         apps.sadewm-greeter = {
           type    = "app";
           program = "${sadewm-greeter}/bin/sadewm-greeter";
+          meta = sadewm-greeter.meta;
         };
 
         # Keep nix develop and nix-shell on the same development environment.
@@ -398,6 +424,15 @@
               wantedBy    = [ "sade.target" ];
               partOf      = [ "sade.target" ];
               after       = [ "sade.target" ];
+              # Resolve session tools from host/user profiles before NixOS's
+              # default service utilities. Keep this composable via service.path.
+              path = lib.mkBefore [
+                "/run/wrappers"
+                "%h/.nix-profile"
+                "%h/.local/state/nix/profile"
+                "/etc/profiles/per-user/%u"
+                "/run/current-system/sw"
+              ];
               serviceConfig = {
                 ExecStart       = lib.getExe pkg;
                 Restart         = "on-failure";
@@ -409,7 +444,6 @@
                 PYTHONUNBUFFERED = "1";
                 XDG_CURRENT_DESKTOP = "SADE";
                 QT_QPA_PLATFORMTHEME = "kde";
-                PATH = lib.mkForce "/run/current-system/sw/bin:/etc/profiles/per-user/%u/bin:${lib.makeBinPath [ pkg ]}"; # TODO lib.makeBinPath doesn't do anything, app works fine though
               };
             };
           };

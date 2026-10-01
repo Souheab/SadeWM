@@ -10,6 +10,8 @@ import glob
 import shlex
 import threading
 
+from sadeshell.launch_environment import launch_environment
+
 from PySide6.QtCore import (
     QObject, Property, Signal, Slot,
     QFileSystemWatcher, QTimer, QMetaObject, Qt, Q_ARG,
@@ -20,7 +22,10 @@ from PySide6.QtCore import (
 # INVOCATION_ID is set by systemd for every service it starts.
 _IS_SYSTEMD_UNIT = bool(os.environ.get("INVOCATION_ID"))
 # Check once at import time whether systemd-run is available.
-_SYSTEMD_RUN = shutil.which("systemd-run") if _IS_SYSTEMD_UNIT else None
+_SYSTEMD_RUN = (
+    shutil.which("systemd-run", path=launch_environment().get("PATH", os.defpath))
+    if _IS_SYSTEMD_UNIT else None
+)
 
 
 def _make_scoped_cmd(argv: list[str]) -> list[str] | None:
@@ -61,7 +66,7 @@ def _try_exec_available(value: str) -> bool:
         return True
     if os.path.isabs(value):
         return os.path.isfile(value) and os.access(value, os.X_OK)
-    return shutil.which(value) is not None
+    return shutil.which(value, path=launch_environment().get("PATH", os.defpath)) is not None
 
 
 def _expand_exec(entry: dict) -> list[str]:
@@ -133,7 +138,7 @@ def _terminal_prefix() -> list[str] | None:
             "x-terminal-emulator", "kitty", "alacritty", "foot", "wezterm",
             "konsole", "gnome-terminal", "xfce4-terminal", "xterm",
         ):
-            if path := shutil.which(candidate):
+            if path := shutil.which(candidate, path=launch_environment().get("PATH", os.defpath)):
                 command = [path]
                 break
     if not command:
@@ -283,12 +288,19 @@ class AppService(QObject):
             result = _parse_desktop_files()
         except Exception:
             result = self._apps.copy()
-        QMetaObject.invokeMethod(
-            self,
-            "_set_apps",
-            Qt.ConnectionType.QueuedConnection,
-            Q_ARG("QVariantList", result),
-        )
+        if self._stopped:
+            return
+        try:
+            QMetaObject.invokeMethod(
+                self,
+                "_set_apps",
+                Qt.ConnectionType.QueuedConnection,
+                Q_ARG("QVariantList", result),
+            )
+        except RuntimeError:
+            # Qt can destroy the receiver during failed startup or shutdown
+            # while the filesystem scan is still finishing in this thread.
+            pass
 
     @Slot("QVariantList")
     def _set_apps(self, apps: list) -> None:
@@ -343,6 +355,7 @@ class AppService(QObject):
                 launch = _make_scoped_cmd([str(arg) for arg in cmd])
                 subprocess.Popen(
                     launch,
+                    env=launch_environment(),
                     start_new_session=True,
                     stdout=subprocess.DEVNULL,
                     stderr=subprocess.DEVNULL,
@@ -350,6 +363,7 @@ class AppService(QObject):
             else:
                 subprocess.Popen(
                     cmd,
+                    env=launch_environment(),
                     start_new_session=True,
                     stdout=subprocess.DEVNULL,
                     stderr=subprocess.DEVNULL,
@@ -373,6 +387,7 @@ class AppService(QObject):
             command = _make_scoped_cmd(argv) or argv
             subprocess.Popen(
                 command,
+                env=launch_environment(),
                 start_new_session=True,
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,

@@ -18,6 +18,27 @@ See the [parity checklist](wm-rs/docs/parity.md) and
 [validation results](wm-rs/docs/validation.md) for tested behavior, documented
 differences and remaining hardware checks.
 
+## Nix packaging
+
+The flake pins `nixos-unstable`. Update its inputs with `nix flake update`, then
+run `nix flake check -L`. Checks build both WM packages and the desktop bundle,
+evaluate the NixOS modules with both backends, and start the installed shell,
+settings app and greeter on a private Xvfb display and D-Bus session. The startup
+check also verifies that the WM uses the session's `systemctl` and that the shell
+restores the session environment for launching applications.
+
+Using `inputs.sadewm.inputs.nixpkgs.follows = "nixpkgs"` in a system flake is
+supported; the system flake's lock then chooses the Qt/Python versions instead of
+this repository's lock. Update the system flake's SadeWM input to pick up package
+fixes. To validate another pinned nixpkgs, use
+`nix flake check --override-input nixpkgs github:NixOS/nixpkgs/<revision> --no-write-lock-file`.
+
+WM wrappers provide `xrandr` only as a fallback and use the host's systemd tools.
+The shell service uses normal NixOS `path` composition with user and system
+profiles first. SadeShell's Qt, Python and library paths stay private to the shell
+when it launches desktop applications. Its custom QML uses Qt's Basic controls
+style, so the bar does not depend on the host's KDE/Kirigami QML installation.
+
 ## Config
 
 sadewm looks for user configuration in `~/.config/sade` by default:

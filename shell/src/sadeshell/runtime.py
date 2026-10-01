@@ -6,6 +6,7 @@ import sys
 from PySide6.QtWidgets import QApplication
 from PySide6.QtQml import QQmlApplicationEngine, qmlRegisterSingletonInstance
 from PySide6.QtCore import QUrl
+from PySide6.QtQuickControls2 import QQuickStyle
 
 from sadeshell.qt_paths import qml_import_paths
 
@@ -33,6 +34,9 @@ from sadeshell.services.shared.async_bus import BusWorker
 
 
 def main(argv=None):
+    # All controls are styled by our QML. Do not inherit a desktop style whose
+    # QML dependencies (e.g. KDE's Kirigami) may belong to a different Qt build.
+    QQuickStyle.setStyle("Basic")
     app = QApplication([sys.argv[0], *(argv or [])])
     app.setApplicationName("sadeshell")
     ipc = IPCService()

@@ -1,12 +1,99 @@
 import os
 import tempfile
+import threading
 import unittest
 from pathlib import Path
 from unittest import mock
 
+import pytest
+from PySide6.QtCore import QCoreApplication, QEvent
+import shiboken6
+
 
 
 from sadeshell.services.shared import app_service  # noqa: E402
+from sadeshell.launch_environment import launch_environment
+
+
+def test_launch_environment_restores_unset_empty_and_custom_values(monkeypatch):
+    monkeypatch.setenv("SADESHELL_SESSION_VARS", "PATH PYTHONPATH LD_LIBRARY_PATH QT_PLUGIN_PATH")
+    monkeypatch.setenv("SADESHELL_SESSION_PATH", "/host/bin:/user/bin")
+    monkeypatch.setenv("SADESHELL_SESSION_QT_PLUGIN_PATH", "")
+    monkeypatch.setenv("SADESHELL_SESSION_LD_LIBRARY_PATH", "/host/lib with spaces")
+    monkeypatch.delenv("SADESHELL_SESSION_PYTHONPATH", raising=False)
+    for name in ("PATH", "PYTHONPATH", "LD_LIBRARY_PATH", "QT_PLUGIN_PATH"):
+        monkeypatch.setenv(name, "/private/package")
+
+    env = launch_environment()
+    assert env["PATH"] == "/host/bin:/user/bin"
+    assert env["QT_PLUGIN_PATH"] == ""
+    assert env["LD_LIBRARY_PATH"] == "/host/lib with spaces"
+    assert "PYTHONPATH" not in env
+    assert not any(name.startswith("SADESHELL_SESSION_") for name in env)
+    assert os.environ["PATH"] == "/private/package"
+
+
+@pytest.mark.parametrize("scoped", [False, True])
+@pytest.mark.parametrize("desktop_entry", [False, True])
+def test_launch_uses_session_environment(monkeypatch, scoped, desktop_entry):
+    monkeypatch.setenv("SADESHELL_SESSION_VARS", "PATH PYTHONPATH")
+    monkeypatch.setenv("SADESHELL_SESSION_PATH", "/host/bin")
+    monkeypatch.delenv("SADESHELL_SESSION_PYTHONPATH", raising=False)
+    monkeypatch.setenv("PYTHONPATH", "/private/python")
+    monkeypatch.setattr(app_service, "_SYSTEMD_RUN", "/host/bin/systemd-run" if scoped else None)
+    service = app_service.AppService.__new__(app_service.AppService)
+    with mock.patch.object(app_service.subprocess, "Popen") as popen:
+        if desktop_entry:
+            service.launch({"exec": "demo --flag"})
+        else:
+            service.launchCommand(["demo", "--flag"])
+    args, kwargs = popen.call_args
+    expected = ["demo", "--flag"]
+    if scoped:
+        expected = ["/host/bin/systemd-run", "--user", "--scope", "--", *expected]
+    assert args[0] == expected
+    assert kwargs["env"]["PATH"] == "/host/bin"
+    assert "PYTHONPATH" not in kwargs["env"]
+
+
+@pytest.mark.parametrize("stop_first", [False, True])
+def test_scan_finishing_after_qobject_deletion_is_harmless(monkeypatch, tmp_path, stop_first):
+    started = threading.Event()
+    release = threading.Event()
+    finished = threading.Event()
+    errors = []
+
+    def scan():
+        started.set()
+        assert release.wait(5)
+        return []
+
+    original = app_service.AppService._do_scan
+
+    def worker(service):
+        try:
+            original(service)
+        except Exception as exc:
+            errors.append(exc)
+        finally:
+            finished.set()
+
+    monkeypatch.setattr(app_service, "_apps_dirs", lambda: [str(tmp_path)])
+    monkeypatch.setattr(app_service, "_parse_desktop_files", scan)
+    monkeypatch.setattr(app_service.icons, "invalidate", lambda: None)
+    monkeypatch.setattr(app_service.AppService, "_do_scan", worker)
+    service = app_service.AppService()
+    try:
+        assert started.wait(5)
+        if stop_first:
+            service.stop()
+        service.deleteLater()
+        QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+        assert not shiboken6.isValid(service)
+    finally:
+        release.set()
+        assert finished.wait(5)
+    assert errors == []
 
 
 class TestDesktopEntries(unittest.TestCase):

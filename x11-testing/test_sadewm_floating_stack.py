@@ -1,7 +1,9 @@
 """Stacking behavior for floating windows and transient dialogs."""
 
+from contextlib import nullcontext
 import time
 
+import pytest
 from Xlib import X, Xatom, Xutil
 
 import helpers
@@ -146,6 +148,65 @@ def test_clicking_floating_content_raises_and_replays_click(xd):
     finally:
         lower.kill()
         upper.kill()
+        time.sleep(0.2)
+
+
+@pytest.mark.parametrize("fullscreen", [False, True])
+@pytest.mark.parametrize("modifier", [None, "ctrl", "super"])
+def test_scrolling_floating_content_does_not_restack(xd, fullscreen, modifier):
+    helpers.ipc_request("view", mask=1)
+    time.sleep(0.2)
+    lower = _create_window(xd, "test-scroll-lower", position=(120, 120))
+    upper = _create_window(
+        xd,
+        "test-scroll-upper",
+        position=(180, 160),
+        event_mask=(X.ButtonPressMask | X.ButtonReleaseMask | X.ExposureMask
+                    | X.StructureNotifyMask | X.FocusChangeMask),
+    )
+    try:
+        if fullscreen:
+            upper.set_fullscreen(True)
+            xd.wait_for(lambda: upper.is_fullscreen, timeout=3.0)
+        xd.mouse.move_to(upper)
+        xd.wait_for_layout()
+        assert upper.is_focused
+        _assert_above(xd, upper, lower)
+        before = _root_children_ids(xd)
+        dpy = xd._xdisplay
+        dpy.sync()
+        _drain_display_events(dpy)
+
+        with xd.keyboard.held(modifier) if modifier else nullcontext():
+            for button in (4, 5, 6, 7):
+                xd.mouse.click(button=button)
+        # wait_for_layout drains events, which would hide transient restacking.
+        time.sleep(0.5)
+        dpy.sync()
+        events = []
+        while dpy.pending_events():
+            events.append(dpy.next_event())
+        received = [
+            (ev.type, ev.detail) for ev in events
+            if ev.type in (X.ButtonPress, X.ButtonRelease)
+            and getattr(ev.window, "id", None) == upper.id
+        ]
+        assert received == [
+            (kind, button) for button in (4, 5, 6, 7)
+            for kind in (X.ButtonPress, X.ButtonRelease)
+        ], "all wheel presses and releases should reach the application"
+        assert not any(ev.type == X.ConfigureNotify for ev in events), (
+            "scrolling must not temporarily reorder overlapping windows"
+        )
+        assert not any(ev.type == X.Expose for ev in events), (
+            "scrolling must not uncover and re-cover windows"
+        )
+        assert _root_children_ids(xd) == before
+        assert upper.is_focused
+        assert upper.is_fullscreen == fullscreen
+    finally:
+        upper.kill()
+        lower.kill()
         time.sleep(0.2)
 
 

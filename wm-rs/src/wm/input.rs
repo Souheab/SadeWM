@@ -167,6 +167,14 @@ impl Wm {
         let Some(id) = self.client_id(e.event) else {
             return Ok(());
         };
+        // X11 wheel directions are buttons 4–7. Floating clients (including
+        // fullscreen ones) grab every button, but scrolling must not trigger
+        // click-to-raise: restacking briefly exposes overlapping windows.
+        if (4..=7).contains(&e.detail) {
+            self.conn.allow_events(Allow::REPLAY_POINTER, e.time)?;
+            self.conn.allow_events(Allow::ASYNC_KEYBOARD, e.time)?;
+            return Ok(());
+        }
         self.focus(Some(id))?;
         self.restack()?;
         if self.titles.contains_key(&e.event) && self.clean_mask(e.state.into()) != config::SUPER {

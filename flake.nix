@@ -163,69 +163,33 @@
           };
         };
 
-        # ── sadewm (Go / X11 window manager) ─────────────────────────────────
-        sadewm = pkgs.buildGoModule {
-          pname   = "sadewm";
-          version = "0.1";
-          src     = ./wm;
-
-          vendorHash = null;  # uses go mod vendor or set to actual hash
-          ldflags = [ "-X main.gitCommit=${gitRevision}" ];
-
-          nativeBuildInputs = with pkgs; [
-            pkg-config
-            makeWrapper
-          ];
-
-          buildInputs = with pkgs; [
-            libx11
-            libxinerama
-            libxcursor
-            cairo
-            libxext
-            libxscrnsaver
-          ];
-
-          subPackages = [ "cmd/sadewm" ];
-
-          postFixup = ''
-            wrapProgram $out/bin/sadewm \
-              --suffix PATH : "${pkgs.lib.makeBinPath [ pkgs.xrandr ]}"
-          '';
-
-          meta = with pkgs.lib; {
-            description = "sadewm window manager";
-            license     = licenses.mit;
-            platforms   = [ "x86_64-linux" "aarch64-linux" ];
-            mainProgram = "sadewm";
-          };
-        };
-
-        sadewm-rs = pkgs.rustPlatform.buildRustPackage {
-          pname = "sadewm-rs";
+        # ── sadewm (Rust / X11 window manager) ─────────────────────────────
+        sadewm = pkgs.rustPlatform.buildRustPackage {
+          pname = "sadewm";
           version = "0.1.0";
           src = pkgs.lib.cleanSourceWith {
-            src = ./wm-rs;
+            src = ./wm;
             filter = path: type:
               pkgs.lib.cleanSourceFilter path type &&
-              !(pkgs.lib.hasPrefix "target" (pkgs.lib.removePrefix (toString ./wm-rs + "/") (toString path)));
+              !(pkgs.lib.hasPrefix "target" (pkgs.lib.removePrefix (toString ./wm + "/") (toString path)));
           };
-          cargoLock.lockFile = ./wm-rs/Cargo.lock;
+          cargoLock.lockFile = ./wm/Cargo.lock;
           SADEWM_REVISION = gitRevision;
           nativeBuildInputs = [ pkgs.makeWrapper ];
           postInstall = ''
-            install -Dm644 assets/LICENSE-DejaVu $out/share/licenses/sadewm-rs/DejaVu
-            install -Dm644 assets/LICENSE-xgbutil $out/share/licenses/sadewm-rs/xgbutil
+            ln -s sadewm $out/bin/sadewm-rs
+            install -Dm644 assets/LICENSE-DejaVu $out/share/licenses/sadewm/DejaVu
+            install -Dm644 assets/LICENSE-xgbutil $out/share/licenses/sadewm/xgbutil
           '';
           postFixup = ''
-            wrapProgram $out/bin/sadewm-rs \
+            wrapProgram $out/bin/sadewm \
               --suffix PATH : "${pkgs.lib.makeBinPath [ pkgs.xrandr ]}"
           '';
           meta = with pkgs.lib; {
             description = "Rust SADE X11 window manager";
             license = licenses.mit;
             platforms = [ "x86_64-linux" "aarch64-linux" ];
-            mainProgram = "sadewm-rs";
+            mainProgram = "sadewm";
           };
         };
 
@@ -263,19 +227,20 @@
 
         combined = pkgs.symlinkJoin {
           name  = "sadewm-with-sadeshell";
-            paths = [ sadewm sadeshell sadesettings sadewm-greeter ];
+          paths = [ sadewm sadeshell sadesettings sadewm-greeter ];
+          meta.mainProgram = "sadewm";
         };
 
       in {
         packages.default        = combined;
         packages.sadewm         = combined;
-        packages.sadewm-rs      = sadewm-rs;
+        packages.sadewm-rs      = sadewm;
         packages.sadeshell      = sadeshell;
         packages.sadesettings   = sadesettings;
         packages.sadewm-greeter = sadewm-greeter;
 
         checks.packages = combined;
-        checks.sadewm-rs = sadewm-rs;
+        checks.wm = sadewm;
         checks.nixos-modules = import ./nix/check-modules.nix {
           inherit pkgs nixpkgs system;
           module = self.nixosModules.default;
@@ -289,7 +254,7 @@
           TEST_SHELL = pkgs.runtimeShell;
         } ''
           dbus-run-session --config-file=${pkgs.dbus}/share/dbus-1/session.conf -- python ${./nix/check-packages.py} \
-            ${sadeshell} ${sadesettings} ${sadewm-greeter} ${sadewm} ${sadewm-rs}
+            ${sadeshell} ${sadesettings} ${sadewm-greeter} ${sadewm}
           touch $out
         '';
 
@@ -299,6 +264,8 @@
           meta = sadewm.meta;
         };
 
+        apps.sadewm = self.apps.${system}.default;
+
         apps.sadeshell = {
           type    = "app";
           program = "${sadeshell}/bin/sadeshell";
@@ -307,8 +274,8 @@
 
         apps.sadewm-rs = {
           type = "app";
-          program = "${sadewm-rs}/bin/sadewm-rs";
-          meta = sadewm-rs.meta;
+          program = "${sadewm}/bin/sadewm-rs";
+          meta = sadewm.meta;
         };
 
         apps.sadesettings = {
@@ -355,56 +322,63 @@
         let
           cfg   = config.services.xserver.windowManager.sadewm;
           packages = self.packages.${pkgs.stdenv.hostPlatform.system};
-          wmPkg = if cfg.backend == "rust" then packages.sadewm-rs else packages.sadewm;
-          wmExecutable = if cfg.backend == "rust" then "sadewm-rs" else "sadewm";
+          wmPkg = packages.sadewm-rs;
         in {
           imports = [ self.nixosModules.sadeshell self.nixosModules.sadewm-greeter ];
 
           options.services.xserver.windowManager.sadewm = {
             enable = lib.mkEnableOption "sadewm window manager";
             backend = lib.mkOption {
-              type = lib.types.enum [ "go" "rust" ];
-              default = "go";
-              description = "Window manager implementation used by the SADE session.";
+              type = lib.types.nullOr (lib.types.addCheck lib.types.str (backend:
+                backend == "rust" || throw "SadeWM's Go backend has been removed. Remove services.xserver.windowManager.sadewm.backend; Rust is now the sole implementation."));
+              default = null;
+              description = "Deprecated: remove this option; SADE always uses the Rust window manager.";
             };
           };
 
-          config = lib.mkIf cfg.enable {
-            services.xserver.windowManager.session = [
-              {
-                name = "SADE";
-                managed = "desktop";
-                start = ''
-                  export QT_QPA_PLATFORMTHEME=kde
-                  ${packages.sadesettings}/bin/sadesettings --apply-appearance || true
-                  ${wmPkg}/bin/${wmExecutable} &
-                  waitPID=$!
+          config = lib.mkMerge [
+            { warnings = lib.optional (cfg.backend != null)
+                "services.xserver.windowManager.sadewm.backend is deprecated; remove it because Rust is now the sole implementation."; }
+            (lib.mkIf cfg.enable {
+              services.xserver.windowManager.session = [
+                {
+                  name = "SADE";
+                  managed = "desktop";
+                  start = ''
+                    export QT_QPA_PLATFORMTHEME=kde
+                    ${packages.sadesettings}/bin/sadesettings --apply-appearance || true
+                    ${wmPkg}/bin/sadewm &
+                    waitPID=$!
 
-                  systemctl --user start sade.target
-                  trap 'systemctl --user stop sade.target' EXIT
-                '';
-              }
-            ];
+                    systemctl --user start sade.target
+                    trap 'systemctl --user stop sade.target' EXIT
+                  '';
+                }
+              ];
 
-            environment.systemPackages = [
-              wmPkg
-              pkgs.kdePackages.breeze
-              pkgs.kdePackages.breeze.qt5
-              pkgs.kdePackages.plasma-integration
-              pkgs.kdePackages.plasma-integration.qt5
-            ] ++ lib.optionals (cfg.backend == "rust") [ packages.sadeshell packages.sadesettings packages.sadewm-greeter ];
+              environment.systemPackages = [
+                wmPkg
+                pkgs.kdePackages.breeze
+                pkgs.kdePackages.breeze.qt5
+                pkgs.kdePackages.plasma-integration
+                pkgs.kdePackages.plasma-integration.qt5
+                packages.sadeshell
+                packages.sadesettings
+                packages.sadewm-greeter
+              ];
 
-            # Expose both Qt plugin versions without forcing a widget style;
-            # SadeSettings chooses the style and palette through kdeglobals.
-            qt.enable = lib.mkDefault true;
-            programs.dconf.enable = lib.mkDefault true;
+              # Expose both Qt plugin versions without forcing a widget style;
+              # SadeSettings chooses the style and palette through kdeglobals.
+              qt.enable = lib.mkDefault true;
+              programs.dconf.enable = lib.mkDefault true;
 
-            systemd.user.targets.sade = {
-              description = "SADE desktop session";
-            };
+              systemd.user.targets.sade = {
+                description = "SADE desktop session";
+              };
 
-            services.sadeshell.enable = lib.mkDefault true;
-          };
+              services.sadeshell.enable = lib.mkDefault true;
+            })
+          ];
         };
 
       # ── NixOS module: sadeshell status bar ──────────────────────────────────

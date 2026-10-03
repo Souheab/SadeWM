@@ -2,26 +2,25 @@
 # run_tests.sh — Build sadewm and run the X11 test suite.
 # Xvfb and sadewm are started/stopped by conftest.py via xdrive.
 #
-# Usage: ./x11-testing/run_tests.sh [--backend go|rust] [-t test_file.py]
+# Usage: ./x11-testing/run_tests.sh [-t test_file.py]
 #   -t   run only the specified test file (default: all tests)
 set -euo pipefail
 
 TEST_FILE=""
-BACKEND="go"
-LOG_FILE="/tmp/sadewm_headless.log"
+LOG_FILE="${SADEWM_LOG:-$(mktemp /tmp/sadewm-headless.XXXXXX.log)}"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        -t) TEST_FILE="$2"; shift ;;
-        --backend) BACKEND="$2"; shift ;;
-        *)  echo "Usage: $0 [--backend go|rust] [-t test_file.py]"; exit 1 ;;
+        -t)
+            [[ $# -ge 2 ]] || { echo "ERROR: -t needs a test file" >&2; exit 1; }
+            TEST_FILE="$2"; shift ;;
+        *)  echo "Usage: $0 [-t test_file.py]"; exit 1 ;;
     esac
     shift
 done
 
-case "$BACKEND" in go|rust) ;; *) echo "Unknown backend: $BACKEND" >&2; exit 1 ;; esac
 
 # ── Preflight checks ─────────────────────────────────────────────────────────
 if ! command -v python3 &>/dev/null; then
@@ -36,15 +35,9 @@ python3 -c "import Xlib" 2>/dev/null || {
 # ── Build sadewm ─────────────────────────────────────────────────────────────
 if [[ -n "${SADEWM_BIN:-${SADEWM_TEST_BINARY:-}}" ]]; then
     WM_BIN="${SADEWM_BIN:-$SADEWM_TEST_BINARY}"
-elif [[ "$BACKEND" == "rust" ]]; then
-    cargo build --manifest-path "$REPO_ROOT/wm-rs/Cargo.toml"
-    WM_BIN="$REPO_ROOT/wm-rs/target/debug/sadewm-rs"
-elif [[ "$BACKEND" == "go" ]]; then
-    make -s -C "$REPO_ROOT/wm"
-    WM_BIN="$REPO_ROOT/wm/sadewm"
 else
-    echo "Unknown backend: $BACKEND" >&2
-    exit 1
+    cargo build --manifest-path "$REPO_ROOT/wm/Cargo.toml" --locked
+    WM_BIN="$REPO_ROOT/wm/target/debug/sadewm"
 fi
 if [[ ! -x "$WM_BIN" ]]; then
     echo "ERROR: sadewm binary not found at $WM_BIN" >&2
@@ -53,6 +46,11 @@ fi
 
 # ── Run tests ─────────────────────────────────────────────────────────────────
 cd "$REPO_ROOT"
+
+# Accept both repository-relative paths and filenames within this suite.
+if [[ -n "$TEST_FILE" && ! -e "$TEST_FILE" && -e "$SCRIPT_DIR/$TEST_FILE" ]]; then
+    TEST_FILE="$SCRIPT_DIR/$TEST_FILE"
+fi
 
 # Ensure xdrive package is importable; pass WM binary + log path to conftest.
 export PYTHONPATH="$REPO_ROOT/xdrive${PYTHONPATH:+:$PYTHONPATH}"

@@ -14,8 +14,8 @@ Headless X11 testing tools for debugging and validating the sadewm window manage
 # Run all tests (starts Xvfb + sadewm automatically)
 ./x11-testing/run_tests.sh
 
-# Run with debug logging from sadewm
-./x11-testing/run_tests.sh -d
+# Run one test file (the runner enables WM debug logging)
+./x11-testing/run_tests.sh -t test_sadewm_ipc.py
 
 # Run a single test file against an already-running sadewm
 DISPLAY=:98 python3 -m pytest x11-testing/mouse/test_drag.py -v
@@ -23,5 +23,5 @@ DISPLAY=:98 python3 -m pytest x11-testing/mouse/test_drag.py -v
 
 ## Requirements
 
-- Go toolchain (to build sadewm)
+- Rust/Cargo toolchain (provided by `nix develop`)
 - `Xvfb` (managed automatically by xdrive's `VirtualDisplay`; must be installed)

@@ -24,7 +24,6 @@ pkgs.mkShell {
     gnumake
     pkg-config
     gdb
-    go
     cargo
     rustc
     rustfmt
@@ -66,8 +65,7 @@ pkgs.mkShell {
     export PYTHONPATH="$PWD/shell/src:$PWD/settings-app:$PWD/xdrive''${PYTHONPATH:+:$PYTHONPATH}"
 
     echo "sadewm + sadeshell dev shell ready"
-    echo "  WM:       cd wm && make"
-    echo "  Rust WM:  cargo build --manifest-path wm-rs/Cargo.toml"
+    echo "  WM:       cargo build --manifest-path wm/Cargo.toml"
     echo "  Shell:    python -m sadeshell.main"
     echo "  Settings: python -m sadesettings.main"
   '';

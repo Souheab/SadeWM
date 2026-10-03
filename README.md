@@ -1,29 +1,29 @@
 just my hobby project building a basic X11 desktop environment
 
-## Window manager implementations
+## Window manager
 
-Active window-manager development is focused on the Rust backend in `wm-rs/`.
-The Go backend in `wm/` is frozen for now and retained as a reference.
+The sole window manager is Rust in [`wm/`](wm/README.md), built as `sadewm`.
+Build the desktop bundle with `nix build .#sadewm`, or the standalone WM with
+`cargo build --manifest-path wm/Cargo.toml --release --locked`.
+Run `nix run .#default -- -v` to check the packaged WM version.
 
-The Go WM in `wm/` remains the default. An independent Rust implementation in
-[`wm-rs/`](wm-rs/README.md) builds as `sadewm-rs` and uses the same configuration,
-X11 identity, IPC, shell and settings app. Build it with `nix build .#sadewm-rs`
-or `cargo build --manifest-path wm-rs/Cargo.toml --release --locked`.
+NixOS users enable `services.xserver.windowManager.sadewm.enable = true;`.
+Remove the former `backend` setting: `"rust"` is accepted with a deprecation
+warning, while `"go"` is rejected because that implementation has been removed.
+The `sadewm-rs` Nix package/app and packaged executable remain compatibility
+aliases for the same Rust WM.
 
-NixOS users can opt in with
-`services.xserver.windowManager.sadewm.backend = "rust";` (default: `"go"`).
-For an interactive nested Rust desktop with Xephyr, picom and SadeShell, run
-`nix develop` followed by `./wm-rs/scripts/run_xephyr_session.sh`.
-See the [parity checklist](wm-rs/docs/parity.md) and
-[validation results](wm-rs/docs/validation.md) for tested behavior, documented
-differences and remaining hardware checks.
+For an interactive nested desktop with Xephyr, picom and SadeShell, run
+`nix develop` followed by `./wm/scripts/run_xephyr_session.sh`.
+See the [coverage checklist](wm/docs/coverage.md) and
+[validation record](wm/docs/validation.md) for tested behavior and hardware gaps.
 
 ## Nix packaging
 
 The flake pins `nixos-unstable`. Update its inputs with `nix flake update`, then
-run `nix flake check -L`. Checks build both WM packages and the desktop bundle,
-evaluate the NixOS modules with both backends, and start the installed shell,
-settings app and greeter on a private Xvfb display and D-Bus session. The startup
+run `nix flake check -L`. Checks build the Rust WM and desktop bundle,
+evaluate the NixOS module with default and deprecated Rust settings, and start
+the installed shell, settings app and greeter on a private Xvfb display and D-Bus session. The startup
 check also verifies that the WM uses the session's `systemctl` and that the shell
 restores the session environment for launching applications.
 

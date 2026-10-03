@@ -103,10 +103,12 @@ From the repository root, enter `nix develop` and run:
 ```sh
 python -m pytest -q
 ruff check shell/src/sadeshell shell/tests settings-app tests/integration
-(cd wm && go test ./... && go build -o /tmp/sadewm-validation ./cmd/sadewm)
-dbus-run-session --config-file=tests/integration/session.conf -- \
+cargo test --manifest-path wm/Cargo.toml --locked
+cargo build --manifest-path wm/Cargo.toml --release --locked
+SADEWM_TEST_BINARY="$PWD/wm/target/release/sadewm" \
+  dbus-run-session --config-file=tests/integration/session.conf -- \
   python -m pytest tests/integration -v -s
-SADEWM_TEST_XEPHYR=1 dbus-run-session \
+SADEWM_TEST_BINARY="$PWD/wm/target/release/sadewm" SADEWM_TEST_XEPHYR=1 dbus-run-session \
   --config-file=tests/integration/session.conf -- \
   python -m pytest tests/integration/test_desktop.py \
   -k 'minimize_restore or shell_lazy or property_republication or large_capture' -v

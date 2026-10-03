@@ -10,20 +10,18 @@ SCREEN="1280x800x24"
 OPEN_OVERLAY=true
 START_TEST_WINDOWS=true
 SKIP_BUILD=false
-BACKEND=go
-USE_CONFIG=true
+USE_CONFIG=false
 
 usage() {
     cat <<EOF
 Usage: $(basename "$0") [options]
 
-Build sadewm and sadeshell, then run them in Xephyr with Picom's XRender
+Build Rust sadewm and sadeshell, then run them in Xephyr with Picom's XRender
 backend. By default, two test terminals are opened and the transparent
 Alt+S window-search overlay is displayed.
 
 Options:
-  --backend BACKEND   Window manager implementation: go or rust (default: go)
-  --no-config         Skip WM user configuration and startup scripts
+  --no-config         Skip WM user configuration and startup scripts (default)
   --display DISPLAY   Nested X display (default: :7)
   --screen GEOMETRY   Xephyr geometry/depth (default: 1280x800x24)
   --no-overlay        Do not open the window picker automatically
@@ -33,13 +31,10 @@ Options:
 EOF
 }
 
+SESSION_ARGS=("$@")
+
 while (($#)); do
     case "$1" in
-        --backend)
-            [[ $# -ge 2 ]] || { echo "ERROR: --backend needs a value" >&2; exit 2; }
-            BACKEND="$2"
-            shift 2
-            ;;
         --no-config)
             USE_CONFIG=false
             shift
@@ -83,18 +78,9 @@ done
     exit 2
 }
 
-case "$BACKEND" in
-    go|rust) ;;
-    *) echo "ERROR: backend must be go or rust" >&2; exit 2 ;;
-esac
-
-required_commands=(Xephyr xdpyinfo picom nix)
+required_commands=(Xephyr xdpyinfo picom nix dbus-run-session)
 if ! "$SKIP_BUILD"; then
-    if [[ "$BACKEND" == rust ]]; then
-        required_commands+=(cargo)
-    else
-        required_commands+=(make go)
-    fi
+    required_commands+=(cargo)
 fi
 for command_name in "${required_commands[@]}"; do
     if ! command -v "$command_name" >/dev/null 2>&1; then
@@ -103,6 +89,10 @@ for command_name in "${required_commands[@]}"; do
         exit 1
     fi
 done
+
+if [[ "${SADEWM_PRIVATE_BUS:-}" != 1 ]]; then
+    exec dbus-run-session -- env SADEWM_PRIVATE_BUS=1 "$0" "${SESSION_ARGS[@]}"
+fi
 
 HOST_DISPLAY="${DISPLAY:-}"
 if [[ -z "$HOST_DISPLAY" ]] || ! xdpyinfo -display "$HOST_DISPLAY" >/dev/null 2>&1; then
@@ -159,21 +149,13 @@ build_output() {
     fi
 }
 
-if [[ "$BACKEND" == rust ]]; then
-    WM_BIN="$REPO_ROOT/wm-rs/target/release/sadewm-rs"
-else
-    WM_BIN="$REPO_ROOT/wm/sadewm"
-fi
+WM_BIN="$REPO_ROOT/wm/target/release/sadewm"
 if "$SKIP_BUILD"; then
     echo "==> Reusing $WM_BIN and the latest sadeshell store output..."
 else
-    echo "==> Building sadewm ($BACKEND)..."
-    if [[ "$BACKEND" == rust ]]; then
-        cargo build --manifest-path "$REPO_ROOT/wm-rs/Cargo.toml" \
-            --target-dir "$REPO_ROOT/wm-rs/target" --release --locked
-    else
-        make -B -C "$REPO_ROOT/wm" build
-    fi
+    echo "==> Building sadewm (Rust)..."
+    cargo build --manifest-path "$REPO_ROOT/wm/Cargo.toml" \
+        --target-dir "$REPO_ROOT/wm/target" --release --locked
 fi
 if ! "$SKIP_BUILD"; then
     echo "==> Building sadeshell..."
@@ -262,7 +244,7 @@ if ! kill -0 "$PICOM_PID" 2>/dev/null; then
     exit 1
 fi
 
-echo "==> Starting sadewm ($BACKEND)..."
+echo "==> Starting sadewm (Rust)..."
 WM_ARGS=(-d)
 if ! "$USE_CONFIG"; then
     WM_ARGS+=(-no-config)

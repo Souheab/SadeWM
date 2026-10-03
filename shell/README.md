@@ -50,8 +50,9 @@ supports `python -m sadeshell.main`, and IPC-only flags do not initialize Qt.
 ## Isolated integration checks
 
 ```sh
-cd wm && go build -o /tmp/sadewm-validation ./cmd/sadewm && cd ..
-dbus-run-session --config-file=tests/integration/session.conf -- \
+cargo build --manifest-path wm/Cargo.toml --release --locked
+SADEWM_TEST_BINARY="$PWD/wm/target/release/sadewm" \
+  dbus-run-session --config-file=tests/integration/session.conf -- \
   python -m pytest tests/integration -v
 ```
 

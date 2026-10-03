@@ -12,7 +12,7 @@ import time
 from Xlib import X, Xatom, display
 
 
-shell, settings, greeter, go_wm, rust_wm = map(Path, sys.argv[1:])
+shell, settings, greeter, wm = map(Path, sys.argv[1:])
 
 
 def wait_for(predicate, process, log, timeout=20):
@@ -70,7 +70,7 @@ with tempfile.TemporaryDirectory() as directory:
         env["DISPLAY"] = ":" + number
         connection = display.Display(env["DISPLAY"])
         try:
-            for package, executable in ((go_wm, "sadewm"), (rust_wm, "sadewm-rs")):
+            for package, executable in ((wm, "sadewm"), (wm, "sadewm-rs")):
                 config = root / executable
                 config.mkdir()
                 result = config / "systemctl.txt"

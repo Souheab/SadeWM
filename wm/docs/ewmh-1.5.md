@@ -1,8 +1,8 @@
 # EWMH 1.5 compliance matrix
 
 This document describes sadewm's window-manager-facing EWMH 1.5 contract. The
-canonical advertised set is `supportedAtomNames` in `internal/wm/atoms.go`;
-`TestEWMHMatrixCoversRegistry` fails when this matrix and that registry drift.
+canonical advertised set is `SUPPORTED` in `src/atoms.rs`;
+`test_supported_registry_matches_compliance_matrix` fails when this matrix and that registry drift.
 
 Tags are represented as fixed EWMH desktops. The desktop count and names come
 from the configured tag labels. The highest selected tag is the current

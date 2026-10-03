@@ -2,15 +2,12 @@
   "name": "sadewm",
   "image": "mcr.microsoft.com/devcontainers/base:ubuntu-24.04",
   "features": {
-    "ghcr.io/devcontainers/features/go:1": {
-      "version": "1.26.1"
-    },
     "ghcr.io/devcontainers/features/python:1": {
       "version": "3"
     },
     "ghcr.io/devcontainers/features/nix:1": {
       "multiUser": false,
-      "packages": "shellcheck,qt6Packages.qtdeclarative,qtcreator",
+      "packages": "shellcheck,qt6Packages.qtdeclarative,qtcreator,cargo,rustc,rustfmt,clippy",
       "useAttributePath": true,
       "extraNixConfig": "experimental-features = nix-command flakes"
     },
@@ -23,7 +20,7 @@
   "customizations": {
     "vscode": {
       "extensions": [
-        "golang.go",
+        "rust-lang.rust-analyzer",
         "jnoortheen.nix-ide",
         "ms-vscode.cpptools",
         "ms-vscode.makefile-tools",
@@ -34,18 +31,6 @@
         "ms-python.python"
       ],
       "settings": {
-        "go.toolsManagement.autoUpdate": true,
-        "go.testOnSave": false,
-        "gopls": {
-          "build.directoryFilters": [
-            "-wm/vendor"
-          ],
-          "formatting.gofumpt": true,
-          "ui.semanticTokens": true
-        },
-        "go.testEnvVars": {
-          "GOFLAGS": "-mod=vendor"
-        },
         "C_Cpp.default.cStandard": "c99",
         "C_Cpp.default.compilerPath": "/usr/bin/cc",
         "C_Cpp.default.includePath": [
@@ -61,7 +46,10 @@
         ],
         "files.associations": {
           "*.qml": "qml"
-        }
+        },
+        "rust-analyzer.linkedProjects": [
+          "wm/Cargo.toml"
+        ]
       }
     }
   },

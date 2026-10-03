@@ -14,6 +14,9 @@ from Xlib.protocol import event
 from xdrive import VirtualDisplay
 
 
+DEFAULT_WM_BINARY = str(Path(__file__).resolve().parents[2] / "wm/target/release/sadewm")
+
+
 def wait_for(predicate, timeout=5):
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
@@ -50,7 +53,7 @@ def desktop(tmp_path, monkeypatch):
         monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "data"))
         monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "cache"))
         log = (tmp_path / "wm.log").open("w")
-        process = subprocess.Popen([(os.environ.get("SADEWM_TEST_BINARY") or os.environ.get("SADEWM_BIN", "/tmp/sadewm-validation")), "--no-config"], stdout=log, stderr=log)
+        process = subprocess.Popen([(os.environ.get("SADEWM_TEST_BINARY") or os.environ.get("SADEWM_BIN", DEFAULT_WM_BINARY)), "--no-config"], stdout=log, stderr=log)
         try:
             wait_for(lambda: (tmp_path / "wm.sock").exists())
             connection = display.Display()

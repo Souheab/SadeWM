@@ -5,12 +5,19 @@ pub(super) struct Drag {
     pub id: ClientId,
     start: (i32, i32),
     original: Rect,
-    floating: bool,
+    before: Client,
+    layouts: Vec<(MonitorId, Vec<ClientId>, Tag)>,
     direction: u32,
     pub(super) button: u8,
     external: bool,
     last_swap: Option<ClientId>,
     last: (i32, i32),
+}
+#[derive(Clone, Debug)]
+pub(super) struct TitlePress {
+    pub id: ClientId,
+    pub time: u32,
+    pub pos: (i32, i32),
 }
 impl Wm {
     pub(super) fn grab_keys(&mut self) -> Result<()> {
@@ -118,13 +125,19 @@ impl Wm {
         state & 255 & !(2 | self.numlock)
     }
     pub(super) fn key_press(&mut self, e: KeyPressEvent) -> Result<()> {
-        if self.drag.as_ref().is_some_and(|d| d.external) {
+        if self.drag.is_some() || self.title_press.is_some() {
             let mapping = self.conn.get_keyboard_mapping(e.detail, 1)?.reply()?;
             let sym = mapping.keysyms.first().copied().unwrap_or(0);
             match sym {
-                0xff1b => return self.end_drag(0, true),
-                0xff0d => return self.end_drag(0, false),
-                0xff51..=0xff54 => {
+                0xff1b => {
+                    self.title_press = None;
+                    self.last_title_click = None;
+                    return self.end_drag(0, true);
+                }
+                0xff0d if self.drag.as_ref().is_some_and(|d| d.external) => {
+                    return self.end_drag(0, false);
+                }
+                0xff51..=0xff54 if self.drag.as_ref().is_some_and(|d| d.external) => {
                     let d = self.drag.clone().unwrap();
                     let step = if u16::from(e.state) & config::CTRL != 0 {
                         1
@@ -177,9 +190,27 @@ impl Wm {
         }
         self.focus(Some(id))?;
         self.restack()?;
+        if self.frames.contains_key(&e.event) && self.clean_mask(e.state.into()) != config::SUPER {
+            let c = &self.clients[&id];
+            if e.detail == 1
+                && let Some(direction) = c.extents.resize_direction(
+                    c.geom,
+                    c.flags.shaded,
+                    e.event_x.into(),
+                    e.event_y.into(),
+                )
+            {
+                self.begin_drag(id, e.root_x.into(), e.root_y.into(), direction, 1, false)?;
+            }
+            return Ok(());
+        }
         if self.titles.contains_key(&e.event) && self.clean_mask(e.state.into()) != config::SUPER {
             if e.detail == 1 {
-                match render::hit_button(e.event_x.into(), e.event_y.into()) {
+                let hit = render::hit_button(e.event_x.into(), e.event_y.into());
+                if hit != 4 {
+                    self.last_title_click = None;
+                }
+                match hit {
                     1 => self.close_client(id, e.time)?,
                     2 => {
                         let atom = self.a("_NET_WM_STATE_ABOVE");
@@ -189,12 +220,35 @@ impl Wm {
                         self.restack()?;
                     }
                     3 => self.minimize_client(id)?,
-                    4 => self.begin_drag(id, e.root_x.into(), e.root_y.into(), 8, 1, false)?,
+                    4 => {
+                        let pos = (i32::from(e.root_x), i32::from(e.root_y));
+                        let double =
+                            self.last_title_click
+                                .take()
+                                .is_some_and(|(last_id, time, last)| {
+                                    last_id == id
+                                        && e.time.wrapping_sub(time) <= 400
+                                        && (pos.0 - last.0).abs() <= 5
+                                        && (pos.1 - last.1).abs() <= 5
+                                });
+                        if double && !self.clients[&id].hints.fixed {
+                            let on = !self.clients[&id].maximized();
+                            self.maximize(id, on, on)?;
+                            self.arrange()?;
+                        } else {
+                            self.title_press = Some(TitlePress {
+                                id,
+                                time: e.time,
+                                pos,
+                            });
+                        }
+                    }
                     _ => {}
                 }
             }
             return Ok(());
         }
+        self.last_title_click = None;
         if self.clean_mask(e.state.into()) == config::SUPER {
             self.conn.ungrab_pointer(x11rb::CURRENT_TIME)?;
             self.conn
@@ -212,6 +266,7 @@ impl Wm {
         Ok(())
     }
     pub(super) fn motion(&mut self, e: MotionNotifyEvent) -> Result<()> {
+        self.start_title_drag(e.root_x.into(), e.root_y.into())?;
         if self.drag.is_some() {
             return self.drag_motion(e.root_x.into(), e.root_y.into());
         }
@@ -220,6 +275,32 @@ impl Wm {
             if self.clients[&id].hover != hover {
                 self.clients.get_mut(&id).unwrap().hover = hover;
                 self.draw_title(id)?;
+            }
+        }
+        if let Some(id) = self.frames.get(&e.event).copied() {
+            self.frame_cursor(id, e.event_x.into(), e.event_y.into())?;
+        }
+        Ok(())
+    }
+    pub(super) fn frame_cursor(&self, id: ClientId, x: i32, y: i32) -> Result<()> {
+        let c = &self.clients[&id];
+        let cursor = c
+            .extents
+            .resize_direction(c.geom, c.flags.shaded, x, y)
+            .map(|d| self.cursors[3 + d as usize])
+            .unwrap_or(self.cursors[0]);
+        self.conn
+            .change_window_attributes(c.frame, &ChangeWindowAttributesAux::new().cursor(cursor))?;
+        Ok(())
+    }
+    pub(super) fn start_title_drag(&mut self, x: i32, y: i32) -> Result<()> {
+        if let Some(press) = self.title_press.clone()
+            && ((x - press.pos.0).abs() > 5 || (y - press.pos.1).abs() > 5)
+        {
+            self.title_press = None;
+            self.last_title_click = None;
+            if self.clients.contains_key(&press.id) {
+                self.begin_drag(press.id, press.pos.0, press.pos.1, 8, 1, false)?;
             }
         }
         Ok(())
@@ -239,28 +320,29 @@ impl Wm {
         } else {
             (x, y)
         };
-        if external {
-            if self.clients[&id].flags.fullscreen {
-                self.fullscreen(id, false)?;
-            }
-            if self.clients[&id].flags.max_h || self.clients[&id].flags.max_v {
-                self.maximize(id, false, false)?;
-            }
-            if self.clients[&id].flags.shaded {
-                self.shade(id, false)?;
-            }
-            self.clients.get_mut(&id).unwrap().flags.floating = true;
-            self.frame(id, true)?;
-            self.focus(Some(id))?;
-            self.restack()?;
-        }
         let c = &self.clients[&id];
-        if c.flags.fullscreen || c.flags.dock || c.flags.desktop {
+        if self.drag.is_some()
+            || c.flags.dock
+            || c.flags.desktop
+            || (!external && c.flags.fullscreen)
+            || (c.hints.fixed && !matches!(direction, 8 | 10))
+        {
             return Ok(());
         }
-        let original = c.geom;
-        let floating = c.flags.floating;
+        let before = c.clone();
+        let layouts = self
+            .monitors
+            .iter()
+            .map(|m| (m.id, m.clients.clone(), m.active.clone()))
+            .collect();
         self.conn.ungrab_pointer(x11rb::CURRENT_TIME)?;
+        let cursor = if matches!(direction, 8 | 10) {
+            1
+        } else if direction <= 7 {
+            3 + direction as usize
+        } else {
+            2
+        };
         let reply = self
             .conn
             .grab_pointer(
@@ -270,14 +352,14 @@ impl Wm {
                 GrabMode::ASYNC,
                 GrabMode::ASYNC,
                 x11rb::NONE,
-                self.cursors[if matches!(direction, 8 | 10) { 1 } else { 2 }],
+                self.cursors[cursor],
                 x11rb::CURRENT_TIME,
             )?
             .reply()?;
         if reply.status != GrabStatus::SUCCESS {
             return Ok(());
         }
-        if external {
+        {
             let reply = self
                 .conn
                 .grab_keyboard(
@@ -296,18 +378,53 @@ impl Wm {
         self.drag = Some(Drag {
             id,
             start: (x, y),
-            original,
-            floating,
+            original: before.geom,
+            before: before.clone(),
+            layouts,
             direction,
             button,
             external,
             last_swap: None,
             last: (x, y),
         });
+        if external && before.flags.fullscreen {
+            self.fullscreen(id, false)?;
+        }
+        if external && before.flags.shaded {
+            self.shade(id, false)?;
+        }
+        let free =
+            before.flags.floating || self.monitors[before.monitor.0].active.layout == Layout::Float;
+        if (external || free) && (before.flags.max_h || before.flags.max_v) {
+            self.maximize(id, false, false)?;
+            if self.clients[&id].flags.shaded
+                && let Some((r, _)) = self.clients[&id].normal
+            {
+                self.resize_now(id, r)?;
+            }
+            if matches!(direction, 8 | 10) {
+                let c = &self.clients[&id];
+                let fraction =
+                    (x - before.geom.x).clamp(0, before.geom.w) as f32 / before.geom.w as f32;
+                let r = Rect::new(
+                    x - (fraction * c.geom.w as f32) as i32,
+                    y - (y - before.geom.y).clamp(-c.extents.top, c.geom.h),
+                    c.geom.w,
+                    c.geom.h,
+                );
+                self.resize_now(id, r)?;
+            }
+        }
         if external {
-            self.clients.get_mut(&id).unwrap().flags.floating = true;
-            self.arrange()?;
-        } else if direction == 4 {
+            let c = self.clients.get_mut(&id).unwrap();
+            c.flags.floating = true;
+            c.was_free = true;
+        }
+        self.arrange_windows()?;
+        self.focus(Some(id))?;
+        self.restack()?;
+        self.drag.as_mut().unwrap().original = self.clients[&id].geom;
+        if !external && direction == 4 && button == 3 {
             let c = &self.clients[&id];
             self.conn.warp_pointer(
                 x11rb::NONE,
@@ -332,7 +449,12 @@ impl Wm {
         self.drag.as_mut().unwrap().last = (x, y);
         let c = &self.clients[&d.id];
         let m = &self.monitors[c.monitor.0];
-        if !d.external && d.direction == 4 && !c.flags.floating && m.active.layout == Layout::Tile {
+        if !d.external
+            && d.direction == 4
+            && d.button == 3
+            && !c.flags.floating
+            && m.active.layout == Layout::Tile
+        {
             let mut fraction = (x - m.work.x) as f32 / m.work.w as f32;
             if m.active.right {
                 fraction = 1. - fraction;
@@ -362,7 +484,7 @@ impl Wm {
             }
             return Ok(());
         }
-        let mut r = if !d.external && d.direction == 4 {
+        let mut r = if !d.external && d.direction == 4 && d.button == 3 {
             Rect::new(
                 c.geom.x,
                 c.geom.y,
@@ -374,14 +496,16 @@ impl Wm {
         };
         if !d.external && d.direction == 8 {
             let area = m.work;
-            let top = if c.frame != 0 { TITLE_HEIGHT } else { 0 };
-            let maxx = (area.x + area.w - r.w).max(area.x);
-            let maxy = (area.y + area.h - r.h).max(area.y + top);
-            r.x = r.x.clamp(area.x, maxx);
+            let extents = c.extents;
+            let top = extents.top;
+            let minx = area.x + extents.left;
+            let maxx = (area.x + area.w - r.w - extents.right).max(minx);
+            let maxy = (area.y + area.h - r.h - extents.bottom).max(area.y + top);
+            r.x = r.x.clamp(minx, maxx);
             r.y = r.y.clamp(area.y + top, maxy);
             let snap = self.config.snap;
-            if (r.x - area.x).abs() < snap && r.x < d.original.x {
-                r.x = area.x;
+            if (r.x - minx).abs() < snap && r.x < d.original.x {
+                r.x = minx;
             }
             if (r.x - maxx).abs() < snap && r.x > d.original.x {
                 r.x = maxx;
@@ -404,26 +528,51 @@ impl Wm {
         }
         self.drag = None;
         self.conn.ungrab_pointer(x11rb::CURRENT_TIME)?;
-        if d.external {
-            self.conn.ungrab_keyboard(x11rb::CURRENT_TIME)?;
-        }
+        self.conn.ungrab_keyboard(x11rb::CURRENT_TIME)?;
         if !self.clients.contains_key(&d.id) {
             return Ok(());
         }
         let c = self.clients.get_mut(&d.id).unwrap();
         c.sync_wait = None;
         if cancel {
-            c.flags.floating = d.floating;
             c.sync_pending = None;
-            self.resize_now(d.id, d.original)?;
+            c.flags.floating = d.before.flags.floating;
+            c.flags.fullscreen = d.before.flags.fullscreen;
+            c.flags.shaded = d.before.flags.shaded;
+            c.flags.max_h = d.before.flags.max_h;
+            c.flags.max_v = d.before.flags.max_v;
+            c.normal = d.before.normal;
+            c.fullscreen_restore = d.before.fullscreen_restore;
+            c.floating_geom = d.before.floating_geom;
+            c.was_free = d.before.was_free;
+            c.border = d.before.border;
+            c.tags = d.before.tags;
+            if !d.external {
+                for (id, order, active) in d.layouts {
+                    if let Some(m) = self.monitors.get_mut(id.0) {
+                        m.clients.sort_by_key(|id| {
+                            order.iter().position(|i| i == id).unwrap_or(usize::MAX)
+                        });
+                        if !d.before.flags.floating && active.layout == Layout::Tile {
+                            m.active = active;
+                            m.save_tag();
+                        }
+                    }
+                }
+            }
+            self.resize_now(d.id, d.before.geom)?;
+            self.publish_desktop(d.id)?;
         } else if let Some(r) = c.sync_pending.take() {
             self.resize_now(d.id, r)?;
         }
-        let mon = self.rect_monitor(self.clients[&d.id].geom);
-        self.move_monitor(d.id, mon, true)?;
-        self.selected = mon;
-        self.arrange()?;
+        if !cancel {
+            let mon = self.rect_monitor(self.clients[&d.id].geom);
+            self.move_monitor(d.id, mon, true)?;
+            self.selected = mon;
+        }
+        self.arrange_windows()?;
         self.focus(Some(d.id))?;
+        self.restack()?;
         self.draw_title(d.id)
     }
     fn toggle_floating(&mut self, id: ClientId) -> Result<()> {

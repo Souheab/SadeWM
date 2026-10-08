@@ -10,7 +10,7 @@ protocol contract. Physical hardware coverage is listed separately below.
 | Implemented | Typed state and layouts | Stable XIDs and monitor IDs, separate layout/focus/manage order, per-tag views/layout/direction/master/gaps; unit geometry tests and protocol regressions |
 | Implemented | Focus and input | ICCCM input models, fresh server timestamps, timestamp wraparound, modal focus, directional focus/swap, monitor transfers, key remapping, replayed clicks, snapping, final drag samples |
 | Implemented | Lifecycle | Scan/map/withdraw/destroy, reparenting/save set, minimize/restore, independent maximize axes, fullscreen restore slot, sticky/shade/modal/urgency, docks/desktops/transients |
-| Implemented | Decorations | 28px titlebar, rounded Shape masks, border companions, palette/buttons/hover, Unicode text, narrow windows, resize, frame opacity; pixel-format tests and Xvfb/Xephyr/picom resource cycles |
+| Implemented | Decorations | 28px titlebar, 5px resize borders, eight resize directions, background double-click maximize/restore, rounded Shape masks, type/Motif/GTK decoration policy, fixed-size affordances, parent-centered transients, palette/buttons/hover, Unicode text and frame opacity; private X11 regressions, pixel-format tests and Xvfb/Xephyr/picom resource cycles |
 | Implemented | Root EWMH | WM_Sn selection/MANAGER announcement, WM identity, desktop/workarea/show-desktop, original management order and actual server stacking, conditional supported registry |
 | Implemented | Client EWMH/ICCCM | Window types, allowed actions, state transitions, activation policy, timestamped focus/close/ping, struts, desktop mapping, gravity, interactive moveresize/cancel, sync counters and timeout fallback |
 | Implemented | Monitors | Xinerama discovery and indices, physical intersection, RandR topology events, transfers, fullscreen spanning, partial struts; unit and two-screen Xvfb tests |
@@ -39,6 +39,13 @@ scrolling desktops or pager-owned desktop layout. Picom remains separate.
 * **A maximized floating frame stays within the work area.** The regression
   checks the frame boundary and exact restoration. Horizontal-only maximization
   retains the original vertical geometry.
+* **Clicks preserve the current floating stack and widget focus.** Private X11
+  tests require replay exactly once without exposing covered clients or issuing
+  redundant stacking requests. Covered clients still raise when selected.
+* **Floating state transitions restore geometry and mode.** Tests cover tiled
+  and floating layout round trips, fullscreen with shade/maximize, minimized
+  fullscreen restoration, failed grabs, and cancellation from tiled, floating,
+  shaded, maximized and fullscreen interactive operations.
 * **Invalid negative/oversized dimensions are bounded.** Dimensions are clamped
   to 0–65535; master count and fraction are bounded. Unit regressions cover
   negative gaps/master counts and atomic malformed reloads.

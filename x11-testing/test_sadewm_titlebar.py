@@ -9,6 +9,7 @@ from xdrive.assertions import expect
 
 
 TITLEBAR_HEIGHT = 28
+RESIZE_BORDER = 5
 
 
 def _frame_extents(win):
@@ -36,21 +37,21 @@ def test_floating_dialog_uses_reparented_titlebar_frame(xd):
         frame_geo = frame.geometry
         child_ids = {child.id for child in frame._xwindow.query_tree().children}
 
-        assert frame_geo.x == client_geo.x
-        assert frame_geo.y == client_geo.y - TITLEBAR_HEIGHT
-        assert frame_geo.width == client_geo.width
-        assert frame_geo.height == client_geo.height + TITLEBAR_HEIGHT
+        assert frame_geo.x == client_geo.x - RESIZE_BORDER
+        assert frame_geo.y == client_geo.y - TITLEBAR_HEIGHT - RESIZE_BORDER
+        assert frame_geo.width == client_geo.width + 2 * RESIZE_BORDER
+        assert frame_geo.height == client_geo.height + TITLEBAR_HEIGHT + 2 * RESIZE_BORDER
         assert win.id in child_ids
         assert len(child_ids - {win.id}) == 1, "frame should contain one titlebar child"
-        assert _frame_extents(win) == [0, 0, TITLEBAR_HEIGHT, 0]
+        assert _frame_extents(win) == [5, 5, 33, 5]
 
         win.set_size(460, 340)
         xd.wait_for_layout()
         client_geo = win.geometry
         frame_geo = win.frame.geometry
         assert (client_geo.width, client_geo.height) == (460, 340)
-        assert frame_geo.width == client_geo.width
-        assert frame_geo.height == client_geo.height + TITLEBAR_HEIGHT
+        assert frame_geo.width == client_geo.width + 2 * RESIZE_BORDER
+        assert frame_geo.height == client_geo.height + TITLEBAR_HEIGHT + 2 * RESIZE_BORDER
     finally:
         win.kill()
         time.sleep(0.2)
@@ -108,7 +109,7 @@ def test_toggle_floating_reparents_and_restores_root_parent(xd):
         xd.keyboard.press("super+ctrl+space")
         xd.wait_for_layout()
         expect(win).to_be_reparented()
-        assert _frame_extents(win) == [0, 0, TITLEBAR_HEIGHT, 0]
+        assert _frame_extents(win) == [5, 5, 33, 5]
 
         xd.keyboard.press("super+ctrl+space")
         xd.wait_for_layout()
@@ -140,7 +141,7 @@ def test_fullscreen_temporarily_removes_floating_frame(xd):
         win.set_fullscreen(False)
         xd.wait_for_layout()
         expect(win).to_be_reparented()
-        assert _frame_extents(win) == [0, 0, TITLEBAR_HEIGHT, 0]
+        assert _frame_extents(win) == [5, 5, 33, 5]
     finally:
         if win.is_fullscreen:
             win.set_fullscreen(False)

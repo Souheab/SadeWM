@@ -1,6 +1,104 @@
 use super::*;
 use crate::render;
 impl Wm {
+    pub(super) fn decoration_extents(&self, c: &Client) -> FrameExtents {
+        let free = c.flags.floating || self.monitors[c.monitor.0].active.layout == Layout::Float;
+        let regular = ["NORMAL", "DIALOG", "UTILITY"]
+            .iter()
+            .any(|kind| c.window_type == self.a(&format!("_NET_WM_WINDOW_TYPE_{kind}")));
+        if free && regular && !c.flags.fullscreen && !c.no_decorations {
+            FrameExtents::decorated(!c.hints.fixed)
+        } else {
+            FrameExtents::default()
+        }
+    }
+    pub(super) fn requested_extents(&self, win: u32) -> FrameExtents {
+        let mut c = Client::new(win, self.selected, Rect::default(), 1);
+        let class = self.prop_text(win, AtomEnum::WM_CLASS.into());
+        let mut parts = class.split('\0');
+        c.instance = parts.next().unwrap_or_default().to_owned();
+        c.class = parts.next().unwrap_or_default().to_owned();
+        c.title = self.prop_text(win, self.a("_NET_WM_NAME"));
+        if c.title.is_empty() {
+            c.title = self.prop_text(win, AtomEnum::WM_NAME.into());
+        }
+        for rule in &self.config.rules {
+            if (rule.class.is_empty() || c.class.contains(&rule.class))
+                && (rule.instance.is_empty() || c.instance.contains(&rule.instance))
+                && (rule.title.is_empty() || c.title.contains(&rule.title))
+            {
+                c.flags.floating = rule.isfloating;
+                if rule.monitor >= 0 && (rule.monitor as usize) < self.monitors.len() {
+                    c.monitor = MonitorId(rule.monitor as usize);
+                }
+            }
+        }
+        c.transient = self
+            .prop32(
+                win,
+                AtomEnum::WM_TRANSIENT_FOR.into(),
+                AtomEnum::WINDOW.into(),
+            )
+            .first()
+            .copied()
+            .unwrap_or(0);
+        if let Some(parent) = self.clients.get(&ClientId(c.transient)) {
+            c.monitor = parent.monitor;
+        }
+        let hints = self.prop32(
+            win,
+            AtomEnum::WM_NORMAL_HINTS.into(),
+            AtomEnum::WM_SIZE_HINTS.into(),
+        );
+        c.hints.fixed = hints.len() >= 15
+            && hints[0] & 48 == 48
+            && hints[5] > 0
+            && hints[6] > 0
+            && hints[5] == hints[7]
+            && hints[6] == hints[8];
+        if c.transient != 0 || c.hints.fixed {
+            c.flags.floating = true;
+        }
+        self.set_type_flags(&mut c, &self.get32(win, "_NET_WM_WINDOW_TYPE"));
+        c.no_decorations = self.client_no_decorations(win);
+        c.flags.fullscreen = self
+            .get32(win, "_NET_WM_STATE")
+            .contains(&self.a("_NET_WM_STATE_FULLSCREEN"));
+        self.decoration_extents(&c)
+    }
+    fn client_no_decorations(&self, win: u32) -> bool {
+        let motif = self.prop32(win, self.a("_MOTIF_WM_HINTS"), self.a("_MOTIF_WM_HINTS"));
+        let gtk = self.prop32(win, self.a("_GTK_FRAME_EXTENTS"), AtomEnum::CARDINAL.into());
+        (motif.len() >= 5 && motif[0] & 2 != 0 && motif[2] == 0) || gtk.len() == 4
+    }
+    pub(super) fn publish_extents(&self, id: ClientId) -> Result<()> {
+        self.put32(
+            id.0,
+            "_NET_FRAME_EXTENTS",
+            AtomEnum::CARDINAL,
+            &self.clients[&id].extents.values(),
+        )
+    }
+    pub(super) fn reconcile_mapping(&mut self, id: ClientId) -> Result<()> {
+        let c = &self.clients[&id];
+        let mapped = !c.flags.minimized && (c.flags.fullscreen || !c.flags.shaded);
+        if mapped != c.mapped {
+            if mapped {
+                self.conn.map_window(id.0)?;
+            } else {
+                self.clients.get_mut(&id).unwrap().ignore_unmap += 2;
+                self.conn.unmap_window(id.0)?;
+            }
+            self.clients.get_mut(&id).unwrap().mapped = mapped;
+        }
+        let c = &self.clients[&id];
+        if c.frame != 0 && !c.flags.minimized {
+            self.conn.map_window(c.frame)?;
+            self.conn.map_window(c.titlebar)?;
+        }
+        Ok(())
+    }
+
     pub(super) fn manage(&mut self, win: u32) -> Result<()> {
         let id = ClientId(win);
         if self.clients.contains_key(&id) {
@@ -76,7 +174,16 @@ impl Wm {
             && !c.flags.desktop
             && !c.hints.positioned
         {
-            c.geom = c.geom.centered(area, TITLE_HEIGHT);
+            let extents = self.decoration_extents(&c);
+            let parent_area = self
+                .clients
+                .get(&ClientId(c.transient))
+                .map(|p| {
+                    p.extents
+                        .outer(p.geom, p.flags.shaded && !p.flags.fullscreen)
+                })
+                .unwrap_or(area);
+            c.geom = extents.contain(extents.centered(c.geom, parent_area), area);
         }
         if let Some(desktop) = self.get32(win, "_NET_WM_DESKTOP").first() {
             if *desktop == u32::MAX {
@@ -89,6 +196,7 @@ impl Wm {
             c.tags = config::TAG_MASK;
             c.border = 0;
         }
+        c.floating_geom = c.geom;
         let mon = c.monitor;
         let no_focus = c.user_time == Some(0);
         c.flags.minimized = iconic;
@@ -129,18 +237,9 @@ impl Wm {
         self.recompute_work()?;
         if iconic {
             self.minimized.push(id);
-            if self.clients[&id].mapped {
-                self.clients.get_mut(&id).unwrap().ignore_unmap += 2;
-                self.conn.unmap_window(win)?;
-            }
         }
         self.suppress_crossings(true)?;
         self.arrange()?;
-        if !iconic {
-            self.conn.map_window(win)?;
-            self.clients.get_mut(&id).unwrap().mapped = true;
-            self.arrange()?;
-        }
         if no_focus {
             self.focus_with_fallback(self.focused, false)?;
         } else if !iconic && self.clients[&id].focusable() {
@@ -150,6 +249,7 @@ impl Wm {
         }
         self.suppress_crossings(false)?;
         self.publish_state(id)?;
+        self.reconcile_mapping(id)?;
         self.restack()?;
         Ok(())
     }
@@ -232,7 +332,9 @@ impl Wm {
         }
         let colormaps = self.get32(win, "WM_COLORMAP_WINDOWS");
         let take_focus = protocols.contains(&self.a("WM_TAKE_FOCUS"));
+        let no_decorations = self.client_no_decorations(win);
         let mut c = self.clients.remove(&id).unwrap();
+        c.no_decorations = no_decorations;
         c.title = title;
         c.class = class;
         c.instance = instance;
@@ -372,6 +474,12 @@ impl Wm {
         let Some(mut c) = self.clients.remove(&id) else {
             return Ok(());
         };
+        if self.title_press.as_ref().is_some_and(|p| p.id == id) {
+            self.title_press = None;
+        }
+        if self.last_title_click.is_some_and(|(i, _, _)| i == id) {
+            self.last_title_click = None;
+        }
         if self.drag.as_ref().is_some_and(|d| d.id == id) {
             self.drag = None;
             self.conn.ungrab_pointer(x11rb::CURRENT_TIME)?;
@@ -440,6 +548,24 @@ impl Wm {
     }
     pub(super) fn frame(&mut self, id: ClientId, wanted: bool) -> Result<()> {
         let c = self.clients[&id].clone();
+        let extents = if wanted {
+            self.decoration_extents(&c)
+        } else {
+            FrameExtents::default()
+        };
+        let wanted = extents.top != 0;
+        let outer = extents.outer(c.geom, c.flags.shaded && !c.flags.fullscreen);
+        // Reparenting temporarily unmaps the client and reverts X input focus.
+        // Keep the exact widget focus when changing a selected client's frame.
+        let focus = if wanted != (c.frame != 0)
+            && self.focused == Some(id)
+            && self.input_focus_within(id)?
+        {
+            Some(self.conn.get_input_focus()?.reply()?.focus)
+        } else {
+            None
+        };
+        self.clients.get_mut(&id).unwrap().extents = extents;
         if wanted && c.frame == 0 {
             if c.border_window != 0 {
                 self.conn.destroy_window(c.border_window)?;
@@ -452,24 +578,32 @@ impl Wm {
                 self.screen.root_depth,
                 frame,
                 self.root,
-                c.geom.x as i16,
-                (c.geom.y - TITLE_HEIGHT) as i16,
-                c.geom.w.max(1) as u16,
-                (c.geom.h + TITLE_HEIGHT).clamp(1, 65535) as u16,
+                outer.x as i16,
+                outer.y as i16,
+                outer.w.clamp(1, 65535) as u16,
+                outer.h.clamp(1, 65535) as u16,
                 0,
                 WindowClass::INPUT_OUTPUT,
                 self.screen.root_visual,
                 &CreateWindowAux::new()
                     .background_pixel(color)
                     .override_redirect(1)
-                    .event_mask(EventMask::SUBSTRUCTURE_REDIRECT | EventMask::SUBSTRUCTURE_NOTIFY),
+                    .event_mask(
+                        EventMask::SUBSTRUCTURE_REDIRECT
+                            | EventMask::SUBSTRUCTURE_NOTIFY
+                            | EventMask::BUTTON_PRESS
+                            | EventMask::BUTTON_RELEASE
+                            | EventMask::POINTER_MOTION
+                            | EventMask::ENTER_WINDOW
+                            | EventMask::LEAVE_WINDOW,
+                    ),
             )?;
             self.conn.create_window(
                 self.screen.root_depth,
                 title,
                 frame,
-                0,
-                0,
+                extents.left as i16,
+                (extents.top - TITLE_HEIGHT) as i16,
                 c.geom.w.max(1) as u16,
                 TITLE_HEIGHT as u16,
                 0,
@@ -491,7 +625,7 @@ impl Wm {
             self.conn
                 .configure_window(id.0, &ConfigureWindowAux::new().border_width(0))?;
             self.conn
-                .reparent_window(id.0, frame, 0, TITLE_HEIGHT as i16)?;
+                .reparent_window(id.0, frame, extents.left as i16, extents.top as i16)?;
             let c = self.clients.get_mut(&id).unwrap();
             c.frame = frame;
             c.titlebar = title;
@@ -500,12 +634,7 @@ impl Wm {
             self.frames.insert(frame, id);
             self.titles.insert(title, id);
             self.stack_dirty = true;
-            self.put32(
-                id.0,
-                "_NET_FRAME_EXTENTS",
-                AtomEnum::CARDINAL,
-                &[0, 0, TITLE_HEIGHT as u32, 0],
-            )?;
+            self.publish_extents(id)?;
             self.conn.map_window(title)?;
             if !self.clients[&id].flags.minimized {
                 self.conn.map_window(frame)?;
@@ -522,13 +651,16 @@ impl Wm {
             let c = self.clients.get_mut(&id).unwrap();
             c.frame = 0;
             c.titlebar = 0;
+            c.shape_geometry = None;
             self.stack_dirty = true;
-            self.put32(
-                id.0,
-                "_NET_FRAME_EXTENTS",
-                AtomEnum::CARDINAL,
-                &[0, 0, 0, 0],
-            )?;
+            self.publish_extents(id)?;
+        } else if c.extents != extents {
+            self.publish_extents(id)?;
+            self.resize_now(id, c.geom)?;
+        }
+        if let Some(window) = focus {
+            self.conn
+                .set_input_focus(InputFocus::POINTER_ROOT, window, x11rb::CURRENT_TIME)?;
         }
         Ok(())
     }
@@ -543,8 +675,24 @@ impl Wm {
         if c.titlebar == 0 {
             return Ok(());
         }
-        let (title, frame, w, h, shaded) =
-            (c.titlebar, c.frame, c.geom.w, c.geom.h, c.flags.shaded);
+        let (title, frame, w, h, shaded, extents) = (
+            c.titlebar,
+            c.frame,
+            c.geom.w,
+            c.geom.h,
+            c.flags.shaded,
+            c.extents,
+        );
+        let bg = if self.focused == Some(id) {
+            &self.config.title.bg_focused
+        } else {
+            &self.config.title.bg
+        };
+        self.conn.change_window_attributes(
+            frame,
+            &ChangeWindowAttributesAux::new().background_pixel(self.native_pixel(bg)),
+        )?;
+        self.conn.clear_area(false, frame, 0, 0, 0, 0)?;
         let image = self.renderer.titlebar(
             w.max(1) as u32,
             &c.title,
@@ -553,10 +701,12 @@ impl Wm {
             c.hover,
             &self.config.title,
         )?;
-        self.upload(title, w, 28, image.data())?;
-        if self.shape && self.clients[&id].shape_geometry != Some((w, h, shaded)) {
-            self.clients.get_mut(&id).unwrap().shape_geometry = Some((w, h, shaded));
-            let w = w.clamp(1, 65535);
+        self.upload(title, w, TITLE_HEIGHT, image.data())?;
+        if self.shape && self.clients[&id].shape_geometry != Some((w, h, shaded, extents)) {
+            self.clients.get_mut(&id).unwrap().shape_geometry = Some((w, h, shaded, extents));
+            // Shape the outer frame, including the resize border. Its children
+            // remain rectangular, so no resize margin steals application input.
+            let outer = extents.outer(Rect::new(0, 0, w, h), shaded);
             let mut rects = Vec::new();
             for y in 0..6 {
                 let dy = 5.5 - y as f32;
@@ -564,34 +714,16 @@ impl Wm {
                 rects.push(Rectangle {
                     x: inset as i16,
                     y: y as i16,
-                    width: (w - 2 * inset).max(1) as u16,
+                    width: (outer.w - 2 * inset).clamp(1, 65535) as u16,
                     height: 1,
                 });
             }
             rects.push(Rectangle {
                 x: 0,
                 y: 6,
-                width: w as u16,
-                height: 22,
+                width: outer.w.clamp(1, 65535) as u16,
+                height: (outer.h - 6).clamp(1, 65529) as u16,
             });
-            shape::rectangles(
-                &self.conn,
-                shape::SO::SET,
-                shape::SK::BOUNDING,
-                ClipOrdering::UNSORTED,
-                title,
-                0,
-                0,
-                &rects,
-            )?;
-            if !shaded {
-                rects.push(Rectangle {
-                    x: 0,
-                    y: 28,
-                    width: w as u16,
-                    height: h.clamp(1, 65507) as u16,
-                });
-            }
             shape::rectangles(
                 &self.conn,
                 shape::SO::SET,

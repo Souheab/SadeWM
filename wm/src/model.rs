@@ -12,6 +12,87 @@ pub struct Rect {
     pub w: i32,
     pub h: i32,
 }
+
+/// Insets from the outer WM frame to the application content.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct FrameExtents {
+    pub left: i32,
+    pub right: i32,
+    pub top: i32,
+    pub bottom: i32,
+}
+impl FrameExtents {
+    pub fn decorated(resizable: bool) -> Self {
+        let edge = if resizable { 5 } else { 0 };
+        Self {
+            left: edge,
+            right: edge,
+            top: 28 + edge,
+            bottom: edge,
+        }
+    }
+    pub fn values(self) -> [u32; 4] {
+        [
+            self.left as u32,
+            self.right as u32,
+            self.top as u32,
+            self.bottom as u32,
+        ]
+    }
+    pub fn outer(self, r: Rect, shaded: bool) -> Rect {
+        Rect::new(
+            r.x - self.left,
+            r.y - self.top,
+            r.w + self.left + self.right,
+            if shaded {
+                self.top + self.bottom
+            } else {
+                r.h + self.top + self.bottom
+            },
+        )
+    }
+    pub fn contain(self, mut r: Rect, area: Rect) -> Rect {
+        r.x = r.x.clamp(
+            area.x + self.left,
+            (area.x + area.w - r.w - self.right).max(area.x + self.left),
+        );
+        r.y = r.y.clamp(
+            area.y + self.top,
+            (area.y + area.h - r.h - self.bottom).max(area.y + self.top),
+        );
+        r
+    }
+    pub fn centered(self, r: Rect, area: Rect) -> Rect {
+        Rect::new(
+            area.x + (area.w - r.w - self.left - self.right) / 2 + self.left,
+            area.y + (area.h - r.h - self.top - self.bottom) / 2 + self.top,
+            r.w,
+            r.h,
+        )
+    }
+    /// EWMH resize directions: northwest clockwise through west.
+    pub fn resize_direction(self, r: Rect, shaded: bool, x: i32, y: i32) -> Option<u32> {
+        if self.left == 0 || shaded {
+            return None;
+        }
+        let outer = self.outer(r, false);
+        let left = x < self.left;
+        let right = x >= outer.w - self.right;
+        let top = y < self.top - 28;
+        let bottom = y >= outer.h - self.bottom;
+        match (left, right, top, bottom) {
+            (true, _, true, _) => Some(0),
+            (_, true, true, _) => Some(2),
+            (_, true, _, true) => Some(4),
+            (true, _, _, true) => Some(6),
+            (_, _, true, _) => Some(1),
+            (_, true, _, _) => Some(3),
+            (_, _, _, true) => Some(5),
+            (true, _, _, _) => Some(7),
+            _ => None,
+        }
+    }
+}
 impl Rect {
     pub fn new(x: i32, y: i32, w: i32, h: i32) -> Self {
         Self { x, y, w, h }
@@ -179,6 +260,8 @@ pub struct Client {
     pub id: ClientId,
     pub monitor: MonitorId,
     pub geom: Rect,
+    pub floating_geom: Rect,
+    pub was_free: bool,
     pub old: Rect,
     pub normal: Option<(Rect, bool)>,
     pub fullscreen_restore: Option<(Rect, bool, i32)>,
@@ -192,9 +275,11 @@ pub struct Client {
     pub original_border: u16,
     pub frame: u32,
     pub titlebar: u32,
+    pub extents: FrameExtents,
+    pub no_decorations: bool,
     pub border_window: u32,
     pub hover: u8,
-    pub shape_geometry: Option<(i32, i32, bool)>,
+    pub shape_geometry: Option<(i32, i32, bool, FrameExtents)>,
     pub ignore_unmap: u32,
     pub mapped: bool,
     pub transient: u32,
@@ -220,6 +305,8 @@ impl Client {
             id: ClientId(win),
             monitor: mon,
             geom,
+            floating_geom: geom,
+            was_free: false,
             old: geom,
             normal: None,
             fullscreen_restore: None,
@@ -233,6 +320,8 @@ impl Client {
             original_border: 0,
             frame: 0,
             titlebar: 0,
+            extents: FrameExtents::default(),
+            no_decorations: false,
             border_window: 0,
             hover: 0,
             shape_geometry: None,
@@ -277,7 +366,11 @@ impl Client {
     }
     pub fn remember_normal(&mut self) {
         if self.normal.is_none() {
-            self.normal = Some((self.geom, self.flags.floating));
+            self.normal = Some(
+                self.fullscreen_restore
+                    .map(|(r, f, _)| (r, f))
+                    .unwrap_or((self.geom, self.flags.floating)),
+            );
         }
     }
 }
@@ -441,6 +534,56 @@ mod tests {
             c.fullscreen_restore.unwrap().0,
             Rect::new(0, 40, 1920, 1000)
         );
+    }
+    #[test]
+    fn normal_state_requested_in_fullscreen_uses_restore_slot() {
+        let normal = Rect::new(100, 150, 400, 250);
+        let mut c = Client::new(1, MonitorId(0), Rect::new(0, 0, 1280, 800), 1);
+        c.flags.fullscreen = true;
+        c.flags.floating = true;
+        c.fullscreen_restore = Some((normal, false, 2));
+        c.remember_normal();
+        assert_eq!(c.normal, Some((normal, false)));
+    }
+    #[test]
+    fn floating_frame_bounds_and_hit_regions() {
+        let extents = FrameExtents::decorated(true);
+        let r = Rect::new(300, 250, 400, 250);
+        assert_eq!(extents.outer(r, false), Rect::new(295, 217, 410, 288));
+        assert_eq!(extents.outer(r, true), Rect::new(295, 217, 410, 38));
+        assert_eq!(
+            extents.centered(r, Rect::new(495, 317, 210, 138)),
+            Rect::new(400, 275, 400, 250)
+        );
+        assert_eq!(
+            extents.contain(Rect::new(-10, -20, 400, 250), Rect::new(0, 40, 1280, 760)),
+            Rect::new(5, 73, 400, 250)
+        );
+        for (direction, (x, y)) in [
+            (2, 2),
+            (205, 2),
+            (407, 2),
+            (407, 144),
+            (407, 285),
+            (205, 285),
+            (2, 285),
+            (2, 144),
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            assert_eq!(
+                extents.resize_direction(r, false, x, y),
+                Some(direction as u32)
+            );
+            assert_eq!(extents.resize_direction(r, true, x, y), None);
+            assert_eq!(
+                FrameExtents::decorated(false).resize_direction(r, false, x, y),
+                None
+            );
+        }
+        assert_eq!(extents.resize_direction(r, false, 5, 5), None);
+        assert_eq!(extents.resize_direction(r, false, 200, 150), None);
     }
     #[test]
     fn focus_tag_selects_lowest_hidden_tag() {

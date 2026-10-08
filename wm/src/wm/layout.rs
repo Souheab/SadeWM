@@ -114,12 +114,29 @@ impl Wm {
         self.publish_workarea()
     }
     pub(super) fn arrange(&mut self) -> Result<()> {
+        self.arrange_windows()?;
+        self.restack()
+    }
+    pub(super) fn arrange_windows(&mut self) -> Result<()> {
         let ids = self.order.clone();
         for id in &ids {
             let c = &self.clients[id];
-            let m = &self.monitors[c.monitor.0];
-            let free = c.flags.floating || m.active.layout == Layout::Float;
-            let title = free && !c.flags.fullscreen && !c.flags.dock && !c.flags.desktop;
+            let free =
+                c.flags.floating || self.monitors[c.monitor.0].active.layout == Layout::Float;
+            let ordinary =
+                !c.flags.fullscreen && !c.flags.shaded && !c.flags.max_h && !c.flags.max_v;
+            if ordinary && free != c.was_free {
+                if free {
+                    self.resize_now(*id, c.floating_geom)?;
+                } else {
+                    let c = self.clients.get_mut(id).unwrap();
+                    c.floating_geom = c.geom;
+                }
+            }
+            if !self.clients[id].flags.fullscreen {
+                self.clients.get_mut(id).unwrap().was_free = free;
+            }
+            let title = self.decoration_extents(&self.clients[id]).top != 0;
             self.frame(*id, title)?;
             let c = self.clients.get_mut(id).unwrap();
             c.border = if !free && !c.flags.fullscreen && !c.flags.dock && !c.flags.desktop {
@@ -127,6 +144,7 @@ impl Wm {
             } else {
                 0
             };
+            self.grab_buttons(*id)?;
         }
         let mut positions = Vec::new();
         for m in &self.monitors {
@@ -153,6 +171,7 @@ impl Wm {
             }
         }
         for id in ids {
+            self.reconcile_mapping(id)?;
             let c = self.clients[&id].clone();
             let visible = self.visible(id);
             if visible {
@@ -187,12 +206,12 @@ impl Wm {
             self.publish_state(id)?;
             self.publish_actions(id)?;
         }
-        self.restack()
+        Ok(())
     }
     pub(super) fn resize(&mut self, id: ClientId, mut rect: Rect, interactive: bool) -> Result<()> {
         let c = &self.clients[&id];
-        rect.w = rect.w.clamp(3, 65535);
-        rect.h = rect.h.clamp(3, 65535);
+        rect.w = rect.w.clamp(3, 65535 - c.extents.left - c.extents.right);
+        rect.h = rect.h.clamp(3, 65535 - c.extents.top - c.extents.bottom);
         // Fullscreen fills the monitor; mpv handles letterboxing inside it.
         if !c.flags.fullscreen
             && (c.class == "mpv" || c.instance == "mpv")
@@ -226,25 +245,26 @@ impl Wm {
         self.resize_now(id, rect)
     }
     pub(super) fn resize_now(&mut self, id: ClientId, rect: Rect) -> Result<()> {
+        let free = self.clients[&id].flags.floating
+            || self.monitors[self.clients[&id].monitor.0].active.layout == Layout::Float;
         let c = self.clients.get_mut(&id).unwrap();
         let changed = c.geom != rect;
         if changed {
             c.old = c.geom;
             c.geom = rect;
         }
+        if free && !c.flags.fullscreen && !c.flags.shaded && !c.flags.max_h && !c.flags.max_v {
+            c.floating_geom = rect;
+        }
         let c = c.clone();
         let r = rect;
         if c.frame != 0 {
-            let height = if c.flags.shaded && !c.flags.fullscreen {
-                TITLE_HEIGHT
-            } else {
-                r.h + TITLE_HEIGHT
-            };
+            let outer = c.extents.outer(r, c.flags.shaded && !c.flags.fullscreen);
             self.conn.configure_window(
                 id.0,
                 &ConfigureWindowAux::new()
-                    .x(0)
-                    .y(TITLE_HEIGHT)
+                    .x(c.extents.left)
+                    .y(c.extents.top)
                     .width(r.w as u32)
                     .height(r.h as u32)
                     .border_width(0),
@@ -252,18 +272,20 @@ impl Wm {
             self.conn.configure_window(
                 c.frame,
                 &ConfigureWindowAux::new()
-                    .x(r.x)
-                    .y(r.y - TITLE_HEIGHT)
-                    .width(r.w as u32)
-                    .height(height.clamp(1, 65535) as u32),
+                    .x(outer.x)
+                    .y(outer.y)
+                    .width(outer.w.clamp(1, 65535) as u32)
+                    .height(outer.h.clamp(1, 65535) as u32),
             )?;
             self.conn.configure_window(
                 c.titlebar,
                 &ConfigureWindowAux::new()
+                    .x(c.extents.left)
+                    .y(c.extents.top - TITLE_HEIGHT)
                     .width(r.w as u32)
                     .height(TITLE_HEIGHT as u32),
             )?;
-            if changed {
+            if changed || c.shape_geometry != Some((r.w, r.h, c.flags.shaded, c.extents)) {
                 self.draw_title(id)?;
             }
         } else {
@@ -350,11 +372,12 @@ impl Wm {
             m.stack.retain(|i| *i != id);
             m.stack.insert(0, id);
             let c = &self.clients[&id];
-            if !c.flags.input_no_focus && !c.flags.type_no_focus {
+            let set_focus = previous != target || !self.input_focus_within(id)?;
+            if set_focus && c.mapped && !c.flags.input_no_focus && !c.flags.type_no_focus {
                 self.conn
                     .set_input_focus(InputFocus::POINTER_ROOT, id.0, timestamp)?;
             }
-            if c.flags.take_focus {
+            if set_focus && c.mapped && c.flags.take_focus {
                 self.send_protocol(id, "WM_TAKE_FOCUS", timestamp, 0, 0)?;
             }
             for w in c
@@ -432,26 +455,70 @@ impl Wm {
             )
         });
         let ceiling = self.docks.keys().min().copied();
-        for id in ids {
+        let mut actual = self.conn.query_tree(self.root)?.reply()?.children;
+        let mut anchor = ceiling;
+        // Establish the top first, then tuck each lower window underneath it.
+        // An already correct stack generates no X Configure requests.
+        for id in ids.into_iter().rev() {
             let c = &self.clients[&id];
-            let mut aux = ConfigureWindowAux::new().stack_mode(StackMode::ABOVE);
-            if let Some(dock) = ceiling {
-                aux = ConfigureWindowAux::new()
-                    .sibling(dock)
-                    .stack_mode(StackMode::BELOW);
+            let win = c.stack_window();
+            let pos = actual.iter().position(|w| *w == win);
+            let below_anchor = anchor.and_then(|a| actual.iter().position(|w| *w == a));
+            let correct = match (pos, below_anchor) {
+                (Some(p), Some(a)) => p + 1 == a,
+                (Some(p), None) => p + 1 == actual.len(),
+                _ => false,
+            };
+            if !correct {
+                let aux = if let Some(a) = anchor {
+                    ConfigureWindowAux::new()
+                        .sibling(a)
+                        .stack_mode(StackMode::BELOW)
+                } else {
+                    ConfigureWindowAux::new().stack_mode(StackMode::ABOVE)
+                };
+                self.conn.configure_window(win, &aux)?;
+                actual.retain(|w| *w != win);
+                let index = anchor
+                    .and_then(|a| actual.iter().position(|w| *w == a))
+                    .unwrap_or(actual.len());
+                actual.insert(index, win);
+                self.stack_dirty = true;
             }
-            self.conn.configure_window(c.stack_window(), &aux)?;
+            anchor = Some(win);
             if c.border_window != 0 {
-                self.conn.configure_window(
-                    c.border_window,
-                    &ConfigureWindowAux::new()
-                        .sibling(c.stack_window())
-                        .stack_mode(StackMode::BELOW),
-                )?;
+                let border = c.border_window;
+                let p = actual.iter().position(|w| *w == border);
+                let a = actual.iter().position(|w| *w == win).unwrap();
+                if !p.is_some_and(|p| p + 1 == a) {
+                    self.conn.configure_window(
+                        border,
+                        &ConfigureWindowAux::new()
+                            .sibling(win)
+                            .stack_mode(StackMode::BELOW),
+                    )?;
+                    actual.retain(|w| *w != border);
+                    let index = actual.iter().position(|w| *w == win).unwrap();
+                    actual.insert(index, border);
+                    self.stack_dirty = true;
+                }
+                anchor = Some(border);
             }
         }
-        self.stack_dirty = true;
         Ok(())
+    }
+    pub(super) fn input_focus_within(&self, id: ClientId) -> Result<bool> {
+        let mut window = self.conn.get_input_focus()?.reply()?.focus;
+        while window != 0 && window != 1 && window != self.root && window != id.0 {
+            let Ok(tree) = self.conn.query_tree(window)?.reply() else {
+                break;
+            };
+            if tree.parent == window {
+                break;
+            }
+            window = tree.parent;
+        }
+        Ok(window == id.0)
     }
     pub(super) fn view(&mut self, mask: u32, toggle: bool) -> Result<()> {
         let m = &mut self.monitors[self.selected.0];
@@ -518,13 +585,13 @@ impl Wm {
             return Ok(());
         }
         c.flags.minimized = false;
-        c.mapped = true;
         self.minimized.retain(|i| *i != id);
         self.put32(id.0, "WM_STATE", self.a("WM_STATE"), &[1, 0])?;
-        self.conn.map_window(id.0)?;
-        self.publish_state(id)?;
-        self.arrange()?;
-        self.focus(Some(id))
+        self.suppress_crossings(true)?;
+        self.arrange_windows()?;
+        self.focus(Some(id))?;
+        self.restack()?;
+        self.suppress_crossings(false)
     }
     pub(super) fn fullscreen_rect(&self, id: ClientId) -> Rect {
         let c = &self.clients[&id];
@@ -561,6 +628,7 @@ impl Wm {
             c.flags.floating = true;
             c.border = 0;
             self.frame(id, false)?;
+            self.reconcile_mapping(id)?;
             self.resize_now(id, self.fullscreen_rect(id))?;
         } else {
             c.flags.fullscreen = false;
@@ -569,9 +637,24 @@ impl Wm {
                 c.flags.floating = f;
                 c.border = b;
             }
+            if c.flags.shaded {
+                c.flags.floating = true;
+            }
+            if !c.flags.shaded
+                && !c.flags.max_h
+                && !c.flags.max_v
+                && let Some((r, f)) = c.normal.take()
+            {
+                c.geom = r;
+                c.flags.floating = f;
+            }
         }
         self.publish_state(id)?;
-        self.arrange()?;
+        self.arrange_windows()?;
+        if self.focused == Some(id) && self.visible(id) && self.clients[&id].mapped {
+            self.focus(Some(id))?;
+        }
+        self.restack()?;
         self.suppress_crossings(false)
     }
     pub(super) fn shade(&mut self, id: ClientId, on: bool) -> Result<()> {
@@ -579,32 +662,26 @@ impl Wm {
         if c.flags.shaded == on {
             return Ok(());
         }
-        c.flags.shaded = on;
-        if c.flags.fullscreen {
-            return Ok(());
-        }
         if on {
             c.remember_normal();
-            c.flags.floating = true;
-            self.frame(id, true)?;
-            let c = self.clients.get_mut(&id).unwrap();
-            if c.mapped {
-                c.ignore_unmap += 2;
-                c.mapped = false;
-                self.conn.unmap_window(id.0)?;
-            }
-        } else {
-            c.mapped = true;
-            self.conn.map_window(id.0)?;
-            if let Some((r, f)) = c.normal {
+        }
+        c.flags.shaded = on;
+        if !c.flags.fullscreen {
+            if on {
+                c.flags.floating = true;
+            } else if let Some((r, f)) = c.normal {
                 c.flags.floating = f;
                 if !c.flags.max_h && !c.flags.max_v {
-                    c.geom = r;
                     c.normal = None;
+                    self.resize_now(id, r)?;
                 }
             }
         }
-        self.arrange()
+        self.arrange_windows()?;
+        if self.focused == Some(id) && self.visible(id) && self.clients[&id].mapped {
+            self.focus(Some(id))?;
+        }
+        self.restack()
     }
     pub(super) fn maximize(&mut self, id: ClientId, h: bool, v: bool) -> Result<()> {
         let c = self.clients.get_mut(&id).unwrap();
@@ -635,21 +712,25 @@ impl Wm {
         }
         let normal = c.normal.map(|(r, _)| r).unwrap_or(c.geom);
         let work = self.monitors[c.monitor.0].work;
-        let title = if c.frame != 0 { TITLE_HEIGHT } else { 0 };
+        let extents = c.extents;
         let r = Rect::new(
-            if c.flags.max_h { work.x } else { normal.x },
+            if c.flags.max_h {
+                work.x + extents.left
+            } else {
+                normal.x
+            },
             if c.flags.max_v {
-                work.y + title
+                work.y + extents.top
             } else {
                 normal.y
             },
             if c.flags.max_h {
-                work.w - 2 * c.border
+                work.w - extents.left - extents.right - 2 * c.border
             } else {
                 normal.w
             },
             if c.flags.max_v {
-                work.h - title - 2 * c.border
+                work.h - extents.top - extents.bottom - 2 * c.border
             } else {
                 normal.h
             },

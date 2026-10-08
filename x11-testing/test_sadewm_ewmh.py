@@ -428,7 +428,7 @@ def test_frame_extents_request_and_stable_client_mapping_order(xd):
     )
     _send_message(dpy, raw, "_NET_REQUEST_FRAME_EXTENTS", [])
     time.sleep(0.2)
-    assert _cardinals(raw, dpy, "_NET_FRAME_EXTENTS") == [0, 0, 28, 0]
+    assert _cardinals(raw, dpy, "_NET_FRAME_EXTENTS") == [5, 5, 33, 5]
     raw.destroy()
 
     helpers.ipc_request("view", mask=8)

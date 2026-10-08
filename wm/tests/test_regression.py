@@ -499,14 +499,14 @@ def test_shade_maximize_axes_restore_and_frame_bounds(tmp_path):
         original = win.geometry
         atom = xd._xdisplay.intern_atom
         send(xd, win.id, "_NET_WM_STATE", [1, atom("_NET_WM_STATE_MAXIMIZED_HORZ")])
-        assert win.geometry.width == 1280
+        assert win.geometry.width == 1270
         assert win.geometry.y == original.y and win.geometry.height == original.height
         send(xd, win.id, "_NET_WM_STATE", [1, atom("_NET_WM_STATE_MAXIMIZED_VERT")])
         assert win.frame.geometry.y == 40, "maximized titlebar must remain below reserved work area"
         send(xd, win.id, "_NET_WM_STATE", [0, atom("_NET_WM_STATE_MAXIMIZED_HORZ"), atom("_NET_WM_STATE_MAXIMIZED_VERT")])
         assert win.geometry == original
         send(xd, win.id, "_NET_WM_STATE", [1, atom("_NET_WM_STATE_SHADED")])
-        assert not win.is_mapped and win.frame.geometry.height == 28
+        assert not win.is_mapped and win.frame.geometry.height == 38
         send(xd, win.id, "_NET_WM_STATE", [0, atom("_NET_WM_STATE_SHADED")])
         assert win.is_mapped and win.geometry == original
         win.kill()

@@ -11,7 +11,9 @@ impl Wm {
             }
             Event::MapNotify(e) => {
                 if let Some(c) = self.clients.get_mut(&ClientId(e.window)) {
-                    c.mapped = true;
+                    if !c.flags.minimized && (c.flags.fullscreen || !c.flags.shaded) {
+                        c.mapped = true;
+                    }
                 } else {
                     self.update_dock(e.window)?;
                 }
@@ -70,6 +72,12 @@ impl Wm {
             }
             Event::ButtonRelease(e) => {
                 self.record_time(e.time);
+                if e.detail == 1 {
+                    self.start_title_drag(e.root_x.into(), e.root_y.into())?;
+                    if let Some(press) = self.title_press.take() {
+                        self.last_title_click = Some((press.id, press.time, press.pos));
+                    }
+                }
                 if self
                     .drag
                     .as_ref()
@@ -84,6 +92,9 @@ impl Wm {
                 self.motion(e)?;
             }
             Event::EnterNotify(e) => {
+                if let Some(id) = self.frames.get(&e.event).copied() {
+                    self.frame_cursor(id, e.event_x.into(), e.event_y.into())?;
+                }
                 if let Some(id) = self.titles.get(&e.event).copied() {
                     self.clients.get_mut(&id).unwrap().hover =
                         crate::render::hit_button(e.event_x.into(), e.event_y.into());
@@ -130,24 +141,17 @@ impl Wm {
                 {
                     // A queued event may describe an obsolete transition, and
                     // toolkits can legitimately focus a descendant widget.
-                    let mut window = self.conn.get_input_focus()?.reply()?.focus;
-                    while window != 0 && window != 1 && window != self.root && window != id.0 {
-                        let Ok(tree) = self.conn.query_tree(window)?.reply() else {
-                            break;
-                        };
-                        if tree.parent == window {
-                            break;
-                        }
-                        window = tree.parent;
-                    }
-                    if window != id.0 {
+                    if !self.input_focus_within(id)? {
                         let timestamp = self.server_time()?;
                         let client = &self.clients[&id];
-                        if !client.flags.input_no_focus && !client.flags.type_no_focus {
+                        if client.mapped
+                            && !client.flags.input_no_focus
+                            && !client.flags.type_no_focus
+                        {
                             self.conn
                                 .set_input_focus(InputFocus::POINTER_ROOT, id.0, timestamp)?;
                         }
-                        if client.flags.take_focus {
+                        if client.mapped && client.flags.take_focus {
                             self.send_protocol(id, "WM_TAKE_FOCUS", timestamp, 0, 0)?;
                         }
                         self.put32(self.root, "_NET_ACTIVE_WINDOW", AtomEnum::WINDOW, &[id.0])?;
@@ -193,6 +197,9 @@ impl Wm {
                     let c = self.clients.get_mut(&id).unwrap();
                     c.old = c.geom;
                     c.geom = r;
+                    if !c.flags.shaded && !c.flags.max_h && !c.flags.max_v {
+                        c.floating_geom = r;
+                    }
                     self.configure_notify(id)?;
                 }
             } else {
@@ -284,13 +291,7 @@ impl Wm {
             } else if e.atom == self.a("_NET_WM_ALLOWED_ACTIONS") {
                 self.publish_actions(id)?;
             } else if e.atom == self.a("_NET_FRAME_EXTENTS") {
-                let top = if self.clients[&id].frame != 0 { 28 } else { 0 };
-                self.put32(
-                    id.0,
-                    "_NET_FRAME_EXTENTS",
-                    AtomEnum::CARDINAL,
-                    &[0, 0, top, 0],
-                )?;
+                self.publish_extents(id)?;
             }
         }
         if e.atom == self.a("_NET_WM_WINDOW_OPACITY") {
@@ -312,6 +313,8 @@ impl Wm {
             "_NET_WM_USER_TIME_WINDOW",
             "_NET_WM_FULLSCREEN_MONITORS",
             "_NET_WM_SYNC_REQUEST_COUNTER",
+            "_MOTIF_WM_HINTS",
+            "_GTK_FRAME_EXTENTS",
             "_NET_WM_STRUT",
             "_NET_WM_STRUT_PARTIAL",
         ];
@@ -326,6 +329,9 @@ impl Wm {
             }
             if e.atom == self.a("_NET_WM_WINDOW_TYPE")
                 || e.atom == u32::from(AtomEnum::WM_TRANSIENT_FOR)
+                || e.atom == u32::from(AtomEnum::WM_NORMAL_HINTS)
+                || e.atom == self.a("_MOTIF_WM_HINTS")
+                || e.atom == self.a("_GTK_FRAME_EXTENTS")
             {
                 self.publish_desktop(id)?;
                 self.arrange()?;
@@ -395,24 +401,16 @@ impl Wm {
             return Ok(());
         }
         if ty == self.a("_NET_REQUEST_FRAME_EXTENTS") {
-            let top = if let Some(c) = self.clients.get(&ClientId(e.window)) {
-                if c.frame != 0 { 28 } else { 0 }
-            } else {
-                let types = self.get32(e.window, "_NET_WM_WINDOW_TYPE");
-                if types.iter().any(|a| {
-                    *a == self.a("_NET_WM_WINDOW_TYPE_DIALOG")
-                        || *a == self.a("_NET_WM_WINDOW_TYPE_UTILITY")
-                }) {
-                    28
-                } else {
-                    0
-                }
-            };
+            let extents = self
+                .clients
+                .get(&ClientId(e.window))
+                .map(|c| c.extents)
+                .unwrap_or_else(|| self.requested_extents(e.window));
             self.put32(
                 e.window,
                 "_NET_FRAME_EXTENTS",
                 AtomEnum::CARDINAL,
-                &[0, 0, top, 0],
+                &extents.values(),
             )?;
             return Ok(());
         }
@@ -538,7 +536,7 @@ impl Wm {
         } else {
             d[0] & 255
         };
-        let top = if self.clients[&id].frame != 0 { 28 } else { 0 };
+        let top = self.clients[&id].extents.top;
         if d[0] & (1 << 8) != 0 {
             r.x = d[1] as i32;
         }

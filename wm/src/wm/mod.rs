@@ -37,7 +37,7 @@ pub struct Wm {
     root: u32,
     screen: Screen,
     check: u32,
-    cursors: [u32; 3],
+    cursors: [u32; 11],
     signal_reader: UnixStream,
     selection: u32,
     atoms: HashMap<String, u32>,
@@ -76,6 +76,8 @@ pub struct Wm {
     keys: Vec<(u8, u16, Binding)>,
     numlock: u16,
     drag: Option<input::Drag>,
+    title_press: Option<input::TitlePress>,
+    last_title_click: Option<(ClientId, u32, (i32, i32))>,
     last_tags: Value,
     power_tick: Instant,
     protocol_tick: Instant,
@@ -209,8 +211,11 @@ impl Wm {
             .is_some();
         let font = conn.generate_id()?;
         conn.open_font(font, b"cursor")?.check()?;
-        let mut cursors = [0; 3];
-        for (i, glyph) in [68u16, 52, 120].into_iter().enumerate() {
+        let mut cursors = [0; 11];
+        for (i, glyph) in [68u16, 52, 120, 134, 138, 136, 96, 14, 16, 12, 70]
+            .into_iter()
+            .enumerate()
+        {
             cursors[i] = conn.generate_id()?;
             conn.create_glyph_cursor(
                 cursors[i],
@@ -307,6 +312,8 @@ impl Wm {
             keys: Vec::new(),
             numlock: 0,
             drag: None,
+            title_press: None,
+            last_title_click: None,
             last_tags: Value::Null,
             power_tick: Instant::now(),
             protocol_tick: Instant::now(),

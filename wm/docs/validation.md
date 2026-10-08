@@ -5,6 +5,37 @@ removed. Current build and test commands are in [the WM README](../README.md);
 the current benchmark runner measures only `sadewm`. Historical comparison data
 in `benchmark.json` is preserved unchanged.
 
+## Floating window fixes (2026-10-07)
+
+The Rust WM fixes floating click/restack flicker, preserves widget focus, makes
+fullscreen override shade while retaining restore state, preserves normal
+geometry for maximize requests in fullscreen, restores minimized fullscreen
+clients with the final focus/stack order, and keeps floating geometry through
+tile/layout round trips. Move/resize cancellation restores the original mode,
+restore slots and geometry, including pending Sync resizes and failed grabs.
+
+Floating decorations now respect regular window types, Motif suppression and
+GTK client decorations. The existing buttons remain, with titlebar background
+double-click maximize/restore, a 5px drag threshold and eight native border
+resize directions. Fixed-size frames omit resize/maximize affordances, and
+unpositioned transients center over their parent within the work area.
+
+Validation used cached Nix Rust/Cargo 1.98.1 and Python 3.14.7 on x86_64 Linux:
+
+- Cargo formatting, Clippy with warnings denied, all 32 unit tests, and the
+  locked offline release build passed.
+- All 88 WM regression cases passed across full and targeted runs, including
+  62 new floating regressions. Click tests require exactly one delivered click,
+  no redundant stack Configure events, and no exposure of covered clients.
+- Existing X11 tests: 55 passed, one skipped. Desktop/focus/capture integration
+  tests: 47 passed in private D-Bus sessions.
+- Xvfb and composited Xephyr/picom decoration cycles returned XRes counts to
+  baseline. Both decoration captures were visually inspected. A 16-bit server,
+  disabled optional extensions, Sync acknowledgement/timeout/cancellation,
+  scanning iconic clients, withdrawal, and cleanup checks passed.
+- Python correctness checks (`ruff check --select E9,F`) and whitespace checks
+  passed. The live desktop was not restarted.
+
 ## Rust-only migration (2026-10-03)
 
 The Rust package now builds as `sadewm` from `wm/`; the Go source and vendor

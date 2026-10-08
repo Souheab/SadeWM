@@ -8,6 +8,8 @@ pub const ATOM_NAMES: &[&str] = &[
     "WM_TAKE_FOCUS",
     "WM_CHANGE_STATE",
     "WM_COLORMAP_WINDOWS",
+    "_MOTIF_WM_HINTS",
+    "_GTK_FRAME_EXTENTS",
     "_NET_SUPPORTED",
     "_NET_CLIENT_LIST",
     "_NET_CLIENT_LIST_STACKING",

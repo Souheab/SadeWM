@@ -109,3 +109,21 @@ DejaVu Sans fallback. Font and keysym-table licenses are in `assets/`.
 Clients, decorations and server resources have explicit cleanup paths.
 Launched applications survive WM exit; worker-managed display commands have
 deadlines, isolated process groups and cancellation on shutdown.
+
+## Floating windows
+
+Regular floating windows use the existing close, pin and minimize buttons.
+Double-click the titlebar background to maximize or restore. Drag the titlebar
+to move, or drag a frame edge or corner to resize. Titlebar movement begins
+after a 5px threshold. Maximized floating windows restore their normal size
+before moving or resizing; Escape cancels the gesture and restores the prior
+state. Super+left/right drag retains its existing move/resize behavior.
+
+Resizable frames have 5px borders around the 28px titlebar and content.
+Fixed-size windows retain the titlebar without resize borders or double-click
+maximization. Menus, tooltips and other special window types have no WM frame.
+Explicit Motif decoration suppression and GTK client decorations are respected.
+Unpositioned transient windows center over their parent within the work area
+when `center_floating` is enabled. Floating geometry survives tiling and layout
+round trips. Fullscreen temporarily displays shaded content while retaining
+the shade state for restoration.

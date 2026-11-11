@@ -1,28 +1,33 @@
-# WM build artifacts
-wm/target/
+# Rust build output (wm/, wm-rs/, any future crate)
+target/
+# Release binary copied out of target/
+/wm/sadewm
+
+# Nix build symlinks (nix build ./#foo -> result, result-*)
+result
+result-*
+.direnv/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+.pytest_cache/
+.ruff_cache/
+build/
+dist/
 
 # shell artifacts
 shell/pulse_monitor
-shell/*.pyc
-shell/__pycache__/
-shell/.venv
 shell/src/.qt_path_cache.env
 shell/debug_artifacts/
-shell/build/
-shell/dist/
-shell/src/*.egg-info/
-shell/result
 shell/*.env
+shell/sadeshell
 
 # general
-*.pyc
-__pycache__/
-result
 .cache/
 
-
-.claude
-shell/sadeshell
-.github
-
-.venv
+# Local agent / editor config
+.claude/
+.github/copilot-instructions.md

@@ -484,6 +484,73 @@ pub fn tile(m: &Monitor, clients: &[(ClientId, i32)]) -> Vec<(ClientId, Rect)> {
     }
     result
 }
+/// A direction for keyboard navigation (`focusup`, `swapleft`, ...).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Direction {
+    Up,
+    Down,
+    Left,
+    Right,
+}
+impl Direction {
+    pub fn parse(name: &str) -> Option<Self> {
+        match name {
+            "up" => Some(Self::Up),
+            "down" => Some(Self::Down),
+            "left" => Some(Self::Left),
+            "right" => Some(Self::Right),
+            _ => None,
+        }
+    }
+    /// Projects `r` onto (forward axis, perpendicular axis) as half-open spans,
+    /// mirrored so that "further in this direction" is always "larger".
+    fn spans(self, r: Rect) -> ((i32, i32), (i32, i32)) {
+        let horizontal = (r.x, r.x + r.w);
+        let vertical = (r.y, r.y + r.h);
+        match self {
+            Self::Down => (vertical, horizontal),
+            Self::Up => ((-vertical.1, -vertical.0), horizontal),
+            Self::Right => (horizontal, vertical),
+            Self::Left => ((-horizontal.1, -horizontal.0), vertical),
+        }
+    }
+}
+
+/// Picks the window that directional navigation from `from` should land on.
+///
+/// Only geometry is compared — never exact pixel offsets — so gaps, borders,
+/// rounding and floating windows all work. A candidate counts as being in
+/// `dir` when both its centre and its far edge lie beyond `from`'s; this
+/// keeps a full-height master from being "below" anything. Candidates that
+/// share a row or column with `from` (overlap on the perpendicular axis) beat
+/// diagonal ones, then the nearest edge wins, then the earliest candidate.
+/// Pass candidates most-recently-focused first so that `h` followed by `l`
+/// returns to the window you started from.
+pub fn neighbor<T: Copy>(from: Rect, dir: Direction, candidates: &[(T, Rect)]) -> Option<T> {
+    let ((lo, hi), (plo, phi)) = dir.spans(from);
+    candidates
+        .iter()
+        .enumerate()
+        .filter_map(|(rank, (id, r))| {
+            let ((clo, chi), (cplo, cphi)) = dir.spans(*r);
+            if clo + chi <= lo + hi || chi <= hi {
+                return None;
+            }
+            let distance = (clo - hi).max(0);
+            let overlap = cphi.min(phi) - cplo.max(plo);
+            if overlap > 0 {
+                return Some(((0, distance, rank), *id));
+            }
+            // Diagonal: only within 45° of the direction, so a window that is
+            // mostly beside `from` never counts as above or below it.
+            let ahead = (clo + chi) - (lo + hi);
+            let aside = ((cplo + cphi) - (plo + phi)).abs();
+            (ahead >= aside).then_some(((1, distance - overlap, rank), *id))
+        })
+        .min_by_key(|(score, _)| *score)
+        .map(|(_, id)| id)
+}
+
 pub fn resize_edge(mut r: Rect, dx: i32, dy: i32, d: u32) -> Rect {
     if matches!(d, 0 | 6 | 7) {
         r.x += dx;
@@ -691,5 +758,89 @@ mod tests {
         let r = Rect::new(100, 100, 200, 100);
         assert_eq!(resize_edge(r, 20, 10, 0), Rect::new(120, 110, 180, 90));
         assert_eq!(resize_edge(r, 20, 10, 4), Rect::new(100, 100, 220, 110));
+    }
+    /// Tiles `n` clients the way `arrange` does and returns their bordered rects.
+    fn tiled(n: u32, nmaster: usize, gap: i32, border: i32) -> Vec<(u32, Rect)> {
+        let mut m = Monitor::new(0, Rect::new(0, 0, 1280, 800), &Config::default());
+        m.work = Rect::new(0, 40, 1280, 760);
+        m.gap = gap;
+        m.active.nmaster = nmaster;
+        let rows: Vec<_> = (0..n).map(|i| (ClientId(i), border)).collect();
+        tile(&m, &rows)
+            .into_iter()
+            .map(|(id, r)| (id.0, Rect::new(r.x, r.y, r.w + 2 * border, r.h + 2 * border)))
+            .collect()
+    }
+    fn go(layout: &[(u32, Rect)], from: u32, dir: &str) -> Option<u32> {
+        let rect = layout.iter().find(|(id, _)| *id == from).unwrap().1;
+        let others: Vec<_> = layout.iter().copied().filter(|(id, _)| *id != from).collect();
+        neighbor(rect, Direction::parse(dir).unwrap(), &others)
+    }
+    #[test]
+    fn directional_navigation_in_master_stack_layout() {
+        // 0 = master (full height); 1, 2, 3 = stack, top to bottom. Gaps and
+        // borders vary because the old exact-offset check broke whenever the
+        // runtime gap differed from the configured one.
+        for gap in [0, 1, 7, 10, 23] {
+            for border in [0, 1, 2] {
+                let t = tiled(4, 1, gap, border);
+                assert_eq!(go(&t, 1, "down"), Some(2), "gap {gap} border {border}");
+                assert_eq!(go(&t, 2, "down"), Some(3));
+                assert_eq!(go(&t, 3, "down"), None);
+                assert_eq!(go(&t, 3, "up"), Some(2));
+                assert_eq!(go(&t, 1, "up"), None);
+                // Nothing is above or below a full-height master, and the stack
+                // is never reached sideways through j/k.
+                assert_eq!(go(&t, 0, "down"), None);
+                assert_eq!(go(&t, 0, "up"), None);
+                assert_eq!(go(&t, 3, "left"), Some(0));
+                assert_eq!(go(&t, 0, "left"), None);
+                assert_eq!(go(&t, 2, "right"), None);
+            }
+        }
+    }
+    #[test]
+    fn directional_navigation_with_two_masters() {
+        // 0, 1 = masters (top, bottom); 2, 3, 4 = stack thirds.
+        let t = tiled(5, 2, 10, 2);
+        assert_eq!(go(&t, 0, "down"), Some(1));
+        assert_eq!(go(&t, 1, "up"), Some(0));
+        assert_eq!(go(&t, 2, "left"), Some(0));
+        assert_eq!(go(&t, 4, "left"), Some(1));
+        assert_eq!(go(&t, 0, "right"), Some(2));
+        assert_eq!(go(&t, 1, "right"), Some(3));
+        assert_eq!(go(&t, 2, "down"), Some(3));
+    }
+    #[test]
+    fn directional_ties_prefer_recent_focus() {
+        let t = tiled(4, 1, 10, 2);
+        let master = t[0].1;
+        // Candidates arrive most-recently-focused first.
+        let mru = [t[3], t[1], t[2]];
+        assert_eq!(neighbor(master, Direction::Right, &mru), Some(3));
+        let mru = [t[2], t[3], t[1]];
+        assert_eq!(neighbor(master, Direction::Right, &mru), Some(2));
+    }
+    #[test]
+    fn directional_navigation_between_floating_windows() {
+        let a = (1, Rect::new(60, 120, 300, 200));
+        let below = (2, Rect::new(80, 480, 300, 200));
+        let right = (3, Rect::new(800, 150, 300, 200));
+        let far_diagonal = (4, Rect::new(900, 600, 200, 100));
+        let all = [below, right, far_diagonal];
+        assert_eq!(neighbor(a.1, Direction::Down, &all), Some(2));
+        assert_eq!(neighbor(a.1, Direction::Right, &all), Some(3));
+        assert_eq!(neighbor(a.1, Direction::Up, &all), None);
+        // With nothing in line, a diagonal window is used only if it lies more
+        // in that direction than beside it.
+        let diagonal_below = (6, Rect::new(420, 600, 200, 100));
+        assert_eq!(neighbor(a.1, Direction::Down, &[right, diagonal_below]), Some(6));
+        assert_eq!(neighbor(a.1, Direction::Down, &[right, far_diagonal]), None);
+        assert_eq!(neighbor(a.1, Direction::Right, &[far_diagonal]), Some(4));
+        // Overlapping windows still have a direction.
+        let overlapping = (5, Rect::new(100, 200, 300, 200));
+        assert_eq!(neighbor(a.1, Direction::Down, &[overlapping]), Some(5));
+        assert_eq!(neighbor(overlapping.1, Direction::Up, &[a]), Some(1));
+        assert_eq!(Direction::parse("sideways"), None);
     }
 }

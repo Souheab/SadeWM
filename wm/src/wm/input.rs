@@ -598,47 +598,64 @@ impl Wm {
         ) {
             clients.swap(a, b);
         }
-        self.arrange()
+        // The windows trade places under a stationary pointer; without this,
+        // focus-follows-mouse would hand focus to whichever lands beneath it.
+        self.suppress_crossings(true)?;
+        self.arrange()?;
+        self.suppress_crossings(false)
     }
-    fn spatial(&self, id: ClientId, dir: &str) -> Option<ClientId> {
+    /// Whether `id` occupies a tile slot (as opposed to floating freely).
+    fn tiled(&self, id: ClientId) -> bool {
         let c = &self.clients[&id];
-        let r = c.geom;
-        let m = &self.monitors[c.monitor.0];
-        let tiled: Vec<_> = m
-            .clients
+        !c.flags.floating
+            && !c.flags.fullscreen
+            && self.monitors[c.monitor.0].active.layout == Layout::Tile
+    }
+    /// The on-screen footprint used for directional navigation: frame plus border.
+    fn nav_rect(&self, id: ClientId) -> Rect {
+        let c = &self.clients[&id];
+        let r = c.extents.outer(c.geom, c.flags.shaded && !c.flags.fullscreen);
+        Rect::new(r.x, r.y, r.w + 2 * c.border, r.h + 2 * c.border)
+    }
+    /// The window to focus or swap with when moving from `id` in `dir`.
+    ///
+    /// Tiled windows navigate among tiled windows first and only fall back to
+    /// floating ones when nothing tiled lies in that direction; floating
+    /// windows consider everything. Swaps (`tiled_only`) never involve
+    /// floating windows.
+    fn directional(&self, id: ClientId, dir: Direction, tiled_only: bool) -> Option<ClientId> {
+        let m = &self.monitors[self.clients[&id].monitor.0];
+        // Most-recently-focused first, so ties return to where you came from.
+        let ordered = m
+            .stack
             .iter()
+            .chain(m.clients.iter().filter(|i| !m.stack.contains(i)))
             .copied()
-            .filter(|i| *i != id && !self.clients[i].flags.floating && self.visible(*i))
-            .collect();
-        let mut out = match dir {
-            "up" => tiled.iter().copied().find(|i| {
+            .filter(|i| {
                 let c = &self.clients[i];
-                c.geom.x == r.x
-                    && c.geom.y + c.geom.h + self.config.gap + 2 * self.config.border == r.y
-            }),
-            "down" => tiled.iter().copied().find(|i| {
-                let c = &self.clients[i];
-                c.geom.x == r.x && c.geom.y == r.y + r.h + self.config.gap + 2 * self.config.border
-            }),
-            "left" => tiled
-                .iter()
-                .copied()
-                .filter(|i| self.clients[i].geom.x < r.x)
-                .min_by_key(|i| (self.clients[i].geom.y - r.y).abs()),
-            _ => tiled
-                .iter()
-                .copied()
-                .filter(|i| self.clients[i].geom.x > r.x)
-                .min_by_key(|i| (self.clients[i].geom.y - r.y).abs()),
+                *i != id
+                    && self.visible(*i)
+                    && c.focusable()
+                    && !c.flags.dock
+                    && !c.flags.desktop
+            });
+        let from = self.nav_rect(id);
+        let pick = |tiled: Option<bool>| {
+            let candidates: Vec<_> = ordered
+                .clone()
+                .filter(|i| tiled.is_none_or(|t| self.tiled(*i) == t))
+                .map(|i| (i, self.nav_rect(i)))
+                .collect();
+            neighbor(from, dir, &candidates)
         };
-        if out.is_none() && dir == "down" {
-            out = tiled
-                .iter()
-                .copied()
-                .filter(|i| self.clients[i].geom.x > r.x)
-                .min_by_key(|i| (self.clients[i].geom.y - r.y).abs());
+        if tiled_only {
+            return if self.tiled(id) { pick(Some(true)) } else { None };
         }
-        out
+        if self.tiled(id) {
+            pick(Some(true)).or_else(|| pick(Some(false)))
+        } else {
+            pick(None)
+        }
     }
     fn action(&mut self, b: &Binding) -> Result<()> {
         let selected = self.selected_client();
@@ -824,15 +841,22 @@ impl Wm {
                         | Action::Focusdown
                         | Action::Focusleft
                         | Action::Focusright => {
-                            if let Some(next) = self.spatial(id, &b.action[5..]) {
+                            let dir = Direction::parse(&b.action[5..]);
+                            if let Some(next) = dir.and_then(|d| self.directional(id, d, false)) {
                                 self.focus(Some(next))?;
+                                // Raise a floating target without letting the
+                                // pointer's window reclaim focus.
+                                self.suppress_crossings(true)?;
+                                self.restack()?;
+                                self.suppress_crossings(false)?;
                             }
                         }
                         Action::Swapup
                         | Action::Swapdown
                         | Action::Swapleft
                         | Action::Swapright => {
-                            if let Some(next) = self.spatial(id, &b.action[4..]) {
+                            let dir = Direction::parse(&b.action[4..]);
+                            if let Some(next) = dir.and_then(|d| self.directional(id, d, true)) {
                                 self.swap_clients(id, next)?;
                             }
                         }
